@@ -19,3 +19,7 @@ Het project staat aan het begin. De eerste versie moet werken vóór de start va
 ## Contact
 
 PadVinder is een initiatief binnen Paddentrek Enschede. Vragen en ideeën zijn welkom via een [issue](https://github.com/PadVinder-net/PadVinder/issues).
+
+## Licentie
+
+PadVinder is beschikbaar onder de [European Union Public Licence v. 1.2](LICENSE) (EUPL-1.2).
