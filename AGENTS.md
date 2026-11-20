@@ -120,6 +120,7 @@ Status is taken from the plan. **Decided** is settled: do not replace it without
 | Session | httpOnly cookie, the same in mobile and portal | Decided |
 | Tests | Vitest for logic and components, Playwright for whole screens | Decided |
 | Package manager | pnpm | Decided |
+| Lint and format | Oxlint for linting, Oxfmt for formatting, for the whole monorepo. No ESLint, Prettier or Biome. Oxfmt was still in beta when this was chosen (February 2026); pin its version and review upgrades | Decided |
 
 ### Backend and hosting
 
@@ -273,7 +274,7 @@ Do not assume an answer to these; ask or leave a clear note.
 
 - Whether pg-boss, long-lived SSE connections and `LISTEN`/`NOTIFY` work reliably on Alwaysdata, and whether four processes fit in 1 GB.
 - Terra Draw for drawing lines; Drizzle column types for line geometry; the Better Auth integration with Fastify; the library that connects Zod, Fastify and the OpenAPI generation.
-- Lint and format tooling: Biome, or Oxlint with Oxfmt.
+- Oxlint and Oxfmt configuration: which rules, whether Oxfmt sorts Tailwind classes (check its current docs for the default), and whether type-aware linting is worth its cost in CI.
 - The OpenStreetMap tile provider, the second backup location, and the transactional mail service.
 - The format and coordinate system of the municipality's drain data (GeoJSON, GeoPackage or CSV), which determine the importer.
 - Accessibility requirements (possibly WCAG), and the visual identity (red, white and a little black; exact colors, logo and typography not yet set).
