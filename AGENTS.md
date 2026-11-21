@@ -101,8 +101,12 @@ packages/
   db/               Drizzle schema, client, migrations, seed, test database helper (@padvinder/db/testing)
   api-client/       openapi.json and the generated client (committed)
   ui/               Shared React components (Tailwind, shadcn/ui), Storybook; the map will live here too
+infra/
+  container/        Dockerfile of the release image
 e2e/                Playwright tests
 scripts/            Workspace setup and teardown, env loading, Vitest global setup
+docs/               Repository settings on GitHub, design specs and plans
+.github/            CI workflows, the shared setup action, Dependabot
 ```
 
 Shared packages export TypeScript source, with no build step. Apps bundle: api and worker with tsdown (to `dist/main.js`), mobile and portal with Vite. A runtime dependency used by a bundled app must be a direct dependency of that app, with the same version as in the packages that use it. Each app is meant to be built separately; `pnpm release:build` bundles all four into one release (see "Release").
