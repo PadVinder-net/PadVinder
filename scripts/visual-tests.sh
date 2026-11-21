@@ -33,10 +33,11 @@ esac
 command -v docker >/dev/null 2>&1 || fail "Docker is not installed."
 docker info >/dev/null 2>&1 || fail "Docker is not running. Start Docker and try again."
 
-mkdir -p "$root/$screenshots"
-# Images of failed comparisons from an earlier run would only confuse.
-rm -rf "${root:?}/$attachments"
-mkdir -p "$root/$attachments"
+mkdir -p "$root/$screenshots" "$root/$attachments"
+# Images of failed comparisons from an earlier run would only confuse. Empty the directory
+# rather than recreate it: with Docker Desktop, an emulated amd64 container cannot see a
+# mounted directory that was just recreated on the host.
+find "$root/$attachments" -mindepth 1 -delete
 
 if [[ -n "$update" ]]; then
   echo "Updating the reference screenshots in $screenshots with $image"
@@ -72,7 +73,9 @@ echo "Running pnpm test:visual $UPDATE"
 pnpm test:visual $UPDATE
 '
 
-docker run --rm --init \
+# CI runners are amd64, so the references come from the amd64 image: on Apple silicon it
+# runs under emulation, which is slower.
+docker run --rm --init --platform linux/amd64 \
   --volume "$root:/src:ro" \
   --volume "padvinder-pnpm-store:/pnpm-store" \
   --volume "$root/$screenshots:/work/$screenshots" \
