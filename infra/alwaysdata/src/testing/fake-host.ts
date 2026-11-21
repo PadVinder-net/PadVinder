@@ -61,11 +61,14 @@ export async function startFakeHost(options: { databaseUrlFromHost: string }): P
   let containerId: string | undefined;
 
   const stop = async () => {
-    if (containerId !== undefined) {
-      await run("docker", ["rm", "--force", "--volumes", containerId]);
-      containerId = undefined;
+    try {
+      if (containerId !== undefined) {
+        await run("docker", ["rm", "--force", "--volumes", containerId]);
+        containerId = undefined;
+      }
+    } finally {
+      await rm(keyDir, { recursive: true, force: true });
     }
-    await rm(keyDir, { recursive: true, force: true });
   };
 
   try {

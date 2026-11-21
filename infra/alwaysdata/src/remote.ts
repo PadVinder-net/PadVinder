@@ -26,8 +26,10 @@ export interface Remote {
   writeFile(path: string, content: string, mode: number): Promise<void>;
   /**
    * Makes `remoteDir` an exact copy of the contents of `localDir` with `rsync -a --delete`.
-   * With `linkDest` (an existing remote directory), files that are the same there become
-   * hard links instead of copies. Remote paths may only hold letters, digits and `._+-/`.
+   * With `linkDest` (an existing remote directory), files with the same content there become
+   * hard links instead of copies. Files are compared by checksum and modification times are
+   * not copied then, because a fresh build gives every file a new time. Remote paths may only
+   * hold letters, digits and `._+-/`.
    */
   upload(localDir: string, remoteDir: string, options?: { linkDest?: string }): Promise<void>;
 }
@@ -51,6 +53,7 @@ export function shellQuote(value: string): string {
 
 const envNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const safeRemotePathPattern = /^[A-Za-z0-9._+/-]+$/;
+const homeMarker = "__padvinder_home=";
 // The ssh options also go into rsync's -e string, which is split on whitespace.
 const safeLocalArgPattern = /^[^\s'"\\]+$/;
 
@@ -135,11 +138,14 @@ export function createSshRemote(options: SshRemoteOptions): Remote {
       if (!envNamePattern.test(name)) {
         throw new Error(`${JSON.stringify(name)} is not a valid environment variable name`);
       }
+      if (value.includes("\0")) {
+        throw new Error(`The value of environment variable ${name} holds a NUL byte`);
+      }
       return `export ${name}=${shellQuote(value)}\n`;
     });
     // Stdin is the export lines, a NUL byte, then the command's own stdin. bash's `read`
     // takes bytes from a pipe one at a time, so it stops exactly at the NUL and leaves the
-    // rest for the command. Environment variables cannot hold NUL bytes.
+    // rest for the command. Values with a NUL byte are refused above.
     const script = [
       `IFS= read -r -d '' __padvinder_env || exit 125`,
       `eval "$__padvinder_env"`,
@@ -164,7 +170,7 @@ export function createSshRemote(options: SshRemoteOptions): Remote {
       [
         "umask 077",
         `mkdir -p -- "$(dirname -- ${shellQuote(path)})"`,
-        `if cat > ${shellQuote(temporary)} && chmod ${mode.toString(8)} ${shellQuote(temporary)} && mv -f -- ${shellQuote(temporary)} ${shellQuote(path)}; then :; else rm -f -- ${shellQuote(temporary)}; exit 1; fi`,
+        `if cat > ${shellQuote(temporary)} && chmod ${mode.toString(8)} -- ${shellQuote(temporary)} && mv -f -- ${shellQuote(temporary)} ${shellQuote(path)}; then :; else rm -f -- ${shellQuote(temporary)}; exit 1; fi`,
       ].join("\n"),
       { stdin: content },
     );
@@ -181,10 +187,19 @@ export function createSshRemote(options: SshRemoteOptions): Remote {
     }
     // rsync creates only the last directory, and reads a relative --link-dest from the
     // destination directory, so create the parents and make linkDest absolute.
-    const { stdout } = await exec(`mkdir -p -- ${shellQuote(remoteDir)} && pwd`);
-    const home = stdout.trim();
+    // The marker keeps the lookup apart from anything a chatty login shell prints.
+    const { stdout } = await exec(
+      `mkdir -p -- ${shellQuote(remoteDir)} && printf '${homeMarker}%s\\n' "$PWD"`,
+    );
+    const home = [...stdout.matchAll(new RegExp(`^${homeMarker}(.*)$`, "gm"))].at(-1)?.[1];
+    if (home === undefined || !home.startsWith("/") || !safeRemotePathPattern.test(home)) {
+      throw new Error(`Could not read the remote home directory from ${JSON.stringify(stdout)}`);
+    }
     const args = ["-a", "--delete"];
     if (linkDest !== undefined) {
+      // Hard-link by content: a fresh build gives every file a new modification time, and
+      // with -a rsync would only link files whose time matches too.
+      args.push("--checksum", "--no-times");
       args.push(`--link-dest=${linkDest.startsWith("/") ? linkDest : `${home}/${linkDest}`}`);
     }
     args.push(

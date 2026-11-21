@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -106,7 +106,12 @@ describe("upload", () => {
     await writeFile(join(localDir, "main.js"), "version 1\n");
     await host.remote.upload(localDir, "releases/one");
 
-    await writeFile(join(localDir, "main.js"), "version 2, longer\n");
+    // A fresh build writes every file again: same content, new modification time.
+    const later = new Date(Date.now() + 3_600_000);
+    await writeFile(join(localDir, "node_modules/pkg/index.js"), "unchanged\n");
+    await utimes(join(localDir, "node_modules/pkg/index.js"), later, later);
+    // Same size as before, so only the content tells it apart.
+    await writeFile(join(localDir, "main.js"), "version 2\n");
     await host.exec("mkdir -p releases/two && echo stale > releases/two/stale.txt");
     await host.remote.upload(localDir, "releases/two", { linkDest: "releases/one" });
 
@@ -116,9 +121,25 @@ describe("upload", () => {
     );
     expect(await inode("releases/two/main.js")).not.toBe(await inode("releases/one/main.js"));
     expect(await host.exec("cat releases/one/main.js releases/two/main.js")).toBe(
-      "version 1\nversion 2, longer\n",
+      "version 1\nversion 2\n",
     );
     expect(await host.exec("ls -A releases/two")).toBe("main.js\nnode_modules\n");
+  });
+  test("upload finds the home directory when the login shell prints text", async () => {
+    // rsync itself needs a quiet shell, so the text is printed for other commands only.
+    await host.exec(
+      `cp .bashrc .bashrc.orig && sed -i '1i [[ "$BASH_EXECUTION_STRING" == *rsync* ]] || echo welcome-from-bashrc' .bashrc`,
+    );
+    try {
+      expect((await host.remote.exec("true")).stdout).toContain("welcome-from-bashrc");
+      await host.remote.upload(localDir, "releases/three", { linkDest: "releases/one" });
+    } finally {
+      await host.exec("mv .bashrc.orig .bashrc");
+    }
+    const inode = (path: string) => host.exec(`stat -c %i ${path}`);
+    expect(await inode("releases/three/node_modules/pkg/index.js")).toBe(
+      await inode("releases/one/node_modules/pkg/index.js"),
+    );
   });
 });
 

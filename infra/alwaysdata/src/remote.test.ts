@@ -27,6 +27,10 @@ describe("createSshRemote", () => {
     );
   });
 
+  test("rejects an environment variable value with a NUL byte", async () => {
+    await expect(remote.exec("true", { env: { A: "x\0y" } })).rejects.toThrow(/NUL byte/);
+  });
+
   test("rejects a mode outside 0 to 0o7777", async () => {
     await expect(remote.writeFile("a", "b", 0o10000)).rejects.toThrow(/mode/);
     await expect(remote.writeFile("a", "b", 1.5)).rejects.toThrow(/mode/);
