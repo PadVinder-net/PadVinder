@@ -115,9 +115,9 @@ Settings, Environments. The workflows in `.github/workflows/` (`deploy.yml`, `pr
 
 - [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, with the branch rules `main`, `staging/**` and `provision/staging`. No required reviewers.
 - [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off, or one maintainer blocks himself. Deployment branches and tags: `main` and `provision/production`.
-- [ ] In both environments, the secrets `ALWAYSDATA_API_KEY`, `DEPLOY_SSH_KEY` and `DATABASE_PASSWORD` (a different one per environment), and the variables `ALWAYSDATA_ACCOUNT` and `SSH_KNOWN_HOSTS`. One deploy key may serve both environments: both use the same SSH user.
+- [ ] In both environments, the five secrets: `ALWAYSDATA_API_KEY`, `DEPLOY_SSH_KEY`, `DATABASE_PASSWORD` (a different one per environment), `ALWAYSDATA_ACCOUNT` and `SSH_KNOWN_HOSTS`. There are no variables: GitHub prints the `env:` values of a non-secret in the step log, and the logs are public (the account name and the known-hosts line, which holds the account name, would show). One deploy key may serve both environments: both use the same SSH user.
 
-Through the API (the environment names are created on the first call; add the secrets and variables with `gh secret set` and `gh variable set`, see the README):
+Through the API (the environment names are created on the first call; add the secrets with `gh secret set`, see the README):
 
 ```sh
 gh api repos/OWNER/REPO/environments/staging --method PUT --input - <<'JSON'
@@ -127,10 +127,10 @@ for pattern in main 'staging/**' provision/staging; do
   gh api repos/OWNER/REPO/environments/staging/deployment-branch-policies --method POST -f name="$pattern" -f type=branch
 done
 
-# REVIEWER_ID: gh api users/<login> --jq .id
+REVIEWER_ID=$(gh api users/<login> --jq .id)   # the maintainer's GitHub login
 gh api repos/OWNER/REPO/environments/production --method PUT --input - <<JSON
 {
-  "reviewers": [{ "type": "User", "id": REVIEWER_ID }],
+  "reviewers": [{ "type": "User", "id": $REVIEWER_ID }],
   "prevent_self_review": false,
   "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
 }
@@ -140,7 +140,7 @@ for pattern in main provision/production; do
 done
 ```
 
-GitHub's wildcards do not match `/`, so a staging branch is `staging/<name>` with no further slash. Secrets and variables are per environment: set each in both.
+GitHub's wildcards do not match `/`, so a staging branch is `staging/<name>` with no further slash. Secrets are per environment: set each in both.
 
 ## 5. Check afterwards
 

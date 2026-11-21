@@ -33,7 +33,7 @@ jobs:
       # Only the Alwaysdata API; no SSH, so no deploy key.
       - name: Switch the services
         env:
-          ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
           ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
           STATE: ${{ inputs.state }}
         run: |

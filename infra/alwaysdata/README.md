@@ -53,7 +53,7 @@ The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`
 
 ## The scripts
 
-All three read their settings from environment variables with the same names as the GitHub secrets and variables. Errors name missing variables, never their values. Every line they print goes through `redact()`.
+All three read their settings from environment variables with the same names as the GitHub secrets. Errors name missing variables, never their values. Every line they print goes through `redact()`.
 
 | Command                                                                                        | Needs                                                                            | What it does                                                                                                                                         |
 | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -64,7 +64,7 @@ All three read their settings from environment variables with the same names as 
 | `pnpm infra:services --environment <env> (--enable \| --disable \| --restart)`                 | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                       | Turns the two services of an environment on or off, or restarts them                                                                                 |
 | `pnpm test:fake-host`                                                                          | Docker, a release tarball for the deploy test                                    | Tests SSH, upload and deploy against a fake host container. In CI as the `deploy-test` check                                                         |
 
-The SSH files are `DEPLOY_SSH_KEY_FILE` (path to the private key) and `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file). In GitHub Actions, the composite action `.github/actions/alwaysdata-credentials` writes both from the `DEPLOY_SSH_KEY` secret and the `SSH_KNOWN_HOSTS` variable.
+The SSH files are `DEPLOY_SSH_KEY_FILE` (path to the private key) and `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file). In GitHub Actions, the composite action `.github/actions/alwaysdata-credentials` writes both from the `DEPLOY_SSH_KEY` and `SSH_KNOWN_HOSTS` secrets.
 
 Provisioning is idempotent: a second run plans `ok` for everything and writes nothing through the API. It never deletes a resource and never recreates a database. A field that can only be set at creation (database locale, encoding, extensions) and differs is reported as a `conflict`; nothing is changed then, and a human resolves it in the panel.
 
@@ -98,12 +98,12 @@ The staging deploy, Provision and Staging services of one environment share the 
 
 ## Accounts
 
-| Account                            | Who                              | Used for                                                                                                          |
-| ---------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Alwaysdata profile                 | The maintainer, 2FA on           | The panel, and the API tokens (a token has the profile's rights)                                                  |
-| Alwaysdata account `<account>`     | (under that profile)             | Sites, services, databases, SSH users of both environments                                                        |
-| GitHub organization and repository | The maintainer                   | Workflows, the environments `staging` and `production`, their secrets and variables, approving production deploys |
-| DNS of `padvinder.net`             | The maintainer, at the registrar | The DNS records below (not hosted at Alwaysdata)                                                                  |
+| Account                            | Who                              | Used for                                                                                            |
+| ---------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Alwaysdata profile                 | The maintainer, 2FA on           | The panel, and the API tokens (a token has the profile's rights)                                    |
+| Alwaysdata account `<account>`     | (under that profile)             | Sites, services, databases, SSH users of both environments                                          |
+| GitHub organization and repository | The maintainer                   | Workflows, the environments `staging` and `production`, their secrets, approving production deploys |
+| DNS of `padvinder.net`             | The maintainer, at the registrar | The DNS records below (not hosted at Alwaysdata)                                                    |
 
 ## GitHub setup (once, by hand)
 
@@ -111,23 +111,23 @@ Settings, Environments in the repository. The step by step for the environments,
 
 - [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, branch rules `main`, `staging/**` and `provision/staging`.
 - [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off (one maintainer would block himself). Deployment branches and tags: `main` and `provision/production`.
-- [ ] In each environment, these secrets and variables:
+- [ ] In each environment, these five secrets:
 
-| Name                 | Kind     | Staging and production                             | How to make it                                                         |
-| -------------------- | -------- | -------------------------------------------------- | ---------------------------------------------------------------------- |
-| `ALWAYSDATA_API_KEY` | Secret   | One token per environment (advised), or one shared | Alwaysdata panel, Profile, Tokens. Needs 2FA on the profile. See below |
-| `DEPLOY_SSH_KEY`     | Secret   | The same key in both                               | `ssh-keygen`, see below. The private key, the whole file               |
-| `DATABASE_PASSWORD`  | Secret   | Different per environment                          | `openssl rand -hex 32`                                                 |
-| `ALWAYSDATA_ACCOUNT` | Variable | The same in both                                   | The account name                                                       |
-| `SSH_KNOWN_HOSTS`    | Variable | The same in both                                   | `ssh-keyscan`, see below                                               |
+| Name                 | Kind   | Staging and production                             | How to make it                                                         |
+| -------------------- | ------ | -------------------------------------------------- | ---------------------------------------------------------------------- |
+| `ALWAYSDATA_API_KEY` | Secret | One token per environment (advised), or one shared | Alwaysdata panel, Profile, Tokens. Needs 2FA on the profile. See below |
+| `DEPLOY_SSH_KEY`     | Secret | The same key in both                               | `ssh-keygen`, see below. The private key, the whole file               |
+| `DATABASE_PASSWORD`  | Secret | Different per environment                          | `openssl rand -hex 32`                                                 |
+| `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                       |
+| `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                               |
 
 GitHub's wildcards in deployment branch rules do not match `/`, so a staging branch is `staging/<name>` with no further slash.
 
-Variables are not masked in logs. The scripts never print them, and they mask the account name.
+The account name and the known-hosts line are secrets too, not variables: GitHub prints the `env:` values of a non-secret in a step's log, and this repository's logs are public. A secret is masked there. The known-hosts line holds `ssh-<account>.alwaysdata.net`, so it would reveal the account name. The scripts also mask the account name in their own output.
 
 ### Making each value
 
-Run these on your own machine, not on a shared one. `gh secret set` and `gh variable set` read the value from stdin or prompt for it, so it never lands in your shell history. Replace `OWNER/REPO`.
+Run these on your own machine, not on a shared one, and in a temporary directory outside the repository: `cd "$(mktemp -d)"` first. The private key and the known-hosts file would otherwise sit in the repository as untracked files that are easy to commit by accident. Delete the directory when you are done (`rm -r` it), and keep the private key in a password manager if you want to keep it. `gh secret set` reads the value from stdin or prompt for it, so it never lands in your shell history. Replace `OWNER/REPO`.
 
 **API token.** In the Alwaysdata panel: Profile, then Tokens. Creating a token needs two-factor authentication on the profile. Give it a name per environment (`padvinder-staging`, `padvinder-production`). Leave "allowed IPs" empty: GitHub's runners have changing addresses. The key is shown once:
 
@@ -158,22 +158,22 @@ GitHub cannot show a secret again. The password also stands in the env file on t
 **Account and known hosts.**
 
 ```sh
-gh variable set ALWAYSDATA_ACCOUNT --env staging --repo OWNER/REPO --body '<account>'
-gh variable set ALWAYSDATA_ACCOUNT --env production --repo OWNER/REPO --body '<account>'
+gh secret set ALWAYSDATA_ACCOUNT --env staging --repo OWNER/REPO      # paste the account name at the prompt
+gh secret set ALWAYSDATA_ACCOUNT --env production --repo OWNER/REPO
 
 ssh-keyscan -t ed25519 ssh-<account>.alwaysdata.net > known_hosts
 ssh-keygen -lf known_hosts   # compare this fingerprint with the one the Alwaysdata panel shows
-gh variable set SSH_KNOWN_HOSTS --env staging --repo OWNER/REPO < known_hosts
-gh variable set SSH_KNOWN_HOSTS --env production --repo OWNER/REPO < known_hosts
+gh secret set SSH_KNOWN_HOSTS --env staging --repo OWNER/REPO < known_hosts
+gh secret set SSH_KNOWN_HOSTS --env production --repo OWNER/REPO < known_hosts
 ```
 
 Only store the known hosts after the fingerprint matches; with a wrong one the deploys trust the wrong server.
 
 ## First run, in this order
 
-1. **Secrets and variables** in both environments, as above.
+1. **Secrets** in both environments, as above.
 2. **Plan staging, read-only.** Push the branch to `provision/staging` (`git push origin HEAD:provision/staging`). The Provision run plans and inspects; nothing changes. Check the plan, and compare the inspect output with the `UNVERIFIED` fields in `src/resources.ts`. Fix the names there if they differ, and push again.
-3. **Apply staging.** Once the workflow is on `main`: Actions, Provision, Run workflow, environment `staging`, `apply` on. Before that, run it locally (see "Running locally"). It creates the SSH user, the database, the database user, the site and the two services. The first apply then fails at writing the env file, because the SSH user has no key yet; the output says so.
+3. **Apply staging.** Once the workflow is on `main`: Actions, Provision, Run workflow, environment `staging`, `apply` on. Until it is on `main`, run it locally instead (see "Running locally"). It creates the SSH user, the database, the database user, the site and the two services. The first apply then fails at writing the env file, because the SSH user has no key yet; the output says so.
 4. **Add the deploy public key** `padvinder-deploy.pub` to the SSH user `<account>_deploy` in the panel.
 5. **Apply staging again.** It finds everything `ok`, writes `padvinder/staging/.env` and creates `releases/`.
 6. **Deploy to staging.** Push a branch to `staging/<name>`, or merge to `main`. The services start failing as soon as they are created (no release yet), and Alwaysdata may turn them off; the first deploy turns them on.
@@ -182,13 +182,13 @@ Only store the known hosts after the fingerprint matches; with a wrong one the d
 
 ## Running locally
 
-The same commands work on your machine with the variables in the environment. Do not pass secrets as arguments, and do not put them in `.env` files in the repository. For example, in bash or zsh:
+The same commands work on your machine with the settings in the environment variables. Keep the key and the known-hosts file outside the repository. Do not pass secrets as arguments, and do not put them in `.env` files in the repository. For example, in bash or zsh:
 
 ```sh
 export ALWAYSDATA_ACCOUNT='<account>'
 read -rs ALWAYSDATA_API_KEY && export ALWAYSDATA_API_KEY        # paste, Enter
 read -rs DATABASE_PASSWORD && export DATABASE_PASSWORD          # only for provisioning
-export DEPLOY_SSH_KEY_FILE="$PWD/padvinder-deploy" SSH_KNOWN_HOSTS_FILE="$PWD/known_hosts"
+export DEPLOY_SSH_KEY_FILE="$HOME/.ssh/padvinder-deploy" SSH_KNOWN_HOSTS_FILE="$HOME/.ssh/padvinder-known-hosts"   # outside the repository
 pnpm infra:provision --environment staging
 ```
 
@@ -205,7 +205,7 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 - **A branch on staging:** push it to `staging/<name>`. Every push redeploys. Delete the branch afterwards; the next merge to `main` puts `main` back on staging.
 - **A skipped production job shows green.** When you approve an older run after `main` has moved on, the production job deploys nothing; its summary has the notice "Skipped: main has moved on". The newest run deploys the newest commit.
 - **Rollback.** A failed health check rolls back on its own. For a manual rollback of production: revert the change on `main` (a pull request), which deploys the reverted state; re-running an older run's production job does not work, because it skips when its commit is no longer the head of `main`. In a hurry, deploy an older commit locally (check it out, `pnpm release:build`, `pnpm infra:deploy`). Re-running an older run's staging job does put that older commit on staging, as long as its artifact exists (30 days).
-- **Do not start Provision or Staging services while a deploy of that environment is queued.** They share the concurrency group `deploy-<env>`, and GitHub cancels a pending run when a newer one joins the group. A running job is never cancelled. If a deploy was cancelled this way, re-run it (Re-run failed jobs).
+- **Do not start Provision (either environment) or Staging services while a deploy of that environment is queued.** They share the concurrency group `deploy-<env>` (`deploy-staging` and `deploy-production`), and GitHub cancels a pending run when a newer one joins the group. A running job is never cancelled. If a deploy was cancelled this way, re-run it (Re-run failed jobs).
 - **Provisioning never restarts the services.** When the env file changed it prints `The services must be restarted ...`. Restart with `pnpm infra:services --environment <env> --restart` locally, in the panel (Advanced, Services), or by deploying again.
 - **Logs** are in `/home/<account>/admin/logs/services/` (service output: API and worker), `/home/<account>/admin/logs/http/` (requests) and `/home/<account>/admin/logs/sites/` (site starts and errors). Read them over SSH, or in the panel. The deploy steps are in the GitHub Actions run.
 - **Processes and memory:** the panel, Advanced, Processes. Services run on servers separate from SSH.
@@ -245,7 +245,7 @@ Let's Encrypt only issues a certificate when the address already points at Alway
 
 ### On a new Alwaysdata account
 
-1. Make the account, its API token and the GitHub variables and secrets for it (`ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `SSH_KNOWN_HOSTS` change; keep or remake the others).
+1. Make the account, its API token and the GitHub secrets for it (`ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `SSH_KNOWN_HOSTS` change; keep or remake the others).
 2. Follow "First run" up to and including the second apply, for each environment.
 3. Restore the database before the first deploy (below). The deploy's migrations then find nothing to do.
 4. Copy files: today there are none besides the env file and the releases, which provisioning and the deploy make again. Once photos exist, copy their storage directory too.

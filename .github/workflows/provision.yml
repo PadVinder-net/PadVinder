@@ -83,10 +83,10 @@ jobs:
       - uses: ./.github/actions/alwaysdata-credentials
         with:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
-          known-hosts: ${{ vars.SSH_KNOWN_HOSTS }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: Provision
         env:
-          ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
           ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
           DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
           ENVIRONMENT: ${{ needs.target.outputs.environment }}
@@ -107,7 +107,7 @@ jobs:
       - name: Inspect
         if: ${{ !cancelled() && (github.event_name == 'push' || inputs.inspect) }}
         env:
-          ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
           ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
           ENVIRONMENT: ${{ needs.target.outputs.environment }}
         run: pnpm infra:provision --environment "$ENVIRONMENT" --inspect

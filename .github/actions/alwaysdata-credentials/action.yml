@@ -9,7 +9,7 @@ inputs:
     description: The private deploy key, from the secret DEPLOY_SSH_KEY.
     required: true
   known-hosts:
-    description: The known_hosts lines of the SSH host, from the variable SSH_KNOWN_HOSTS.
+    description: The known_hosts lines of the SSH host, from the secret SSH_KNOWN_HOSTS.
     required: true
 
 runs:
@@ -29,7 +29,7 @@ runs:
           exit 1
         fi
         if [[ -z "$SSH_KNOWN_HOSTS" ]]; then
-          echo "::error::The variable SSH_KNOWN_HOSTS is empty or missing in this environment."
+          echo "::error::The secret SSH_KNOWN_HOSTS is empty or missing in this environment."
           exit 1
         fi
         umask 077
