@@ -2,6 +2,10 @@
 # needs the mcr.microsoft.com/playwright image tag changed in the files that
 # scripts/playwright-version.test.ts names when it fails.
 #
+# The imresamu/postgis image in the services: of .github/workflows/ci.yml and
+# build-release.yml is not updated by Dependabot. Change it by hand, together with
+# docker-compose.yml.
+#
 # The cooldown of 7 days is longer than pnpm's minimum release age, so pnpm never refuses
 # a version Dependabot proposes.
 version: 2
@@ -16,6 +20,13 @@ updates:
       default-days: 7
     open-pull-requests-limit: 5
     groups:
+      # Both Playwright packages arrive in one pull request, also for major updates. A
+      # package that matches several groups goes into the first one listed, so this group
+      # stays above minor-and-patch (which also excludes them).
+      playwright:
+        patterns:
+          - "@playwright/test"
+          - playwright
       # Exact-pinned packages stay out of the group and arrive one by one for review, as
       # do all major updates.
       minor-and-patch:
@@ -50,6 +61,10 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    ignore:
+      # Node.js 24 LTS is decided; a new major is a deliberate change, not a weekly update.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
     groups:
       docker:
         patterns: ["*"]
@@ -62,6 +77,15 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    ignore:
+      # The database must match Alwaysdata: PostgreSQL 18 with PostGIS 3.6. Dependabot reads
+      # the tag 18-3.6-bookworm as version 18.3.6 with suffix -bookworm, so PostGIS 3.7
+      # (18-3.7-bookworm) would count as a patch update and update-types cannot block it
+      # without also blocking real patch updates. Ignore every version from 18.3.7 up
+      # instead: that blocks 18-3.7-*, 18-4.*-* and 19-*. Write the version with dots: a
+      # dash would make it a prerelease (18-3.7 parses as 18.pre.3.7).
+      - dependency-name: imresamu/postgis
+        versions: [">= 18.3.7"]
     groups:
       docker-compose:
         patterns: ["*"]
