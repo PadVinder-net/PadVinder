@@ -311,9 +311,8 @@ async function restartAndCheck(
   const now = options.now ?? (() => new Date());
   const { services, enabled } = await enableDisabledServices(options.api, options.env);
   if (enabled.length > 0) log(`Enabled ${enabled.join(" and ")}`);
-  // Before the restart: a heartbeat after this moment comes from a worker that was restarted.
-  const restartedAt = now();
-  await restartServices(options.api, services);
+  // Taken just before the worker's restart: a heartbeat after it comes from the new worker.
+  const restartedAt = await restartServices(options.api, services, now);
   log(
     `Restarted ${String(services.api.annotation)} and ${String(services.worker.annotation)}; waiting for the health check of the ${what} (${commit.slice(0, 7)})`,
   );

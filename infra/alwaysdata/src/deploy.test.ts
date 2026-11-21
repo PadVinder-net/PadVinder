@@ -344,6 +344,19 @@ test("the rollback turns on a service that Alwaysdata switched off during the fa
   expect(isDisabled(22)).toBe(false);
 });
 
+test("the restart time for the heartbeat is taken between the API and the worker restart", async () => {
+  await deploy(
+    options({
+      now: () => {
+        timeline.push("now");
+        return clock;
+      },
+    }),
+  );
+  const restart = timeline.indexOf("restart 21");
+  expect(timeline.slice(restart, restart + 3)).toEqual(["restart 21", "now", "restart 22"]);
+});
+
 test("a failed restart after the switch rolls back too", async () => {
   fake.resources.get("service")![1]!.is_disabled = false;
   const recording = recordingApi();

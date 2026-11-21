@@ -61,10 +61,17 @@ test("enables and disables both services", async () => {
   ]);
 });
 
-test("restarts the API, then the worker", async () => {
-  await restartServices(api, await findServices(api, "staging"));
+test("restarts the API, then the worker, and returns the time before the worker's restart", async () => {
+  const restartsAtNow: number[] = [];
+  const at = await restartServices(api, await findServices(api, "staging"), () => {
+    restartsAtNow.push(fake.requests.filter((r) => r.method === "POST").length);
+    return new Date("2027-03-01T20:00:00Z");
+  });
   expect(fake.requests.filter((r) => r.method !== "GET").map((r) => r.path)).toEqual([
     "/v1/service/21/restart/",
     "/v1/service/22/restart/",
   ]);
+  // Read once, after the API's restart and before the worker's.
+  expect(restartsAtNow).toEqual([1]);
+  expect(at.toISOString()).toBe("2027-03-01T20:00:00.000Z");
 });

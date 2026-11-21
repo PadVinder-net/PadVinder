@@ -60,8 +60,17 @@ export async function enableDisabledServices(
   return { services, enabled };
 }
 
-/** Restarts the API, then the worker. */
-export async function restartServices(api: AlwaysdataApi, services: Services): Promise<void> {
+/**
+ * Restarts the API, then the worker. Returns the time just before the worker's restart: a
+ * worker heartbeat after it comes from the restarted worker.
+ */
+export async function restartServices(
+  api: AlwaysdataApi,
+  services: Services,
+  now: () => Date = () => new Date(),
+): Promise<Date> {
   await api.restartService(services.api.id);
+  const workerRestartedAt = now();
   await api.restartService(services.worker.id);
+  return workerRestartedAt;
 }
