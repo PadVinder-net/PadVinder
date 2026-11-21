@@ -1,0 +1,6 @@
+@import "@padvinder/ui/styles.css";
+
+html {
+  /* No rubber-band scrolling or pull-to-refresh while counting with one hand. */
+  overscroll-behavior: none;
+}

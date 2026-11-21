@@ -1,0 +1,43 @@
+{
+  "name": "padvinder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:https": "DEV_HTTPS=1 pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r --filter \"./apps/*\" build",
+    "test:e2e": "playwright test",
+    "icons:generate": "pnpm --filter @padvinder/portal icons:generate",
+    "db:generate": "pnpm --filter @padvinder/db db:generate",
+    "db:migrate": "pnpm --filter @padvinder/db db:migrate",
+    "db:seed": "pnpm --filter @padvinder/db db:seed",
+    "api:generate": "pnpm --filter @padvinder/api exec tsx src/openapi/write-openapi.ts && pnpm --filter @padvinder/api-client generate",
+    "storybook": "pnpm --filter @padvinder/ui storybook",
+    "storybook:build": "pnpm --filter @padvinder/ui storybook:build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^24.0.0",
+    "oxfmt": "0.79.0",
+    "oxlint": "1.94.0",
+    "typescript": "7.0.2",
+    "vitest": "^5.1.1"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@12.21.0"
+}

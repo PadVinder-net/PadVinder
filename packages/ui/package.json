@@ -1,0 +1,37 @@
+{
+  "name": "@padvinder/ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "storybook": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local .storybook/dev.ts",
+    "storybook:build": "storybook build"
+  },
+  "dependencies": {
+    "@padvinder/contracts": "workspace:*",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "radix-ui": "^1.8.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwind-merge": "^3.7.1"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "^10.6.8",
+    "@tailwindcss/vite": "^4.3.5",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^27.0.0",
+    "storybook": "^10.6.8",
+    "tailwindcss": "^4.3.5",
+    "typescript": "7.0.2",
+    "vite": "^8.3.8"
+  }
+}

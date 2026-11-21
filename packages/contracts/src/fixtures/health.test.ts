@@ -1,0 +1,16 @@
+import { expect, test } from "vitest";
+import { healthResponseSchema } from "../health";
+import { databaseUnreachableFixture, healthyFixture, workerStaleFixture } from "./health";
+
+test.each([healthyFixture, workerStaleFixture, databaseUnreachableFixture])(
+  "fixture matches the schema",
+  (f) => expect(healthResponseSchema.parse(f)).toEqual(f),
+);
+test("databaseUnreachableFixture has no versions", () => {
+  expect(databaseUnreachableFixture.database).toMatchObject({
+    reachable: false,
+    postgresVersion: null,
+    postgisVersion: null,
+    latestMigration: null,
+  });
+});

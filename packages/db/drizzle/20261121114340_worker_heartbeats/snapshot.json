@@ -1,0 +1,70 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "c93ede7c-ff52-46c2-9c3d-b30b0b9f7c0f",
+  "prevIds": [
+    "93f11d82-98f5-4078-b082-4637407eabfc"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "worker_heartbeats"
+      ],
+      "writes": [
+        "s|tbl|public.worker_heartbeats",
+        "n|tbl|public.worker_heartbeats",
+        "e|tbl|public.worker_heartbeats",
+        "n|rel|public.worker_heartbeats",
+        "n|type|public.worker_heartbeats",
+        "n|rel|public.worker_heartbeats_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "worker_heartbeats",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "worker_heartbeats",
+        "name": "beat_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "worker_heartbeats",
+        "name": "worker_heartbeats_pkey",
+        "columns": [
+          "beat_at"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

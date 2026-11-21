@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "storybook-static",
+    "pnpm-lock.yaml",
+    "packages/api-client/openapi.json",
+    "packages/api-client/src/generated/**",
+    "packages/db/drizzle/**"
+  ]
+}

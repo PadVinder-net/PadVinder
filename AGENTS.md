@@ -8,7 +8,7 @@ This file summarizes the technical chapter (section 16) of the project plan of 2
 
 ## Current state
 
-The repository contains no code yet. Everything below under "Repository layout" and "Development workflow" describes the intended setup, not what exists. When you scaffold a part, update this file with the real commands and paths in the same pull request.
+The repository holds the monorepo skeleton (21 November 2026): one vertical slice through every layer (the health endpoint, see "Reference example"), local development, tests and the generated API client. There is no CI workflow, deployment, `infra/` script or authentication yet, and no write endpoints. Update this file in the same pull request when you change a command or a path below.
 
 Milestones:
 
@@ -36,40 +36,40 @@ Feature freeze around 1 February each year; during the migration season only fix
 
 ### Glossary
 
-| Dutch (UI) | English (code) | Meaning |
-| --- | --- | --- |
-| organisatie | `organization` | An organization of working groups, such as Paddentrek Enschede. The tenant boundary |
-| werkgroep | `workingGroup` | A local group of volunteers with one or more coordinators |
-| traject | `transect` | A fixed path that volunteers walk. Two kinds: a toad migration transect, or a drain route. Named `transect` to avoid confusion with HTTP and React Router routes |
-| puttenroute | `transect` of kind `drain` ("drain route") | A transect along drains |
-| put | `drain` | A street drain (gully pot) that is checked for trapped animals |
-| putcontrole | `drainCheck` | Looking into one drain once: animals per species alive/dead, "empty", or "failed" with a reason |
-| lediging | `emptying` | The municipality emptying a drain, from the yearly calendar |
-| uittreedvoorziening | `escapeDevice` | A ladder or ramp that lets animals climb out of a drain |
-| emmer | `bucket` | A bucket dug into the ground, usually along a fence |
-| scherm | `fence` | An amphibian fence along a road |
-| ronde | `round` | Walking one transect once, from start to stop |
-| waarneming | `observation` | A counted animal or number of animals: in a round, at a bucket or in a drain |
-| nulwaarneming | (a `round` without observations) | Effort with nothing found; always stored |
-| losse waarneming | `incidentalObservation` | A report outside a regular round, also by visitors without an account (later) |
-| intekening | `roundSignup` | An optional announcement "I will walk this transect around this time" (later) |
-| aanmelding | `membershipRequest` | A new volunteer asking to join a working group; a coordinator approves |
-| maatregel | `protectionMeasure` | A fence, bucket, fauna tunnel or escape device |
-| soort | `species` | Official species list, managed by admins |
-| levend / dood | `alive` / `dead` | |
-| onbekend | `unknown` | Unknown species (photo required), or a missing value in imported data |
-| controlestatus | `checkStatus` | When a transect, drain or bucket was last checked. Derived, never entered |
-| veiligheidstoets | `safetyTest` | Safety test a volunteer passes before checking drains; versioned, renewed yearly |
-| bevoegdheid | `safetyClearance` | The recorded result: test version, date and acceptance |
-| betrouwbaarheidsstatus | `verificationStatus` | Self-registered, checked by coordinator, confirmed by expert, unknown or uncertain |
-| weergave | `viewMode` | `beginner`, `standard` or `advanced`. How the input screen looks; not a permission |
-| rol | `role` | What a user may do |
-| bezoeker | `visitor` | No account |
-| vrijwilliger | `volunteer` | |
-| coördinator | `coordinator` | Per working group |
-| organisatiebeheerder | `organizationAdmin` | |
-| hoofdbeheerder | `platformAdmin` | PadVinder staff; manages all organizations |
-| tik | `tap` | One press on a count button |
+| Dutch (UI)             | English (code)                             | Meaning                                                                                                                                                          |
+| ---------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| organisatie            | `organization`                             | An organization of working groups, such as Paddentrek Enschede. The tenant boundary                                                                              |
+| werkgroep              | `workingGroup`                             | A local group of volunteers with one or more coordinators                                                                                                        |
+| traject                | `transect`                                 | A fixed path that volunteers walk. Two kinds: a toad migration transect, or a drain route. Named `transect` to avoid confusion with HTTP and React Router routes |
+| puttenroute            | `transect` of kind `drain` ("drain route") | A transect along drains                                                                                                                                          |
+| put                    | `drain`                                    | A street drain (gully pot) that is checked for trapped animals                                                                                                   |
+| putcontrole            | `drainCheck`                               | Looking into one drain once: animals per species alive/dead, "empty", or "failed" with a reason                                                                  |
+| lediging               | `emptying`                                 | The municipality emptying a drain, from the yearly calendar                                                                                                      |
+| uittreedvoorziening    | `escapeDevice`                             | A ladder or ramp that lets animals climb out of a drain                                                                                                          |
+| emmer                  | `bucket`                                   | A bucket dug into the ground, usually along a fence                                                                                                              |
+| scherm                 | `fence`                                    | An amphibian fence along a road                                                                                                                                  |
+| ronde                  | `round`                                    | Walking one transect once, from start to stop                                                                                                                    |
+| waarneming             | `observation`                              | A counted animal or number of animals: in a round, at a bucket or in a drain                                                                                     |
+| nulwaarneming          | (a `round` without observations)           | Effort with nothing found; always stored                                                                                                                         |
+| losse waarneming       | `incidentalObservation`                    | A report outside a regular round, also by visitors without an account (later)                                                                                    |
+| intekening             | `roundSignup`                              | An optional announcement "I will walk this transect around this time" (later)                                                                                    |
+| aanmelding             | `membershipRequest`                        | A new volunteer asking to join a working group; a coordinator approves                                                                                           |
+| maatregel              | `protectionMeasure`                        | A fence, bucket, fauna tunnel or escape device                                                                                                                   |
+| soort                  | `species`                                  | Official species list, managed by admins                                                                                                                         |
+| levend / dood          | `alive` / `dead`                           |                                                                                                                                                                  |
+| onbekend               | `unknown`                                  | Unknown species (photo required), or a missing value in imported data                                                                                            |
+| controlestatus         | `checkStatus`                              | When a transect, drain or bucket was last checked. Derived, never entered                                                                                        |
+| veiligheidstoets       | `safetyTest`                               | Safety test a volunteer passes before checking drains; versioned, renewed yearly                                                                                 |
+| bevoegdheid            | `safetyClearance`                          | The recorded result: test version, date and acceptance                                                                                                           |
+| betrouwbaarheidsstatus | `verificationStatus`                       | Self-registered, checked by coordinator, confirmed by expert, unknown or uncertain                                                                               |
+| weergave               | `viewMode`                                 | `beginner`, `standard` or `advanced`. How the input screen looks; not a permission                                                                               |
+| rol                    | `role`                                     | What a user may do                                                                                                                                               |
+| bezoeker               | `visitor`                                  | No account                                                                                                                                                       |
+| vrijwilliger           | `volunteer`                                |                                                                                                                                                                  |
+| coördinator            | `coordinator`                              | Per working group                                                                                                                                                |
+| organisatiebeheerder   | `organizationAdmin`                        |                                                                                                                                                                  |
+| hoofdbeheerder         | `platformAdmin`                            | PadVinder staff; manages all organizations                                                                                                                       |
+| tik                    | `tap`                                      | One press on a count button                                                                                                                                      |
 
 Keep these names as they are, untranslated: PadVinder, Paddentrek Enschede, Pad uit de put, RAVON.
 
@@ -77,29 +77,35 @@ Keep these names as they are, untranslated: PadVinder, Paddentrek Enschede, Pad 
 
 The glossary lists identifiers in camelCase. Adapt the casing to where the name is used:
 
-| Where | Convention | Example |
-| --- | --- | --- |
-| TypeScript variables, functions and object keys; JSON fields in the API | camelCase | `drainCheck`, `observedAt` |
-| TypeScript types and React components | PascalCase | `DrainCheck`, `DrainCheckForm` |
-| Files and directories | kebab-case | `drain-check-form.tsx` |
-| Database tables | snake_case, plural | `drain_checks` |
-| Database columns | snake_case | `observed_at` |
-| URL paths, for the API and for pages | kebab-case, plural for collections | `/drain-checks` |
+| Where                                                                   | Convention                         | Example                        |
+| ----------------------------------------------------------------------- | ---------------------------------- | ------------------------------ |
+| TypeScript variables, functions and object keys; JSON fields in the API | camelCase                          | `drainCheck`, `observedAt`     |
+| TypeScript types and React components                                   | PascalCase                         | `DrainCheck`, `DrainCheckForm` |
+| Files and directories                                                   | kebab-case                         | `drain-check-form.tsx`         |
+| Database tables                                                         | snake_case, plural                 | `drain_checks`                 |
+| Database columns                                                        | snake_case                         | `observed_at`                  |
+| URL paths, for the API and for pages                                    | kebab-case, plural for collections | `/drain-checks`                |
 
-## Repository layout (intended)
+## Repository layout
 
 One monorepo with pnpm workspaces.
 
 ```
 apps/
-  mobile/           PWA for volunteers, phone only
-  portal/           Web portal: administration (CMS), reports, later public results
+  mobile/           PWA for volunteers, phone only (Vite, served under /app/)
+  portal/           Web portal: administration (CMS), reports, later public results (Vite)
   api/              Fastify API, SSE, and the static builds of mobile and portal
-  worker/           Background jobs with pg-boss; no HTTP
-packages/           Shared libraries: UI components (with Storybook), map, types, validation
+  worker/           Background jobs; no HTTP
+packages/
+  contracts/        Zod schemas of the API contract; inferred types
+  db/               Drizzle schema, client, migrations, seed, test database helper (@padvinder/db/testing)
+  api-client/       openapi.json and the generated client (committed)
+  ui/               Shared React components (Tailwind, shadcn/ui), Storybook; the map will live here too
+e2e/                Playwright tests
+scripts/            Workspace setup and teardown, env loading, Vitest global setup
 ```
 
-Each app has its own build. CI bundles all four into one deployment artifact: the API serves the builds of `mobile` and `portal` as static files, and the worker runs from the same artifact as a second service.
+Shared packages export TypeScript source, with no build step. Apps bundle: api and worker with tsdown (to `dist/main.js`), mobile and portal with Vite. A runtime dependency used by a bundled app must be a direct dependency of that app, with the same version as in the packages that use it. Each app is meant to be built separately; CI will bundle all four into one deployment artifact (not built yet).
 
 ## Tech stack
 
@@ -107,42 +113,48 @@ Status is taken from the plan. **Decided** is settled: do not replace it without
 
 ### Frontend (mobile and portal)
 
-| Area | Choice | Status |
-| --- | --- | --- |
-| App form | PWA with React and TypeScript, built with Vite. No Capacitor for now | Decided |
-| PWA | `vite-plugin-pwa` for manifest and service worker; display `standalone` | Decided |
-| Styling and components | Tailwind with shadcn/ui | Decided |
-| Data layer | Client generated from the OpenAPI description, with TanStack Query. SSE updates the query cache | Decided |
-| Routing | React Router | Decided |
-| Maps | MapLibre GL JS through `react-map-gl`, OpenStreetMap as base map. Tile provider not yet chosen | Decided |
-| Drawing lines on the map | Terra Draw | To try in the first sprint |
-| Charts | ECharts. Not Recharts | Decided |
-| Session | httpOnly cookie, the same in mobile and portal | Decided |
-| Tests | Vitest for logic and components, Playwright for whole screens | Decided |
-| Package manager | pnpm | Decided |
-| Lint and format | Oxlint for linting, Oxfmt for formatting, for the whole monorepo. No ESLint, Prettier or Biome. Oxfmt was still in beta when this was chosen (February 2026); pin its version and review upgrades | Decided |
+| Area                     | Choice                                                                                                                                                                                                                                             | Status            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| App form                 | PWA with React and TypeScript, built with Vite. No Capacitor for now                                                                                                                                                                               | Decided           |
+| PWA                      | `vite-plugin-pwa` for manifest and service worker; display `standalone`                                                                                                                                                                            | Decided           |
+| Styling and components   | Tailwind with shadcn/ui                                                                                                                                                                                                                            | Decided           |
+| Data layer               | Client generated from the OpenAPI description, with TanStack Query. SSE updates the query cache                                                                                                                                                    | Decided           |
+| Routing                  | React Router                                                                                                                                                                                                                                       | Decided           |
+| Maps                     | MapLibre GL JS through `react-map-gl`, OpenStreetMap as base map. Tile provider not yet chosen                                                                                                                                                     | Decided           |
+| Drawing lines on the map | Terra Draw                                                                                                                                                                                                                                         | To try in slice 3 |
+| Charts                   | ECharts. Not Recharts                                                                                                                                                                                                                              | Decided           |
+| Session                  | httpOnly cookie, the same in mobile and portal                                                                                                                                                                                                     | Decided           |
+| Tests                    | Vitest for logic and components, Playwright for whole screens                                                                                                                                                                                      | Decided           |
+| Package manager          | pnpm                                                                                                                                                                                                                                               | Decided           |
+| Lint and format          | Oxlint for linting, Oxfmt for formatting, for the whole monorepo. No ESLint, Prettier or Biome. Oxfmt was still in beta when this was chosen (February 2026); pin its version and review upgrades. Pinned: `oxlint` 1.94.0, `oxfmt` 0.79.0 (exact) | Decided           |
 
 ### Backend and hosting
 
-| Area | Choice | Status |
-| --- | --- | --- |
-| Language and framework | TypeScript on Node.js 24 LTS, with Fastify | Decided |
-| API | JSON over HTTP (REST-like), described with OpenAPI. The OpenAPI description is generated from the Zod schemas, never written by hand | Decided |
-| Validation | Zod | Decided |
-| Database | PostgreSQL with PostGIS; separate databases for production and staging | Decided |
-| Database access | Drizzle ORM, Drizzle Kit for migrations. Raw SQL for PostGIS queries Drizzle cannot express | Decided |
-| Authentication | Better Auth: one-time code by email, sessions in PostgreSQL, Drizzle adapter. No passwords | Decided |
-| Push | Web Push with the `web-push` library and our own VAPID key pair; subscriptions per device in PostgreSQL | Decided |
-| Hosting | Alwaysdata Plus Small (1 CPU, 1 GB RAM), production and staging on the same plan | Decided |
-| Source and CI | GitHub with GitHub Actions; the repository is public | Decided |
-| Realtime | Server-Sent Events on the API, fed by PostgreSQL `LISTEN`/`NOTIFY` | Verify first |
-| Background jobs | pg-boss in the worker service: cron, delayed jobs, retries | Verify first |
-| Processes | Per environment two services: `padvinder-api` and `padvinder-worker`. They talk only through PostgreSQL | Verify first |
-| Deployment | CI builds one artifact with all dependencies, copies it with rsync over SSH, restarts the services through the Alwaysdata API. The same run builds a container image and smoke-tests it | Proposed |
-| Files and photos | On local disk, behind a storage interface with a disk driver and an S3 driver; access through the API with temporary links | Proposed |
-| Email | SMTP through a transactional mail service (Lettermint or Brevo) | Proposed |
-| Secrets | GitHub Actions Secrets, set as environment variables on the services | Proposed |
-| Extra backups | Hourly `pg_dump` to a second location during the season | Proposed |
+| Area                     | Choice                                                                                                                                                                                               | Status       |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| Language and framework   | TypeScript 7 on Node.js 24 LTS (pinned in `.node-version`, `engines` and `devEngines`), with Fastify 5                                                                                               | Decided      |
+| API                      | JSON over HTTP (REST-like), described with OpenAPI. The OpenAPI description is generated from the Zod schemas, never written by hand                                                                 | Decided      |
+| Validation               | Zod 4                                                                                                                                                                                                | Decided      |
+| Zod, Fastify and OpenAPI | `fastify-type-provider-zod` 7 with `@fastify/swagger`                                                                                                                                                | Decided      |
+| API client generator     | `@hey-api/openapi-ts` 0.99.0 (exact, pre-1.0) with its TanStack Query plugin                                                                                                                         | Decided      |
+| PostgreSQL driver        | `pg` (node-postgres; pg-boss needs it too, so one driver)                                                                                                                                            | Decided      |
+| Shared packages          | TypeScript source, no build step per package                                                                                                                                                         | Decided      |
+| Local HTTPS              | Optional: `pnpm dev:https` with a mkcert certificate                                                                                                                                                 | Decided      |
+| Line geometry columns    | A custom Drizzle column type over GeoJSON, in slice 3                                                                                                                                                | Proposed     |
+| Database                 | PostgreSQL with PostGIS; separate databases for production and staging                                                                                                                               | Decided      |
+| Database access          | Drizzle ORM and Drizzle Kit `1.0.0-rc.6` (exact; 1.0 changes the migration folder format), migrations through Drizzle's runtime migrator. Raw SQL for PostGIS queries Drizzle cannot express         | Decided      |
+| Authentication           | Better Auth 1.7 with the official Fastify integration (catch-all `/api/auth/*` route), email OTP plugin (one-time code by email), sessions in PostgreSQL, Drizzle adapter. For slice 1. No passwords | Decided      |
+| Push                     | Web Push with the `web-push` library and our own VAPID key pair; subscriptions per device in PostgreSQL                                                                                              | Decided      |
+| Hosting                  | Alwaysdata Plus Small (1 CPU, 1 GB RAM), production and staging on the same plan                                                                                                                     | Decided      |
+| Source and CI            | GitHub with GitHub Actions; the repository is public                                                                                                                                                 | Decided      |
+| Realtime                 | Server-Sent Events on the API, fed by PostgreSQL `LISTEN`/`NOTIFY`. Works locally; not yet verified on Alwaysdata                                                                                    | Verify first |
+| Background jobs          | pg-boss in the worker service: cron, delayed jobs, retries                                                                                                                                           | Verify first |
+| Processes                | Per environment two services: `padvinder-api` and `padvinder-worker`. They talk only through PostgreSQL                                                                                              | Verify first |
+| Deployment               | CI builds one artifact with all dependencies, copies it with rsync over SSH, restarts the services through the Alwaysdata API. The same run builds a container image and smoke-tests it              | Proposed     |
+| Files and photos         | On local disk, behind a storage interface with a disk driver and an S3 driver; access through the API with temporary links                                                                           | Proposed     |
+| Email                    | SMTP through a transactional mail service (Lettermint or Brevo)                                                                                                                                      | Proposed     |
+| Secrets                  | GitHub Actions Secrets, set as environment variables on the services                                                                                                                                 | Proposed     |
+| Extra backups            | Hourly `pg_dump` to a second location during the season                                                                                                                                              | Proposed     |
 
 ## Constraints behind these choices
 
@@ -209,7 +221,7 @@ Weigh every new dependency or service against these:
 - **The API is backward compatible.** An open app keeps running old code. Only add fields; never rename or remove one while an old app version uses it.
 - **Database migrations go in two steps:** add the new thing first, remove the old thing in a later release.
 - **Minimum version:** the API reports the minimum app version; an older app shows "Werk de app bij" and reloads.
-- **App version** is CalVer `YYYY.N.P`, for example `2027.1.0`. The year is the migration season, not the release date: a release in December 2026 for the 2027 season is `2027.x`. The build number is the CI run number. Portal and API are identified by git commit.
+- **App version** is CalVer `YYYY.N.P`, for example `2027.1.0`. The year is the migration season, not the release date: a release in December 2026 for the 2027 season is `2027.x`. The build number is the CI run number; it does not go into `PADVINDER_APP_VERSION`, which must be plain `YYYY.N.P` (the mobile build and dev server fail otherwise). The variable is not called `APP_VERSION` because Conductor sets that in its shells. Portal and API are identified by git commit.
 
 ### Frontend
 
@@ -232,23 +244,67 @@ Weigh every new dependency or service against these:
 
 Check these before designing a feature that depends on a device capability.
 
-| Capability | Android (Chrome) | iPhone (Safari) |
-| --- | --- | --- |
-| Push notifications | Yes, also without installing | Only after installing to the home screen (iOS 16.4+), with permission requested after a tap |
-| Vibration | Yes | No. Use sound or a clear screen instead |
-| Screen wake lock | Yes | Yes, in an installed PWA from iOS 18.4 |
-| Background sync | Yes | No. Buffered data is sent when the app is open again. Unused web data may be wiped after 7 days |
-| Links open in the app | Yes, if installed | No, links open in Safari. Only a push notification opens the installed PWA |
-| Install | Own button triggers the system prompt | Manual through the share menu; the app explains with pictures |
-| Session after install | Kept | Installed PWA has separate storage, so the user logs in again |
+| Capability            | Android (Chrome)                      | iPhone (Safari)                                                                                 |
+| --------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Push notifications    | Yes, also without installing          | Only after installing to the home screen (iOS 16.4+), with permission requested after a tap     |
+| Vibration             | Yes                                   | No. Use sound or a clear screen instead                                                         |
+| Screen wake lock      | Yes                                   | Yes, in an installed PWA from iOS 18.4                                                          |
+| Background sync       | Yes                                   | No. Buffered data is sent when the app is open again. Unused web data may be wiped after 7 days |
+| Links open in the app | Yes, if installed                     | No, links open in Safari. Only a push notification opens the installed PWA                      |
+| Install               | Own button triggers the system prompt | Manual through the share menu; the app explains with pictures                                   |
+| Session after install | Kept                                  | Installed PWA has separate storage, so the user logs in again                                   |
 
 Service worker, camera and push work only over HTTPS, also during local development.
 
-## Development workflow (intended)
+## Development workflow
+
+Needs Docker, and pnpm 12 (it downloads Node 24 by itself). Run commands from the repository root.
+
+| Command                                     | What it does                                                                                                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `./scripts/setup-workspace.sh`              | One-time setup per workspace, safe to repeat: `pnpm install`, `.env`, shared database container, this workspace's databases, migrations, seed, Playwright Chromium. |
+| `pnpm dev`                                  | API, worker, mobile and portal with hot reload, in one process group                                                                                                |
+| `pnpm dev:https`                            | Same over HTTPS, for an iPhone on the local network (POSIX shells)                                                                                                  |
+| `pnpm check`                                | Type check, Oxlint, Oxfmt check, Vitest. **Every agent runs it before finishing**                                                                                   |
+| `pnpm test`, `pnpm test:e2e`                | Vitest only; Playwright (needs plain `pnpm dev`, not `dev:https`)                                                                                                   |
+| `pnpm format`                               | Oxfmt writes (it also formats Markdown)                                                                                                                             |
+| `pnpm db:generate`, `db:migrate`, `db:seed` | Create a migration after a schema change; apply migrations; seed made-up data                                                                                       |
+| `pnpm api:generate`                         | Regenerate `openapi.json` and the client after any API schema change                                                                                                |
+| `pnpm storybook`, `pnpm build`              | Storybook for `packages/ui`; production builds of the apps                                                                                                          |
+| `./scripts/teardown-workspace.sh`           | Drops this workspace's databases (Conductor archive script)                                                                                                         |
+
+Details:
+
+- **Per-workspace databases and ports.** One shared Compose project, `padvinder` (image `imresamu/postgis:18-3.6-bookworm`, host port 54329), serves all workspaces. Each workspace gets `padvinder_<workspace>` and `padvinder_<workspace>_test`, named after `CONDUCTOR_WORKSPACE_NAME`. Ports start at `CONDUCTOR_PORT` (default 4100): API B, mobile B+1, portal B+2, Storybook B+3. Setup writes `.env`; put overrides in `.env.local`. `.env.example` lists all variables. `ALLOWED_ORIGINS` is a comma-separated list of exact origins (no path, no trailing slash); production sets one.
+- **Database.** Locale `C.UTF-8`; sort Dutch text with `COLLATE "nl-NL-x-icu"`. Changing `POSTGRES_INITDB_ARGS` needs `docker compose down -v`. Only the core `postgis` extension. The image has the same major and minor versions as Alwaysdata, not the same patch versions: on 21 November 2026 it gave PostgreSQL 18.1 and PostGIS 3.6.1, Alwaysdata 18.7 and 3.6.2. `docker compose pull` updates it.
+- **Tests.** Vitest projects; the root config loads env (real env, then `.env.local`, then `.env`) and prepares a test template database once per run. Each DB test file calls `createTestDatabase()` from `@padvinder/db/testing` in `beforeAll` and `await t?.drop()` in `afterAll`. Do not run two `pnpm test` at once in the same workspace. Component tests use jsdom and Testing Library; tests of the generated client need the helpers from `@padvinder/api-client/testing`. Storybook screenshot tests (`toMatchScreenshot` in the Playwright image) come in pull request 2.
+- **iPhone over HTTPS.** Run `mkcert -install` once first (interactive macOS prompt). Install and trust the mkcert root CA on the phone: send `rootCA.pem` from `mkcert -CAROOT` by AirDrop or email, install the profile, then enable full trust in Settings, General, About, Certificate Trust Settings. Open `https://<LAN IP>:<MOBILE_PORT>/app/`. Android over USB needs no HTTPS: forward the port in `chrome://inspect`.
+- **App icon.** The one source is `packages/ui/assets/icon.svg` (the brand icon; do not redraw it). `apps/mobile/public/icon.svg` and `apps/portal/public/favicon.svg` are symlinks to it. The mobile PNG icons (maskable and Apple touch icons full-bleed in `#c8102e`) are generated at build time by `@vite-pwa/assets-generator` (`apps/mobile/pwa-assets.config.ts`). The portal is not a PWA, so its `favicon.ico` and `apple-touch-icon-180x180.png` are committed; after changing the source icon run `pnpm icons:generate` and commit the result.
+- **Generated files.** Never edit them; regenerate. `packages/db/drizzle/**`: `pnpm db:generate`. `packages/api-client/openapi.json` and `src/generated/**`: `pnpm api:generate`. Commit both.
+- **Toolchain notes.** `@hey-api/openapi-ts` 0.99.0 crashes on TypeScript 7, so `packages/api-client` has a devDependency `typescript@6.0.3` for generation only; its type check uses the root TypeScript 7. Revisit when hey-api supports TS 7. pnpm 12 has a minimum release age: very new pinned packages need an exact-version entry in `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`. `allowBuilds: { esbuild: false }` is deliberate.
+- **shadcn/ui.** After every `shadcn add`, rewrite `import { cn } from "cn"` to `../../lib/utils` and remove the `cn` npm package. Do not use `@/` imports (Vite does not resolve them). The generated Button is 36 px high; use the large size for touch targets.
+- **Mobile app path.** Base and router basename are `/app/` (the trailing slash keeps "/" inside the PWA scope); manifest `id`, `start_url` and `scope` are `/app/`. Service worker registration lives in `apps/mobile/src/hooks`, once per page.
+
+### Reference example: the health endpoint
+
+Copy this slice when you add a feature; it touches every layer. `packages/contracts/src/health.ts` (Zod schema) -> `packages/db` (diagnostics, worker heartbeats) -> `apps/api/src/routes/health.ts` -> `openapi.json` -> `@padvinder/api-client` (`healthQueryOptions()`, `useHealthLiveUpdates()`) -> `packages/ui` `HealthStatus` with stories -> mobile "Meer" tab and portal `/system` -> `e2e/mobile-system-status.spec.ts`.
+
+- Use `healthQueryOptions()`, not `getHealthOptions()`: a 503 with a degraded body is data, not an error.
+- Realtime pattern: the worker sends `NOTIFY`, the API notification hub `LISTEN`s (with a `select 1` liveness check, and reconnects with capped backoff), `/api/events` streams SSE, and the client patches the TanStack Query cache and refetches when the stream (re)opens.
+  - All live events go over one channel, `liveEventsChannel` (`live_events`, in `packages/db/src/notifications.ts`), whose payload is the `liveEventSchema` union in `packages/contracts/src/events.ts`. The `type` is the SSE event name; events that belong to an organization carry `organizationId`. To add an event:
+    1. Add a union member in `packages/contracts/src/events.ts`.
+    2. Call `notify(tx, liveEventsChannel, {...})` in the transaction that commits the change (it accepts no plain `db`, so nothing is sent on rollback). The payload must stay under 8000 bytes: send IDs, not records.
+    3. Add a handler under `events` in `subscribeToServerEvents`.
+  - A separate channel with `defineChannel(name, zodSchema)` is only for a different consumer; add it to `channels` in `apps/api/src/start-api.ts` too, otherwise `hub.subscribe` throws.
+- `/api/events` is public and unscoped. Before it carries anything other than worker heartbeats, it must authenticate the session and filter events by organization (and working group where relevant).
+- `/api/health` is public. Slice 1 limits its `database` details to platform admins.
+- The species list is not in the skeleton.
+- The idempotent-write pattern (client-generated UUIDv7; same ID twice gives one record) arrives in slice 1 with authentication; until then, no write endpoints.
+
+### Planned workflow (not built yet)
 
 - **Every change goes through a pull request and CI,** also with one developer. Short-lived branches from `main`.
-- **CI on every pull request:** type check, lint, unit tests (Vitest), and visual tests of the Storybook stories (Vitest with `toMatchScreenshot`; reference images are generated in the Playwright Docker image, not on your own machine).
-- **Local setup:** Docker Compose for PostgreSQL with PostGIS; the API and the Vite dev server run directly on the host. To test on a phone, open the Vite dev server over the local network with HTTPS and a local certificate.
+- **CI on every pull request:** type check, lint, unit tests, and visual tests of Storybook stories (reference images generated in the Playwright Docker image, not on your own machine).
 - **Deployment:** merging to `main` deploys to staging automatically; production follows after approval. Migrations run on the server in the deploy step, before the services restart. Staging shares 1 GB of RAM with production, so it may be switched off when unused.
 - **Do not install dependencies on the server.** The artifact contains everything.
 
@@ -256,25 +312,25 @@ Service worker, camera and push work only over HTTPS, also during local developm
 
 Every change has tests, with no exception for small changes. What that means depends on the change:
 
-| Change | Test it needs |
-| --- | --- |
-| Logic, validation, calculations | A Vitest unit test |
-| API endpoint | A test against a real PostgreSQL with PostGIS, not a mock: the success case, a rejected invalid request, and the permission cases below |
-| Anything behind a permission | A test for each role that may, one for a role that may not, and one showing that a user from another organization is denied. Where working groups matter, also a user from another working group |
-| Endpoint that takes writes from the field | A test that sends the same ID twice and finds one record |
-| Export or download | A test that the output contains no volunteer names |
-| UI component | A Storybook story with fixture data, which is its visual test; a Vitest component test for behavior |
-| Flow across several screens | A Playwright test |
-| Bug fix | A test that fails without the fix |
-| Database migration | Run it against a database that already holds data in the old shape |
+| Change                                    | Test it needs                                                                                                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Logic, validation, calculations           | A Vitest unit test                                                                                                                                                                               |
+| API endpoint                              | A test against a real PostgreSQL with PostGIS, not a mock: the success case, a rejected invalid request, and the permission cases below                                                          |
+| Anything behind a permission              | A test for each role that may, one for a role that may not, and one showing that a user from another organization is denied. Where working groups matter, also a user from another working group |
+| Endpoint that takes writes from the field | A test that sends the same ID twice and finds one record                                                                                                                                         |
+| Export or download                        | A test that the output contains no volunteer names                                                                                                                                               |
+| UI component                              | A Storybook story with fixture data, which is its visual test; a Vitest component test for behavior                                                                                              |
+| Flow across several screens               | A Playwright test                                                                                                                                                                                |
+| Bug fix                                   | A test that fails without the fix                                                                                                                                                                |
+| Database migration                        | Run it against a database that already holds data in the old shape                                                                                                                               |
 
 ## Open technical points
 
-Do not assume an answer to these; ask or leave a clear note.
+Do not assume an answer to these; ask or leave a clear note. Settled by the skeleton: the Zod, Fastify and OpenAPI library, Better Auth with Fastify (slice 1), the Drizzle line column type approach (slice 3), and Oxlint/Oxfmt (Oxlint `correctness` category enabled as errors; type checking separate through `tsc`).
 
-- Whether pg-boss, long-lived SSE connections and `LISTEN`/`NOTIFY` work reliably on Alwaysdata, and whether four processes fit in 1 GB.
-- Terra Draw for drawing lines; Drizzle column types for line geometry; the Better Auth integration with Fastify; the library that connects Zod, Fastify and the OpenAPI generation.
-- Oxlint and Oxfmt configuration: which rules, whether Oxfmt sorts Tailwind classes (check its current docs for the default), and whether type-aware linting is worth its cost in CI.
+- Whether pg-boss, long-lived SSE connections and `LISTEN`/`NOTIFY` work reliably on Alwaysdata, and whether four processes fit in 1 GB. (pg-boss runs locally with a heartbeat job, and SSE and `LISTEN`/`NOTIFY` work locally; Alwaysdata behavior is unverified.)
+- Terra Draw for drawing lines.
+- Whether Oxfmt sorts Tailwind classes, and whether type-aware linting is worth its cost in CI.
 - The OpenStreetMap tile provider, the second backup location, and the transactional mail service.
 - The format and coordinate system of the municipality's drain data (GeoJSON, GeoPackage or CSV), which determine the importer.
 - Accessibility requirements (possibly WCAG), and the visual identity (red, white and a little black; exact colors, logo and typography not yet set).

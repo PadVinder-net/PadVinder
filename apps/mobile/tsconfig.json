@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    // Only for vite.config.ts, which imports a file of another package by path.
+    "allowImportingTsExtensions": true,
+    "lib": ["es2024", "dom"],
+    "types": ["vite/client", "vite-plugin-pwa/vanillajs", "@testing-library/jest-dom/vitest"]
+  },
+  "include": ["src", "*.ts"]
+}

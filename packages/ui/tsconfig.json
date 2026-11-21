@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["es2024", "dom"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", ".storybook", "*.ts"]
+}

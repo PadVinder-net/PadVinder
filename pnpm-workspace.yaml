@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+minimumReleaseAgeExclude:
+  - drizzle-kit@1.0.0-rc.6
+  - drizzle-orm@1.0.0-rc.6
+  - "@tanstack/query-core@5.108.2"
+  - "@tanstack/react-query@5.108.2"
+allowBuilds:
+  esbuild: false
