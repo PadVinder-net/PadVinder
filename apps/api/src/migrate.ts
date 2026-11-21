@@ -16,6 +16,35 @@ export function parseMigrateArgs(argv: readonly string[]): { migrationsFolder: s
   return { migrationsFolder: resolve(folder) };
 }
 
+/** Deep enough for any real chain; stops a cycle of causes. */
+const MAX_DEPTH = 8;
+
+function describe(error: Error): string {
+  const code = (error as { code?: unknown }).code;
+  // Node's dual-stack connect gives an AggregateError with an empty message.
+  return `${error.message || error.name}${code ? ` (${String(code)})` : ""}`;
+}
+
+function formatLines(error: unknown, depth: number, label: string): string[] {
+  const line = `${"  ".repeat(depth)}${label}`;
+  if (!(error instanceof Error)) return [`${line}${String(error)}`];
+  const lines = [`${line}${describe(error)}`];
+  if (depth >= MAX_DEPTH) return lines;
+  if (error instanceof AggregateError) {
+    for (const inner of error.errors) lines.push(...formatLines(inner, depth + 1, ""));
+  }
+  if (error.cause !== undefined) lines.push(...formatLines(error.cause, depth + 1, "caused by: "));
+  return lines;
+}
+
+/**
+ * The message with its chain of causes, one per line. Drizzle wraps every failure in an error
+ * that only says `Failed query: <sql>`; the Postgres or connection error is in its cause.
+ */
+export function formatError(error: unknown): string {
+  return formatLines(error, 0, "").join("\n");
+}
+
 async function main(): Promise<void> {
   const { migrationsFolder } = parseMigrateArgs(process.argv.slice(2));
   const databaseUrl = process.env.DATABASE_URL;
@@ -36,7 +65,7 @@ if (isMain()) {
   try {
     await main();
   } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
+    console.error(formatError(error));
     process.exit(1);
   }
 }
