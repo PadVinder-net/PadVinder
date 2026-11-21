@@ -66,6 +66,9 @@ function releaseOfTarget(target: string, env: EnvironmentName): string {
   return name;
 }
 
+/** How long the migrations may run on the server before `timeout` stops them. */
+export const migrateTimeoutSeconds = 600;
+
 // Every command starts with `# deploy: <step> <argument>`: a no-op for bash, and it names
 // the step in an error message. The release names in them only hold [0-9A-Za-z-].
 const commands = {
@@ -81,10 +84,11 @@ const commands = {
       `  if [ -f ${dir}/current/release.env ]; then printf '${marker}commit=%s\\n' "$(sed -n 's/^GIT_COMMIT=//p' ${dir}/current/release.env)"; fi`,
       `elif [ -e ${dir}/current ]; then echo "${dir}/current is not a symbolic link." >&2; exit 1; fi`,
     ].join("\n"),
+  /** Stopped after `migrateTimeoutSeconds`; `timeout` then exits with 124. */
   migrate: (dir: string, name: string) =>
     [
       `# deploy: migrate ${name}`,
-      `cd -- ${dir}/releases/${name} && node --env-file=release.env --env-file="$HOME/${dir}/.env" api/dist/migrate.js migrations`,
+      `cd -- ${dir}/releases/${name} && timeout ${migrateTimeoutSeconds} node --env-file=release.env --env-file="$HOME/${dir}/.env" api/dist/migrate.js migrations`,
     ].join("\n"),
   /** Replaces the link in one rename, so `current` is always the old or the new release. */
   switch: (dir: string, target: string) =>
@@ -236,8 +240,12 @@ export async function deploy(options: DeployOptions): Promise<void> {
     await remote.exec(commands.migrate(dir, name), { env: { NODEJS_VERSION: "24" } });
   } catch (error) {
     const cleanup = await removeNewRelease();
+    // `timeout` exits with 124 when it stopped the command.
+    const what = /\bexit code 124\b/.test(errorMessage(error))
+      ? `did not finish within ${migrateTimeoutSeconds / 60} minutes and were stopped`
+      : "failed";
     throw new Error(
-      `Migrations of ${sha7} failed, so the deploy stopped: ${unchanged}.${cleanup}\n${errorMessage(error)}`,
+      `Migrations of ${sha7} ${what}, so the deploy stopped: ${unchanged}.${cleanup}\n${errorMessage(error)}`,
     );
   }
   log("Migrations are up to date");

@@ -21,7 +21,8 @@ type FakeServer = {
   releases: Map<string, string>;
   /** Target of the `current` symlink. */
   current?: string;
-  failMigration: boolean;
+  /** The migrate command fails with this exit code and message. */
+  failMigration?: { code: number; message: string };
 };
 
 let fake: FakeAlwaysdata;
@@ -59,7 +60,11 @@ const fakeRemote: Remote = {
         return { stdout: `${lines.join("\n")}\n`, stderr: "" };
       }
       case "migrate":
-        if (server.failMigration) fail("relation already exists");
+        if (server.failMigration) {
+          throw new Error(
+            `Remote command \`${command}\` failed with exit code ${server.failMigration.code}: ${server.failMigration.message}`,
+          );
+        }
         return { stdout: "Migrations are up to date.\n", stderr: "" };
       case "switch":
         server.current = argument;
@@ -168,7 +173,6 @@ beforeEach(async () => {
     envFile: true,
     releases: new Map([[oldRelease, oldCommit]]),
     current: `releases/${oldRelease}`,
-    failMigration: false,
   };
   timeline = [];
   logLines = [];
@@ -205,7 +209,7 @@ test("runs upload, migrate, switch, restart, health, prune in this order", async
   expect(migrate?.env).toEqual({ NODEJS_VERSION: "24" });
   expect(migrate?.command).toContain(`cd -- ${envDir}/releases/${newRelease}`);
   expect(migrate?.command).toContain(
-    `node --env-file=release.env --env-file="$HOME/${envDir}/.env" api/dist/migrate.js migrations`,
+    `timeout 600 node --env-file=release.env --env-file="$HOME/${envDir}/.env" api/dist/migrate.js migrations`,
   );
   const switchCommand = execCalls.find((call) => call.command.startsWith("# deploy: switch"));
   expect(switchCommand?.command).toContain(
@@ -220,7 +224,7 @@ test("runs upload, migrate, switch, restart, health, prune in this order", async
 });
 
 test("a failed migration stops before the switch and removes the new release", async () => {
-  server.failMigration = true;
+  server.failMigration = { code: 1, message: "relation already exists" };
   const error = await failureOf(deploy(options()));
   expect(error.message).toMatch(/Migrations of bbbbbbb failed.*current still points at/s);
   expect(error.message).toContain("relation already exists");
@@ -234,6 +238,16 @@ test("a failed migration stops before the switch and removes the new release", a
   expect(server.current).toBe(`releases/${oldRelease}`);
   expect([...server.releases.keys()]).toEqual([oldRelease]);
   expect(fake.requests.filter((r) => r.method !== "GET")).toEqual([]);
+});
+
+test("a migration that runs too long is stopped and reported as such", async () => {
+  server.failMigration = { code: 124, message: "" };
+  const error = await failureOf(deploy(options()));
+  expect(error.message).toMatch(
+    /^Migrations of bbbbbbb did not finish within 10 minutes and were stopped, so the deploy stopped: current still points at/,
+  );
+  expect(timeline.slice(-2)).toEqual([`migrate ${newRelease}`, `remove ${newRelease}`]);
+  expect(server.current).toBe(`releases/${oldRelease}`);
 });
 
 test("a failed health check switches back and restarts again", async () => {
