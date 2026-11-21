@@ -14,6 +14,8 @@
     "dev:https": "DEV_HTTPS=1 pnpm --parallel --filter \"./apps/*\" dev",
     "build": "pnpm -r --filter \"./apps/*\" build",
     "release:build": "./scripts/build-release.sh",
+    "release:image": "./scripts/release-image.sh",
+    "release:smoke": "./scripts/release-smoke.sh",
     "test:e2e": "playwright test",
     "test:visual": "vitest run --config packages/ui/vitest.visual.config.ts",
     "test:visual:docker": "./scripts/visual-tests.sh",
