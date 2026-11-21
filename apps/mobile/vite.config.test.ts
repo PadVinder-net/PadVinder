@@ -1,6 +1,6 @@
 // @vitest-environment node
 import type { ConfigEnv, UserConfig } from "vite";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { manifest } from "./pwa-manifest";
 import pwaAssetsConfig from "./pwa-assets.config";
 import viteConfig from "./vite.config";
@@ -8,6 +8,9 @@ import viteConfig from "./vite.config";
 const buildEnv: ConfigEnv = { command: "build", mode: "production" };
 const resolve = () => (viteConfig as (env: ConfigEnv) => UserConfig)(buildEnv);
 
+// The dev server requires MOBILE_PORT. Set it here so no test depends on .env, which CI lacks;
+// tests about MOBILE_PORT itself override it.
+beforeEach(() => vi.stubEnv("MOBILE_PORT", "4101"));
 afterEach(() => vi.unstubAllEnvs());
 
 const devEnv: ConfigEnv = { command: "serve", mode: "development" };
@@ -43,6 +46,11 @@ test("fails the build on a PADVINDER_APP_VERSION that is not CalVer", () => {
 test("fails the dev server on a PADVINDER_APP_VERSION that is not CalVer", () => {
   vi.stubEnv("PADVINDER_APP_VERSION", "2027.1.0+42");
   expect(resolveDev).toThrow(remedy);
+});
+
+test("the dev server uses MOBILE_PORT", () => {
+  vi.stubEnv("MOBILE_PORT", "4111");
+  expect(resolveDev().server).toMatchObject({ port: 4111, strictPort: true });
 });
 
 test("fails the dev server on a MOBILE_PORT that is not a number", () => {
