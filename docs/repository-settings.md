@@ -65,7 +65,8 @@ Classic branch protection (Settings, Branches) offers the same options if you pr
 
 Settings, Actions, General.
 
-- Actions permissions: "Allow OWNER, and select non-OWNER, actions and reusable workflows". Turn on "Require actions to be pinned to a full-length commit SHA". The workflows already pin every action this way, with the version as a comment. No other third-party actions are used.
+- Actions permissions: "Allow PadVinder-net, and select non-PadVinder-net, actions and reusable workflows". Under it, turn on "Allow actions created by GitHub", leave "Allow Marketplace actions by verified creators" off, and add `pnpm/action-setup@*` to "Allow specified actions and reusable workflows". That is the one third-party action (used by `.github/actions/setup`); without it every job fails with "action not allowed". Turn on "Require actions to be pinned to a full-length commit SHA". The workflows already pin every action this way, with the version as a comment, and that setting enforces it, so the `@*` pattern is safe.
+- The organization (Settings, Actions, General of PadVinder-net) has its own Actions policy, and it can override the repository one: a repository cannot be more permissive than the organization. If a setting here is greyed out or an action is refused, check the organization policy first.
 - Workflow permissions: "Read repository contents and packages permissions" (read-only `GITHUB_TOKEN` by default). Leave "Allow GitHub Actions to create and approve pull requests" off. Workflows also set `permissions: contents: read` themselves.
 - Fork pull request workflows: "Require approval for first-time contributors who are new to GitHub" at least; "Require approval for all external contributors" is stricter and fine for this project. Leave "Send write tokens to workflows from pull requests" and "Send secrets and variables to workflows from pull requests" off.
 
@@ -73,7 +74,9 @@ Through the API:
 
 ```sh
 gh api repos/OWNER/REPO/actions/permissions --method PUT -F enabled=true -f allowed_actions=selected -F sha_pinning_required=true
-gh api repos/OWNER/REPO/actions/permissions/selected-actions --method PUT -F github_owned_allowed=true -F verified_allowed=false
+gh api repos/OWNER/REPO/actions/permissions/selected-actions --method PUT --input - <<'JSON'
+{ "github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": ["pnpm/action-setup@*"] }
+JSON
 gh api repos/OWNER/REPO/actions/permissions/workflow --method PUT -f default_workflow_permissions=read -F can_approve_pull_request_reviews=false
 gh api repos/OWNER/REPO/actions/permissions/fork-pr-contributor-approval --method PUT -f approval_policy=all_external_contributors
 ```
