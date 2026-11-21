@@ -11,7 +11,7 @@ export function MoreScreen() {
       <h1 className="mb-4 text-2xl font-bold">Meer</h1>
       <HealthStatus health={data} loadFailed={isError} />
       <p className="text-muted-foreground mt-4 text-sm">
-        App-versie {APP_VERSION} (build {APP_BUILD})
+        App-versie {APP_VERSION} ({APP_BUILD})
       </p>
     </section>
   );
