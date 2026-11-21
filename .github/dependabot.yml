@@ -1,0 +1,67 @@
+# Weekly dependency updates. A Playwright update (@playwright/test and playwright) also
+# needs the mcr.microsoft.com/playwright image tag changed in the files that
+# scripts/playwright-version.test.ts names when it fails.
+#
+# The cooldown of 7 days is longer than pnpm's minimum release age, so pnpm never refuses
+# a version Dependabot proposes.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      # Exact-pinned packages stay out of the group and arrive one by one for review, as
+      # do all major updates.
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+        exclude-patterns:
+          - "@hey-api/openapi-ts"
+          - "drizzle-*"
+          - oxlint
+          - oxfmt
+          - "@playwright/test"
+          - playwright
+
+  - package-ecosystem: github-actions
+    # "/" covers the workflows; the composite actions need their own directories.
+    directories: [/, /.github/actions/*]
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /infra/container
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns: ["*"]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      docker-compose:
+        patterns: ["*"]

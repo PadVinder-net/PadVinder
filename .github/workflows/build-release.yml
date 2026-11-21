@@ -1,0 +1,65 @@
+# Builds the release tarball, builds a container image from it and smoke-tests that image
+# against a fresh database. Called by CI on every pull request, and by the deployment.
+name: Build release
+
+on:
+  workflow_call:
+    inputs:
+      app-version:
+        description: PADVINDER_APP_VERSION for the mobile build (YYYY.N.P). Empty uses the default.
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# No concurrency group here: the caller's group already applies, and the same group in a
+# called workflow would cancel the caller.
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: imresamu/postgis:18-3.6-bookworm
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: padvinder
+          POSTGRES_PASSWORD: padvinder
+          POSTGRES_DB: padvinder
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=builtin --locale=C.UTF-8"
+        options: >-
+          --health-cmd "pg_isready -U padvinder"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      PADVINDER_APP_VERSION: ${{ inputs.app-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: scripts/build-release.sh
+      - name: Unpack the tarball
+        run: |
+          mkdir -p "$RUNNER_TEMP/unpacked"
+          tar -xzf padvinder-release.tar.gz -C "$RUNNER_TEMP/unpacked"
+      - name: Build the image
+        run: docker build -f infra/container/Dockerfile -t padvinder:ci "$RUNNER_TEMP/unpacked/release"
+      - name: Smoke-test the image
+        run: >-
+          scripts/smoke-test-image.sh padvinder:ci
+          postgres://padvinder:padvinder@host.docker.internal:5432/padvinder
+      # For a pull request, HEAD is the merge commit: the commit that was built.
+      - id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ steps.commit.outputs.sha }}
+          path: padvinder-release.tar.gz
+          retention-days: 7
+          if-no-files-found: error
