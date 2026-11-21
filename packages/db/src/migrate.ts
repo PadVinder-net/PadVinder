@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { createDb } from "./client";
+import { createDb, type Db } from "./client";
 
 const DEFAULT_MIGRATIONS_FOLDER = `${import.meta.dirname}/../drizzle`;
 
@@ -21,6 +22,32 @@ async function hasMigrations(folder: string): Promise<boolean> {
   return false;
 }
 
+/**
+ * Refuses a database whose encoding or locale is not UTF8 and C.UTF-8. Both can only be set
+ * when a database is created, and sorting and text comparison depend on them, so a wrong
+ * one must be caught before the first migration writes anything.
+ */
+async function checkDatabaseLocale(db: Db): Promise<void> {
+  const { rows } = await db.execute<{
+    name: string;
+    encoding: string;
+    collate: string;
+    ctype: string;
+  }>(
+    sql`select datname as name, pg_encoding_to_char(encoding) as encoding,
+               datcollate as collate, datctype as ctype
+          from pg_database where datname = current_database()`,
+  );
+  const [database] = rows;
+  if (!database) throw new Error("Could not read the current database from pg_database");
+  const { name, encoding, collate, ctype } = database;
+  if (encoding !== "UTF8" || collate !== "C.UTF-8" || ctype !== "C.UTF-8") {
+    throw new Error(
+      `Database ${name} has encoding/locale ${encoding}/${collate}/${ctype}; PadVinder requires UTF8 with locale C.UTF-8. Recreate it with that locale before migrating.`,
+    );
+  }
+}
+
 export async function runMigrations(
   databaseUrl: string,
   migrationsFolder: string = DEFAULT_MIGRATIONS_FOLDER,
@@ -33,6 +60,7 @@ export async function runMigrations(
   // Migrations such as index builds may take longer than the normal statement timeout.
   const { db, pool } = createDb(databaseUrl, { statementTimeoutMs: 0 });
   try {
+    await checkDatabaseLocale(db);
     await migrate(db, { migrationsFolder: folder });
   } finally {
     await pool.end();

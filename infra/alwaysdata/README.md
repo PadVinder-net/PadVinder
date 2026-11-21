@@ -22,7 +22,7 @@ Sources for Alwaysdata's behavior: the [API usage](https://help.alwaysdata.com/e
 Shared by both environments:
 
 - **SSH user** `<account>_deploy`, on `ssh-<account>.alwaysdata.net` port 22. Deploys log in with it, and both environments' services run as it. Password login is off; it accepts only the deploy key.
-- **Database server** `postgresql-<account>.alwaysdata.net`, port 5432. Never pgBouncer on 5433: it breaks `LISTEN`/`NOTIFY`. Each database has encoding `UTF8`, locale `C.UTF-8` and only the `postgis` extension.
+- **Database server** `postgresql-<account>.alwaysdata.net`, port 5432. Never pgBouncer on 5433: it breaks `LISTEN`/`NOTIFY`. Each database has encoding `UTF8`, locale `C.UTF-8` and only the `postgis` extension. The migrations refuse a database with another encoding or locale, so a wrong one stops the first deploy before anything is written.
 - **Services** listen on `::` (Alwaysdata services are reachable over IPv6 only, at `services-<account>.alwaysdata.net`, ports 8300–8499). Each site is a reverse proxy to its API service. The API serves the mobile app under `/app/`, the portal under `/` and itself under `/api/`. Let's Encrypt certificates for the site addresses are made and renewed by Alwaysdata on its own.
 - Each service gets `NODEJS_VERSION=24` in its environment and nothing else there. Everything else comes from the env file.
 
