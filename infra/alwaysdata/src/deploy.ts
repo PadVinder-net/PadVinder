@@ -272,9 +272,11 @@ export async function deploy(options: DeployOptions): Promise<void> {
       );
     }
     log(`Deploy of ${sha7} failed ${failedStep}: ${reason}`);
-    throw new Error(
-      `Deploy of ${sha7} failed ${failedStep} and was rolled back to ${previous.name}.\n${reason}\n${await rollBack(options, previous)}`,
-    );
+    const rollback = await rollBack(options, previous);
+    const headline = rollback.ok
+      ? `Deploy of ${sha7} failed ${failedStep} and was rolled back to ${previous.name}.`
+      : `Deploy of ${sha7} failed ${failedStep}, and the rollback to ${previous.name} FAILED too: ${rollback.failure}. ${env} may be down: check it now.`;
+    throw new Error(`${headline}\n${reason}\n${rollback.message}`);
   }
   log(`Health check passed: ${sha7} answers with a worker heartbeat after the restart`);
 
@@ -327,11 +329,14 @@ async function restartAndCheck(
   }
 }
 
-/** Switches back to `previous`, restarts and checks its health; returns what happened. */
+/**
+ * Switches back to `previous`, restarts and checks its health. Returns whether that worked,
+ * what failed (in a few words) and the full story.
+ */
 async function rollBack(
   options: DeployOptions,
   previous: { name: string; commit: string },
-): Promise<string> {
+): Promise<{ ok: true; message: string } | { ok: false; failure: string; message: string }> {
   const log = options.log ?? (() => {});
   const dir = environmentDirectory(options.env);
   const sha7 = previous.commit.slice(0, 7);
@@ -341,16 +346,18 @@ async function rollBack(
   } catch (error) {
     const message = `THE ROLLBACK FAILED: could not switch current back to ${previous.name}. ${options.env} may be down: check it now.\n${errorMessage(error)}`;
     log(message);
-    return message;
+    return { ok: false, failure: `could not switch current back`, message };
   }
   try {
     await restartAndCheck(options, previous.commit, "previous release");
   } catch (error) {
-    const message = `THE ROLLBACK TO ${sha7} ALSO FAILED its health check or restart. ${options.env} may be down: check it now.\n${errorMessage(error)}`;
+    const failedStep =
+      error instanceof HealthCheckFailure ? "its health check" : "while restarting the services";
+    const message = `THE ROLLBACK TO ${sha7} ALSO FAILED ${failedStep}. ${options.env} may be down: check it now.\n${errorMessage(error)}`;
     log(message);
-    return message;
+    return { ok: false, failure: `${sha7} failed ${failedStep}`, message };
   }
   const message = `The rollback to ${sha7} passed its health check. The database keeps the migrations of ${options.commit.slice(0, 7)}.`;
   log(message);
-  return message;
+  return { ok: true, message };
 }

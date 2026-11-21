@@ -239,8 +239,8 @@ test("a failed migration stops before the switch and removes the new release", a
 test("a failed health check switches back and restarts again", async () => {
   brokenCommits.add(newCommit);
   const error = await failureOf(deploy(options()));
-  expect(error.message).toContain(
-    `Deploy of bbbbbbb failed its health check and was rolled back to ${oldRelease}`,
+  expect(error.message.split("\n")[0]).toBe(
+    `Deploy of bbbbbbb failed its health check and was rolled back to ${oldRelease}.`,
   );
   expect(error.message).toMatch(/HTTP 503/);
   expect(error.message).toMatch(/aaaaaaa passed its health check/);
@@ -272,12 +272,30 @@ test("a rollback that fails its health check too says so loudly", async () => {
   brokenCommits.add(newCommit);
   brokenCommits.add(oldCommit);
   const error = await failureOf(deploy(options()));
-  expect(error.message).toContain(
-    `Deploy of bbbbbbb failed its health check and was rolled back to ${oldRelease}`,
+  expect(error.message.split("\n")[0]).toBe(
+    `Deploy of bbbbbbb failed its health check, and the rollback to ${oldRelease} FAILED too: aaaaaaa failed its health check. staging may be down: check it now.`,
   );
+  expect(error.message).not.toContain("was rolled back");
   expect(error.message).toMatch(/rollback to aaaaaaa ALSO FAILED its health check/i);
-  expect(error.message).toMatch(/may be down/);
   expect(server.current).toBe(`releases/${oldRelease}`);
+});
+
+test("a rollback whose switch fails says so in the first line", async () => {
+  brokenCommits.add(newCommit);
+  const remote: Remote = {
+    ...fakeRemote,
+    exec: async (command, execOptions) => {
+      if (command.startsWith(`# deploy: switch releases/${oldRelease}`)) {
+        throw new Error("Remote command failed with exit code 255: connection reset");
+      }
+      return fakeRemote.exec(command, execOptions);
+    },
+  };
+  const error = await failureOf(deploy(options({ remote })));
+  expect(error.message.split("\n")[0]).toBe(
+    `Deploy of bbbbbbb failed its health check, and the rollback to ${oldRelease} FAILED too: could not switch current back. staging may be down: check it now.`,
+  );
+  expect(error.message).toContain("connection reset");
 });
 
 test("the health check needs a worker heartbeat from after the restart", async () => {
