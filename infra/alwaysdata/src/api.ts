@@ -39,6 +39,8 @@ export type AlwaysdataApiOptions = {
   minIntervalMs?: number;
   /** Base delay for retries; doubles with each try. */
   retryDelayMs?: number;
+  /** How long one request (until its body is read) may take. Default 30 s. */
+  requestTimeoutMs?: number;
 };
 
 const maxTries = 3;
@@ -52,6 +54,7 @@ export function createAlwaysdataApi(options: AlwaysdataApiOptions): AlwaysdataAp
   const baseUrl = (options.baseUrl ?? "https://api.alwaysdata.com").replace(/\/+$/, "");
   const minIntervalMs = options.minIntervalMs ?? 1300;
   const retryDelayMs = options.retryDelayMs ?? 1000;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
   const authorization = `Basic ${Buffer.from(`${options.apiKey} account=${options.account}:`).toString("base64")}`;
 
   // Requests run one at a time, at least minIntervalMs apart.
@@ -93,6 +96,8 @@ export function createAlwaysdataApi(options: AlwaysdataApiOptions): AlwaysdataAp
             method,
             headers,
             body: body === undefined ? undefined : JSON.stringify(body),
+            // Covers reading the body too: a server that never answers cannot hang a deploy.
+            signal: AbortSignal.timeout(requestTimeoutMs),
           }),
         );
         text = await response.text();
@@ -102,8 +107,18 @@ export function createAlwaysdataApi(options: AlwaysdataApiOptions): AlwaysdataAp
           await sleep(retryDelayMs * 2 ** (attempt - 1));
           continue;
         }
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        throw new AlwaysdataError(method, path, 0, redact(`network error: ${detail}`, secrets));
+        const timedOut = cause instanceof Error && cause.name === "TimeoutError";
+        const detail = timedOut
+          ? `no answer within ${requestTimeoutMs} ms`
+          : cause instanceof Error
+            ? cause.message
+            : String(cause);
+        throw new AlwaysdataError(
+          method,
+          path,
+          0,
+          redact(`${timedOut ? "timeout" : "network error"}: ${detail}`, secrets),
+        );
       }
       if (response.ok) return text;
       const retryable = response.status === 429 || response.status >= 500;

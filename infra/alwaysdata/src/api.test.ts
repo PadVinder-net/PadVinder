@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { createAlwaysdataApi, type AlwaysdataApi } from "./api.ts";
 import { startFakeAlwaysdata, type FakeAlwaysdata } from "./testing/fake-api.ts";
@@ -180,6 +182,35 @@ test("a network error is retried for GET and wrapped without secrets", async () 
   expect(calls).toBe(100);
   expect(error.message).toMatch(/POST \/v1\/ssh\/ failed with 0: network error/);
   expect(error.message).not.toContain(apiKey);
+});
+
+test("a request without an answer times out: retried for GET, not for POST", async () => {
+  // Accepts every request and never answers.
+  let received = 0;
+  const silent = createServer(() => void received++);
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+  try {
+    const hanging = createAlwaysdataApi({
+      apiKey,
+      account: "acme",
+      baseUrl: `http://127.0.0.1:${(silent.address() as AddressInfo).port}`,
+      minIntervalMs: 0,
+      retryDelayMs: 1,
+      requestTimeoutMs: 50,
+    });
+    const listError = (await hanging.list("site").catch((e: unknown) => e)) as Error;
+    expect(listError.message).toBe("GET /v1/site/ failed with 0: timeout: no answer within 50 ms");
+    expect(received).toBe(3);
+
+    received = 0;
+    const restartError = (await hanging.restartService(7).catch((e: unknown) => e)) as Error;
+    expect(restartError.message).toMatch(/POST \/v1\/service\/7\/restart\/ failed with 0: timeout/);
+    expect(restartError.message).not.toContain(apiKey);
+    expect(received).toBe(1);
+  } finally {
+    silent.closeAllConnections();
+    await new Promise((resolve) => silent.close(resolve));
+  }
 });
 
 test("spaces requests by minIntervalMs", async () => {
