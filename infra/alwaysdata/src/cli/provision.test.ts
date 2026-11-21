@@ -201,6 +201,74 @@ test("--apply refuses a password that differs from the env file's, unless --rota
   expect(output.join("\n")).not.toContain(oldPassword);
 });
 
+test("an existing SSH user: a password mismatch stops before any change through the API", async () => {
+  expect(await run(args({ apply: true }))).toBe(0);
+  remoteFiles.set(
+    "padvinder/staging/.env",
+    renderEnvFile({ account: config.account, env: "staging", databasePassword: "old-secret" }),
+  );
+  // Something else to apply, too.
+  fake.resources.get("service")![0]!.command = "node old.js";
+  fake.requests.length = 0;
+  calls = [];
+  output = [];
+
+  expect(await run(args({ apply: true }))).toBe(1);
+  expect(output.join("\n")).toContain(passwordMismatchMessage);
+  expect(output.join("\n")).not.toMatch(/Applied the plan/);
+  expect(writes()).toEqual([]);
+  expect(calls.map((call) => call.args[0])).toEqual([databaseUrlCommand, checksumCommand]);
+});
+
+test("an existing SSH user: an SSH failure stops before the password is rotated", async () => {
+  expect(await run(args({ apply: true }))).toBe(0);
+  fake.requests.length = 0;
+  output = [];
+  const unreachable: Remote = {
+    ...fakeRemote,
+    exec: async () => {
+      throw new Error(`Permission denied for ${config.account}_deploy`);
+    },
+  };
+  const code = await runProvision({
+    args: args({ apply: true, rotatePassword: true }),
+    config,
+    api,
+    remote: () => unreachable,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(1);
+  expect(writes()).toEqual([]);
+  const text = output.join("\n");
+  expect(text).toMatch(/Could not read padvinder\/staging\/\.env over SSH/);
+  expect(text).toMatch(/Nothing was changed through the API/);
+  expect(text).toMatch(/Permission denied for <account>_deploy/);
+  expectNoSecrets(text);
+});
+
+test("the first run (new SSH user) applies, then reads and writes the env file", async () => {
+  // How many resources were created when each SSH command ran.
+  const createdAtExec: number[] = [];
+  const counting: Remote = {
+    ...fakeRemote,
+    exec: (...callArgs) => {
+      createdAtExec.push(writes().filter((r) => r.method === "POST").length);
+      return fakeRemote.exec(...callArgs);
+    },
+  };
+  const code = await runProvision({
+    args: args({ apply: true }),
+    config,
+    api,
+    remote: () => counting,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(0);
+  expect(createdAtExec).toEqual([6, 6, 6]);
+  expect(calls[0]).toEqual({ method: "exec", args: [databaseUrlCommand] });
+  expect(output.join("\n")).toMatch(/Applied the plan\.\nWrote padvinder\/staging\/\.env/);
+});
+
 test("a create-only field the API leaves out of the new resource gives a warning", async () => {
   // Stands in for an API that ignores an unknown field on create.
   const dropping: AlwaysdataApi = {

@@ -68,6 +68,8 @@ All three read their settings from environment variables with the same names as 
 
 The SSH files are `DEPLOY_SSH_KEY_FILE` (path to the private key) and `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file). In GitHub Actions, the composite action `.github/actions/alwaysdata-credentials` writes both from the `DEPLOY_SSH_KEY` and `SSH_KNOWN_HOSTS` secrets.
 
+With `--apply`, once the SSH user exists, provisioning first reads the env file over SSH and compares its password, and only then changes anything through the API: a failing SSH login or a password that differs without `--rotate-password` stops the run with nothing changed. On the first run the SSH user is new and has no key yet, so the env file is written after the apply (and the run asks you to add the key).
+
 Provisioning is idempotent: a second run plans `ok` for everything and writes nothing through the API. It never deletes a resource and never recreates a database. A field that can only be set at creation (database locale, encoding, extensions) and differs is reported as a `conflict`; nothing is changed then, and a human resolves it in the panel.
 
 ### What a deploy does
