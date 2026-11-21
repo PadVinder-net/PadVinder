@@ -72,17 +72,18 @@ MOBILE_DIST_DIR=mobile
 PORTAL_DIST_DIR=portal
 EOF
 # appVersion is the version the mobile build used: the environment, then .env.local and .env,
-# as Vite reads them; empty counts as unset.
+# as Vite reads them, then the version in apps/mobile/package.json; empty counts as unset.
 RELEASE_ROOT="$root" RELEASE_COMMIT="$commit" node --input-type=module -e '
-  import { writeFileSync } from "node:fs";
+  import { readFileSync, writeFileSync } from "node:fs";
   import { pathToFileURL } from "node:url";
   const root = process.env.RELEASE_ROOT;
   const { loadRootEnv } = await import(pathToFileURL(`${root}/scripts/load-env.ts`).href);
   loadRootEnv();
+  const mobile = JSON.parse(readFileSync(`${root}/apps/mobile/package.json`, "utf8"));
   const release = {
     commit: process.env.RELEASE_COMMIT,
-    appVersion: process.env.PADVINDER_APP_VERSION || "2027.0.0",
-    build: process.env.GITHUB_RUN_NUMBER || "local",
+    appVersion: process.env.PADVINDER_APP_VERSION || mobile.version,
+    build: process.env.PADVINDER_BUILD_NUMBER || "local",
     builtAt: new Date().toISOString(),
   };
   writeFileSync(`${root}/release/release.json`, JSON.stringify(release, null, 2) + "\n");

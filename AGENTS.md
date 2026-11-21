@@ -225,7 +225,7 @@ Weigh every new dependency or service against these:
 - **The API is backward compatible.** An open app keeps running old code. Only add fields; never rename or remove one while an old app version uses it.
 - **Database migrations go in two steps:** add the new thing first, remove the old thing in a later release.
 - **Minimum version:** the API reports the minimum app version; an older app shows "Werk de app bij" and reloads.
-- **App version** is CalVer `YYYY.N.P`, for example `2027.1.0`. The year is the migration season, not the release date: a release in December 2026 for the 2027 season is `2027.x`. The build number is the CI run number; it does not go into `PADVINDER_APP_VERSION`, which must be plain `YYYY.N.P` (the mobile build and dev server fail otherwise). The variable is not called `APP_VERSION` because Conductor sets that in its shells. Portal and API are identified by git commit.
+- **App version** is CalVer `YYYY.N.P`, for example `2027.1.0`. The year is the migration season, not the release date: a release in December 2026 for the 2027 season is `2027.x`. The version lives in `apps/mobile/package.json`; `PADVINDER_APP_VERSION` overrides it. The build number is the CI run number, passed as `PADVINDER_BUILD_NUMBER` (default `dev`); it does not go into `PADVINDER_APP_VERSION`, which must be plain `YYYY.N.P` (the mobile build and dev server fail otherwise). The variable is not called `APP_VERSION` because Conductor sets that in its shells. Portal and API are identified by git commit.
 
 ### Frontend
 
