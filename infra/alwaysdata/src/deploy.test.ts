@@ -214,7 +214,7 @@ test("runs upload, migrate, switch, restart, health, prune in this order", async
   expect(migrate?.env).toBeUndefined();
   expect(migrate?.command).toContain(`cd -- ${envDir}/releases/${newRelease}`);
   expect(migrate?.command).toContain(
-    `NODEJS_VERSION=24 timeout 600 node --env-file=release.env --env-file="$HOME/${envDir}/.env" api/dist/migrate.js migrations`,
+    `NODEJS_VERSION=24 timeout 600 node --env-file=release.env --env-file=../../.env api/dist/migrate.js migrations`,
   );
   const switchCommand = execCalls.find((call) => call.command.startsWith("# deploy: switch"));
   expect(switchCommand?.command).toContain(

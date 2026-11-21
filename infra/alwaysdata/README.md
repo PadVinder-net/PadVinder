@@ -29,8 +29,10 @@ Shared by both environments:
 A service's command, run in `padvinder/<env>/current`:
 
 ```sh
-node --env-file=release.env --env-file=/home/<account>/padvinder/<env>/.env api/dist/main.js   # worker: worker/dist/main.js
+node --env-file=release.env --env-file=../../.env api/dist/main.js   # worker: worker/dist/main.js
 ```
+
+The working directory `current` resolves to `releases/<name>`, so `../../.env` is `padvinder/<env>/.env`. The migrations run from the new release directory with the same `../../.env`, so services and migrations read one file, wherever the SSH user's home is.
 
 Alwaysdata restarts a service by sending `SIGHUP`; the API and the worker shut down cleanly on it, and Alwaysdata starts them again. Services run on servers other than the SSH server, so `ps` over SSH does not show them.
 

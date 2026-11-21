@@ -324,8 +324,7 @@ test("--inspect shows only field types of other resources, and the managed value
   expect(inspected.service?.ours).toEqual([
     expect.objectContaining({
       annotation: "padvinder-api (staging)",
-      command:
-        "node --env-file=release.env --env-file=/home/<account>/padvinder/staging/.env api/dist/main.js",
+      command: "node --env-file=release.env --env-file=../../.env api/dist/main.js",
       environment: "NODEJS_VERSION=<value>",
     }),
     expect.objectContaining({ annotation: "padvinder-worker (staging)" }),

@@ -74,7 +74,10 @@ export function desiredResources(
       identity: { field: "annotation", value: annotation },
       fields: {
         annotation,
-        command: `node --env-file=release.env --env-file=/home/${account}/${directory}/.env ${program}/dist/main.js`,
+        // The working directory resolves to `releases/<name>`, so `../../.env` is the
+        // environment's env file, the same file the migrations read; it does not depend on
+        // the account's home directory.
+        command: `node --env-file=release.env --env-file=../../.env ${program}/dist/main.js`,
         working_directory: `${directory}/current`,
         // UNVERIFIED: the format of `environment` ("NAME=value" pairs separated by spaces,
         // per the help pages; quoting is not documented).

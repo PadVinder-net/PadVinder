@@ -53,15 +53,13 @@ test("apply creates the resources and points the services at the SSH user", asyn
   const apiService = stored("service", "annotation", "padvinder-api (staging)");
   expect(apiService).toMatchObject({
     ssh_user: sshUser.id,
-    command:
-      "node --env-file=release.env --env-file=/home/acme/padvinder/staging/.env api/dist/main.js",
+    command: "node --env-file=release.env --env-file=../../.env api/dist/main.js",
     working_directory: "padvinder/staging/current",
     environment: "NODEJS_VERSION=24",
   });
   expect(stored("service", "annotation", "padvinder-worker (staging)")).toMatchObject({
     ssh_user: sshUser.id,
-    command:
-      "node --env-file=release.env --env-file=/home/acme/padvinder/staging/.env worker/dist/main.js",
+    command: "node --env-file=release.env --env-file=../../.env worker/dist/main.js",
   });
   expect(stored("database/user", "name", "acme_staging")).toMatchObject({
     password,
@@ -102,8 +100,7 @@ test("a changed service command becomes an update of only that field", async () 
       method: "PATCH",
       path: `/v1/service/${worker.id}/`,
       body: {
-        command:
-          "node --env-file=release.env --env-file=/home/acme/padvinder/staging/.env worker/dist/main.js",
+        command: "node --env-file=release.env --env-file=../../.env worker/dist/main.js",
       },
     },
   ]);

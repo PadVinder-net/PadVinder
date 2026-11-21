@@ -76,6 +76,7 @@ const commands = {
     [
       `# deploy: prepare ${name}`,
       "set -e",
+      // The same file as `../../.env` from releases/<name>, which the migrations and services read.
       `if [ ! -f ${dir}/.env ]; then echo "${dir}/.env is missing. Run pnpm infra:provision --environment ${env} --apply first." >&2; exit 1; fi`,
       `mkdir -p -- ${dir}/releases`,
       `if [ -e ${dir}/releases/${name} ]; then echo "${dir}/releases/${name} already exists." >&2; exit 1; fi`,
@@ -92,7 +93,7 @@ const commands = {
   migrate: (dir: string, name: string) =>
     [
       `# deploy: migrate ${name}`,
-      `cd -- ${dir}/releases/${name} && NODEJS_VERSION=24 timeout ${migrateTimeoutSeconds} node --env-file=release.env --env-file="$HOME/${dir}/.env" api/dist/migrate.js migrations`,
+      `cd -- ${dir}/releases/${name} && NODEJS_VERSION=24 timeout ${migrateTimeoutSeconds} node --env-file=release.env --env-file=../../.env api/dist/migrate.js migrations`,
     ].join("\n"),
   /** Replaces the link in one rename, so `current` is always the old or the new release. */
   switch: (dir: string, target: string) =>
