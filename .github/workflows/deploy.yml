@@ -1,0 +1,100 @@
+# Builds the release once and deploys that same tarball: to staging on every push to main
+# or to a staging/** branch, then to production for main only, after a required reviewer of
+# the production environment approves. The secrets live in the GitHub environments staging
+# and production; the release job has no environment and sees none of them.
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - "staging/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No workflow-level concurrency group: each deploy job has its own, which queues deploys of
+# one environment instead of cancelling a deploy halfway. provision.yml and
+# staging-services.yml use the same groups.
+
+jobs:
+  release:
+    uses: ./.github/workflows/build-release.yml
+    with:
+      build-number: ${{ github.run_number }}
+      retention-days: 30
+
+  staging:
+    needs: release
+    runs-on: ubuntu-24.04
+    # A deploy with a rollback takes about 7 minutes at worst.
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: https://staging.padvinder.net
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.release.outputs.artifact-name }}
+      # After the dependencies are installed, so no install script sees the key.
+      - uses: ./.github/actions/alwaysdata-credentials
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.SSH_KNOWN_HOSTS }}
+      - name: Deploy
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          COMMIT: ${{ github.sha }}
+        run: >-
+          pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz
+          --commit "$COMMIT"
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/deploy_key"
+
+  production:
+    needs: [release, staging]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # A deploy with a rollback takes about 7 minutes at worst.
+    timeout-minutes: 20
+    # The required reviewers of this environment are the approval.
+    environment:
+      name: production
+      url: https://padvinder.net
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.release.outputs.artifact-name }}
+      # After the dependencies are installed, so no install script sees the key.
+      - uses: ./.github/actions/alwaysdata-credentials
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.SSH_KNOWN_HOSTS }}
+      - name: Deploy
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          COMMIT: ${{ github.sha }}
+        run: >-
+          pnpm infra:deploy --environment production --tarball padvinder-release.tar.gz
+          --commit "$COMMIT"
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/deploy_key"

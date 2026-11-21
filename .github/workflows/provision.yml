@@ -1,0 +1,105 @@
+# Plans, and on request applies, the Alwaysdata resources of one environment: pnpm
+# infra:provision. Run it by hand (workflow_dispatch works only once this file is on main),
+# or push to provision/staging or provision/production: that plans and inspects only, so the
+# first look at the real account can run before this workflow reaches main.
+name: Provision
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment to provision.
+        type: choice
+        options:
+          - staging
+          - production
+        required: true
+      apply:
+        description: Carry out the plan. Without it, only print the plan.
+        type: boolean
+        default: false
+      inspect:
+        description: Also print the field names and value types of the account's resources.
+        type: boolean
+        default: false
+  push:
+    branches:
+      - provision/staging
+      - provision/production
+
+permissions:
+  contents: read
+
+jobs:
+  # Picks the environment before the provision job enters it; this job sees no secrets.
+  target:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+    steps:
+      - id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            environment="$INPUT_ENVIRONMENT"
+          else
+            environment="${REF_NAME#provision/}"
+          fi
+          case "$environment" in
+            staging | production) ;;
+            *)
+              echo "::error::No environment named '$environment'. Use staging or production."
+              exit 1
+              ;;
+          esac
+          echo "environment=$environment" >>"$GITHUB_OUTPUT"
+
+  provision:
+    needs: target
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: ${{ needs.target.outputs.environment }}
+    # The same group as the deploy jobs: provisioning writes the env file the services read,
+    # so it waits for a running deploy of the environment, and a deploy waits for it.
+    concurrency:
+      group: deploy-${{ needs.target.outputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # After the dependencies are installed, so no install script sees the key.
+      - uses: ./.github/actions/alwaysdata-credentials
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.SSH_KNOWN_HOSTS }}
+      - name: Provision
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+          ENVIRONMENT: ${{ needs.target.outputs.environment }}
+          # Empty on push: a push only plans.
+          APPLY: ${{ inputs.apply }}
+        run: |
+          args=(--environment "$ENVIRONMENT")
+          if [[ "$APPLY" == "true" ]]; then
+            args+=(--apply)
+          fi
+          pnpm infra:provision "${args[@]}"
+      # Read-only, so it also runs when the plan failed: its output helps find out why.
+      - name: Inspect
+        if: ${{ !cancelled() && (github.event_name == 'push' || inputs.inspect) }}
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          ENVIRONMENT: ${{ needs.target.outputs.environment }}
+        run: pnpm infra:provision --environment "$ENVIRONMENT" --inspect
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/deploy_key"

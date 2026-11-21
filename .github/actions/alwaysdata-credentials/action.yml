@@ -1,0 +1,42 @@
+name: Alwaysdata SSH credentials
+description: >-
+  Writes the deploy key and the known hosts of an environment to $RUNNER_TEMP and exports
+  DEPLOY_SSH_KEY_FILE and SSH_KNOWN_HOSTS_FILE for the infra CLIs. The job must remove
+  $RUNNER_TEMP/deploy_key in a final step with if: always().
+
+inputs:
+  ssh-key:
+    description: The private deploy key, from the secret DEPLOY_SSH_KEY.
+    required: true
+  known-hosts:
+    description: The known_hosts lines of the SSH host, from the variable SSH_KNOWN_HOSTS.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The inputs go through env:, never into the script: a ${{ }} in run: is pasted into the
+    # shell source before it runs.
+    - name: Write the SSH credentials
+      shell: bash
+      env:
+        DEPLOY_SSH_KEY: ${{ inputs.ssh-key }}
+        SSH_KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        set -euo pipefail
+        if [[ -z "$DEPLOY_SSH_KEY" ]]; then
+          echo "::error::The secret DEPLOY_SSH_KEY is empty or missing in this environment."
+          exit 1
+        fi
+        if [[ -z "$SSH_KNOWN_HOSTS" ]]; then
+          echo "::error::The variable SSH_KNOWN_HOSTS is empty or missing in this environment."
+          exit 1
+        fi
+        umask 077
+        # ssh refuses a key without a final newline; a pasted secret often lacks one.
+        printf '%s\n' "$DEPLOY_SSH_KEY" >"$RUNNER_TEMP/deploy_key"
+        printf '%s\n' "$SSH_KNOWN_HOSTS" >"$RUNNER_TEMP/known_hosts"
+        {
+          echo "DEPLOY_SSH_KEY_FILE=$RUNNER_TEMP/deploy_key"
+          echo "SSH_KNOWN_HOSTS_FILE=$RUNNER_TEMP/known_hosts"
+        } >>"$GITHUB_ENV"
