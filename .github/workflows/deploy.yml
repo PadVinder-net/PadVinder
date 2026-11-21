@@ -28,8 +28,9 @@ jobs:
   staging:
     needs: release
     runs-on: ubuntu-24.04
-    # A deploy with a rollback takes about 7 minutes at worst.
-    timeout-minutes: 20
+    # Worst case: setup, upload, migrations (at most 10 minutes), restart and health check,
+    # then a rollback with its own restart and health check. Room for all of it.
+    timeout-minutes: 35
     environment:
       name: staging
       url: https://staging.padvinder.net
@@ -65,8 +66,9 @@ jobs:
     needs: [release, staging]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    # A deploy with a rollback takes about 7 minutes at worst.
-    timeout-minutes: 20
+    # Worst case: setup, upload, migrations (at most 10 minutes), restart and health check,
+    # then a rollback with its own restart and health check. Room for all of it.
+    timeout-minutes: 35
     # The required reviewers of this environment are the approval.
     environment:
       name: production

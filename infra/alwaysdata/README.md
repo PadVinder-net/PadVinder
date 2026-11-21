@@ -83,7 +83,7 @@ Provisioning is idempotent: a second run plans `ok` for everything and writes no
 7. If the restart or the health check fails, it switches `current` back, reads the services again and turns on any that Alwaysdata switched off (it does that after repeated quick failures), restarts again and waits for the previous commit's health. The run fails either way, and the error says whether the rollback worked. Migrations are not undone: the old release runs against the migrated database, which is why migrations are additive first (two-step rule in `AGENTS.md`).
 8. Removes old releases.
 
-A deploy with a rollback takes about 7 minutes plus the time of the migrations (at most 10); the workflow jobs time out after 20.
+A deploy with a rollback takes about 7 minutes plus the time of the migrations (at most 10); the deploy jobs time out after 35, which leaves room for a full rollback.
 
 ## GitHub workflows
 
