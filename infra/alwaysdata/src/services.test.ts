@@ -53,12 +53,30 @@ test("enables and disables both services", async () => {
     { method: "PATCH", path: "/v1/service/21/", body: { is_disabled: false } },
     { method: "PATCH", path: "/v1/service/22/", body: { is_disabled: false } },
   ]);
+  // It reads the services again to check the change.
+  expect(fake.requests.map((r) => r.method).at(-1)).toBe("GET");
   fake.requests.length = 0;
   await setServicesEnabled(api, "staging", false);
   expect(writes()).toEqual([
     { method: "PATCH", path: "/v1/service/21/", body: { is_disabled: true } },
     { method: "PATCH", path: "/v1/service/22/", body: { is_disabled: true } },
   ]);
+});
+
+test("checks that the API applied is_disabled", async () => {
+  // An API that accepts the PATCH but ignores the field, as it might for a wrong field name.
+  const ignoring: AlwaysdataApi = { ...api, update: async () => {} };
+  await expect(setServicesEnabled(ignoring, "staging", true)).rejects.toThrow(
+    /The API did not apply is_disabled: padvinder-api \(staging\) and padvinder-worker \(staging\) still have is_disabled=true after setting it to false\. The field name may be wrong \(UNVERIFIED/,
+  );
+  // One service applied, one not.
+  const partial: AlwaysdataApi = {
+    ...api,
+    update: async (kind, id, patch) => (id === 21 ? api.update(kind, id, patch) : undefined),
+  };
+  await expect(setServicesEnabled(partial, "staging", true)).rejects.toThrow(
+    /did not apply is_disabled: padvinder-worker \(staging\) still has is_disabled=true/,
+  );
 });
 
 test("restarts the API, then the worker, and returns the time before the worker's restart", async () => {

@@ -26,7 +26,11 @@ export async function findServices(api: AlwaysdataApi, env: EnvironmentName): Pr
   return { api: found.api, worker: found.worker };
 }
 
-/** Turns both services of an environment on or off. */
+/**
+ * Turns both services of an environment on or off, then reads them again to check that the
+ * API applied it: the name of the on/off field is UNVERIFIED, and the API may ignore an
+ * unknown field without an error.
+ */
 export async function setServicesEnabled(
   api: AlwaysdataApi,
   env: EnvironmentName,
@@ -36,7 +40,16 @@ export async function setServicesEnabled(
   for (const service of [services.api, services.worker]) {
     await api.update("service", service.id, { [serviceDisabledField]: !enabled });
   }
-  return services;
+  const after = await findServices(api, env);
+  const unchanged = [after.api, after.worker].filter(
+    (service) => service[serviceDisabledField] !== !enabled,
+  );
+  if (unchanged.length > 0) {
+    throw new Error(
+      `The API did not apply ${serviceDisabledField}: ${unchanged.map((service) => String(service.annotation)).join(" and ")} still ${unchanged.length === 1 ? "has" : "have"} ${serviceDisabledField}=${JSON.stringify(unchanged[0]?.[serviceDisabledField])} after setting it to ${!enabled}. The field name may be wrong (UNVERIFIED in resources.ts); check it with pnpm infra:provision --environment ${env} --inspect.`,
+    );
+  }
+  return after;
 }
 
 /**
