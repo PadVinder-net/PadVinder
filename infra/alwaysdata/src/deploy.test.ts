@@ -191,6 +191,8 @@ test("runs upload, migrate, switch, restart, health, prune in this order", async
     `upload ${envDir}/releases/${newRelease} from ${envDir}/releases/${oldRelease}`,
     `migrate ${newRelease}`,
     `switch releases/${newRelease}`,
+    // The services are read again just before the restart.
+    "list service",
     `update service 22 {"is_disabled":false}`,
     "restart 21",
     "restart 22",
@@ -249,16 +251,18 @@ test("a failed health check switches back and restarts again", async () => {
     `upload ${envDir}/releases/${newRelease} from ${envDir}/releases/${oldRelease}`,
     `migrate ${newRelease}`,
     `switch releases/${newRelease}`,
+    "list service",
     `update service 22 {"is_disabled":false}`,
     "restart 21",
     "restart 22",
-    ...timeline.slice(8, timeline.indexOf(`switch releases/${oldRelease}`)),
+    ...timeline.slice(9, timeline.indexOf(`switch releases/${oldRelease}`)),
     `switch releases/${oldRelease}`,
+    "list service",
     "restart 21",
     "restart 22",
     "health",
   ]);
-  expect(timeline.slice(8, timeline.indexOf(`switch releases/${oldRelease}`))).toContain("health");
+  expect(timeline.slice(9, timeline.indexOf(`switch releases/${oldRelease}`))).toContain("health");
   expect(server.current).toBe(`releases/${oldRelease}`);
   // The failed release stays for inspection; the next prune removes it.
   expect(server.releases.has(newRelease)).toBe(true);
@@ -289,6 +293,39 @@ test("the health check needs a worker heartbeat from after the restart", async (
   );
 });
 
+test("the rollback turns on a service that Alwaysdata switched off during the failed release", async () => {
+  fake.resources.get("service")![1]!.is_disabled = false;
+  brokenCommits.add(newCommit);
+  const recording = recordingApi();
+  const isDisabled = (id: number) =>
+    fake.resources.get("service")!.find((service) => service.id === id)!.is_disabled === true;
+  let restarts = 0;
+  const api: AlwaysdataApi = {
+    ...recording,
+    restartService: async (id) => {
+      // Like Alwaysdata: a disabled service does not start.
+      if (isDisabled(id)) throw new Error(`service ${id} is disabled`);
+      await recording.restartService(id);
+      // The new release crash-loops, so Alwaysdata switches the worker off after its restart.
+      if (restarts++ === 1) fake.resources.get("service")![1]!.is_disabled = true;
+    },
+  };
+  const error = await failureOf(deploy(options({ api })));
+  expect(error.message).toContain(
+    `Deploy of bbbbbbb failed its health check and was rolled back to ${oldRelease}`,
+  );
+  expect(error.message).toMatch(/aaaaaaa passed its health check/);
+  expect(timeline.slice(timeline.indexOf(`switch releases/${oldRelease}`))).toEqual([
+    `switch releases/${oldRelease}`,
+    "list service",
+    `update service 22 {"is_disabled":false}`,
+    "restart 21",
+    "restart 22",
+    "health",
+  ]);
+  expect(isDisabled(22)).toBe(false);
+});
+
 test("a failed restart after the switch rolls back too", async () => {
   fake.resources.get("service")![1]!.is_disabled = false;
   const recording = recordingApi();
@@ -310,10 +347,12 @@ test("a failed restart after the switch rolls back too", async () => {
   );
   expect(server.current).toBe(`releases/${oldRelease}`);
   expect(error.message).toContain("failed with 503");
-  expect(timeline.slice(-6)).toEqual([
+  expect(timeline.slice(-8)).toEqual([
     `switch releases/${newRelease}`,
+    "list service",
     "restart 21 failed",
     `switch releases/${oldRelease}`,
+    "list service",
     "restart 21",
     "restart 22",
     "health",

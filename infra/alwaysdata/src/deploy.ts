@@ -4,12 +4,7 @@ import type { AlwaysdataApi } from "./api.ts";
 import { environmentDirectory, type EnvironmentName } from "./environments.ts";
 import { checkHealth, type HealthCheckOptions } from "./health-check.ts";
 import type { Remote } from "./remote.ts";
-import {
-  enableDisabledServices,
-  findServices,
-  restartServices,
-  type Services,
-} from "./services.ts";
+import { enableDisabledServices, findServices, restartServices } from "./services.ts";
 
 export type DeployOptions = {
   env: EnvironmentName;
@@ -266,7 +261,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
   log(`Switched current from ${previous?.name ?? "nothing"} to ${name}`);
 
   try {
-    await restartAndCheck(options, services, commit, "new release");
+    await restartAndCheck(options, commit, "new release");
   } catch (error) {
     const failedStep =
       error instanceof HealthCheckFailure ? "its health check" : "while restarting the services";
@@ -278,7 +273,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
     }
     log(`Deploy of ${sha7} failed ${failedStep}: ${reason}`);
     throw new Error(
-      `Deploy of ${sha7} failed ${failedStep} and was rolled back to ${previous.name}.\n${reason}\n${await rollBack(options, services, previous)}`,
+      `Deploy of ${sha7} failed ${failedStep} and was rolled back to ${previous.name}.\n${reason}\n${await rollBack(options, previous)}`,
     );
   }
   log(`Health check passed: ${sha7} answers with a worker heartbeat after the restart`);
@@ -301,16 +296,18 @@ class HealthCheckFailure extends Error {
   }
 }
 
-/** Turns on disabled services, restarts both and waits until `commit` is healthy. */
+/**
+ * Reads the services again, turns on those that are off, restarts both and waits until
+ * `commit` is healthy.
+ */
 async function restartAndCheck(
   options: DeployOptions,
-  services: Services,
   commit: string,
   what: string,
 ): Promise<void> {
   const log = options.log ?? (() => {});
   const now = options.now ?? (() => new Date());
-  const enabled = await enableDisabledServices(options.api, services);
+  const { services, enabled } = await enableDisabledServices(options.api, options.env);
   if (enabled.length > 0) log(`Enabled ${enabled.join(" and ")}`);
   // Before the restart: a heartbeat after this moment comes from a worker that was restarted.
   const restartedAt = now();
@@ -333,7 +330,6 @@ async function restartAndCheck(
 /** Switches back to `previous`, restarts and checks its health; returns what happened. */
 async function rollBack(
   options: DeployOptions,
-  services: Services,
   previous: { name: string; commit: string },
 ): Promise<string> {
   const log = options.log ?? (() => {});
@@ -348,7 +344,7 @@ async function rollBack(
     return message;
   }
   try {
-    await restartAndCheck(options, services, previous.commit, "previous release");
+    await restartAndCheck(options, previous.commit, "previous release");
   } catch (error) {
     const message = `THE ROLLBACK TO ${sha7} ALSO FAILED its health check or restart. ${options.env} may be down: check it now.\n${errorMessage(error)}`;
     log(message);

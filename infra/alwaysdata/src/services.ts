@@ -39,21 +39,25 @@ export async function setServicesEnabled(
   return services;
 }
 
-/** Turns on the services that are off (and marks them on in `services`); returns their annotations. */
+/**
+ * Reads the services of an environment again and turns on those that are off. Alwaysdata
+ * switches a service off after repeated quick failures (a crash-looping release), so this runs
+ * before every restart, also in a rollback. Returns the services and the annotations of the
+ * ones it turned on.
+ */
 export async function enableDisabledServices(
   api: AlwaysdataApi,
-  services: Services,
-): Promise<string[]> {
+  env: EnvironmentName,
+): Promise<{ services: Services; enabled: string[] }> {
+  const services = await findServices(api, env);
   const enabled: string[] = [];
   for (const service of [services.api, services.worker]) {
     if (service[serviceDisabledField] === true) {
       await api.update("service", service.id, { [serviceDisabledField]: false });
-      // A rollback right after sees the service as on, and does not patch it again.
-      service[serviceDisabledField] = false;
       enabled.push(String(service.annotation));
     }
   }
-  return enabled;
+  return { services, enabled };
 }
 
 /** Restarts the API, then the worker. */
