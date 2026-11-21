@@ -84,11 +84,15 @@ const commands = {
       `  if [ -f ${dir}/current/release.env ]; then printf '${marker}commit=%s\\n' "$(sed -n 's/^GIT_COMMIT=//p' ${dir}/current/release.env)"; fi`,
       `elif [ -e ${dir}/current ]; then echo "${dir}/current is not a symbolic link." >&2; exit 1; fi`,
     ].join("\n"),
-  /** Stopped after `migrateTimeoutSeconds`; `timeout` then exits with 124. */
+  /**
+   * Stopped after `migrateTimeoutSeconds`; `timeout` then exits with 124. `NODEJS_VERSION`
+   * is inline, not in `exec`'s env: the remote hides every env value in its errors as a
+   * secret, which would turn each "24" in a migration error into "***".
+   */
   migrate: (dir: string, name: string) =>
     [
       `# deploy: migrate ${name}`,
-      `cd -- ${dir}/releases/${name} && timeout ${migrateTimeoutSeconds} node --env-file=release.env --env-file="$HOME/${dir}/.env" api/dist/migrate.js migrations`,
+      `cd -- ${dir}/releases/${name} && NODEJS_VERSION=24 timeout ${migrateTimeoutSeconds} node --env-file=release.env --env-file="$HOME/${dir}/.env" api/dist/migrate.js migrations`,
     ].join("\n"),
   /** Replaces the link in one rename, so `current` is always the old or the new release. */
   switch: (dir: string, target: string) =>
@@ -237,7 +241,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
 
   log("Running the database migrations of the new release");
   try {
-    await remote.exec(commands.migrate(dir, name), { env: { NODEJS_VERSION: "24" } });
+    await remote.exec(commands.migrate(dir, name));
   } catch (error) {
     const cleanup = await removeNewRelease();
     // `timeout` exits with 124 when it stopped the command.

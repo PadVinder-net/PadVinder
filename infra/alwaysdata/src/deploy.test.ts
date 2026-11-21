@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { createAlwaysdataApi, type AlwaysdataApi } from "./api.ts";
 import { deploy, pruneReleases, type DeployOptions } from "./deploy.ts";
+import { redact } from "./redact.ts";
 import type { Remote } from "./remote.ts";
 import { startFakeAlwaysdata, type FakeAlwaysdata } from "./testing/fake-api.ts";
 
@@ -61,8 +62,12 @@ const fakeRemote: Remote = {
       }
       case "migrate":
         if (server.failMigration) {
+          // Like the SSH remote: env values are hidden in the error as secrets.
           throw new Error(
-            `Remote command \`${command}\` failed with exit code ${server.failMigration.code}: ${server.failMigration.message}`,
+            redact(
+              `Remote command \`${command}\` failed with exit code ${server.failMigration.code}: ${server.failMigration.message}`,
+              Object.values(options.env ?? {}),
+            ),
           );
         }
         return { stdout: "Migrations are up to date.\n", stderr: "" };
@@ -206,10 +211,10 @@ test("runs upload, migrate, switch, restart, health, prune in this order", async
   expect(server.current).toBe(`releases/${newRelease}`);
 
   const migrate = execCalls.find((call) => call.command.startsWith("# deploy: migrate"));
-  expect(migrate?.env).toEqual({ NODEJS_VERSION: "24" });
+  expect(migrate?.env).toBeUndefined();
   expect(migrate?.command).toContain(`cd -- ${envDir}/releases/${newRelease}`);
   expect(migrate?.command).toContain(
-    `timeout 600 node --env-file=release.env --env-file="$HOME/${envDir}/.env" api/dist/migrate.js migrations`,
+    `NODEJS_VERSION=24 timeout 600 node --env-file=release.env --env-file="$HOME/${envDir}/.env" api/dist/migrate.js migrations`,
   );
   const switchCommand = execCalls.find((call) => call.command.startsWith("# deploy: switch"));
   expect(switchCommand?.command).toContain(
@@ -238,6 +243,13 @@ test("a failed migration stops before the switch and removes the new release", a
   expect(server.current).toBe(`releases/${oldRelease}`);
   expect([...server.releases.keys()]).toEqual([oldRelease]);
   expect(fake.requests.filter((r) => r.method !== "GET")).toEqual([]);
+});
+
+test("a migration error with a 24 in it is not garbled", async () => {
+  server.failMigration = { code: 1, message: 'relation "counts_2024" already exists' };
+  const error = await failureOf(deploy(options()));
+  expect(error.message).toContain('relation "counts_2024" already exists');
+  expect(error.message).not.toContain("***");
 });
 
 test("a migration that runs too long is stopped and reported as such", async () => {
