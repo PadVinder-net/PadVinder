@@ -45,9 +45,19 @@ test("fails the dev server on a PADVINDER_APP_VERSION that is not CalVer", () =>
   expect(resolveDev).toThrow(remedy);
 });
 
-test("fails on a MOBILE_PORT that is not a number", () => {
+test("fails the dev server on a MOBILE_PORT that is not a number", () => {
   vi.stubEnv("MOBILE_PORT", "abc");
-  expect(resolve).toThrow(/MOBILE_PORT/);
+  expect(resolveDev).toThrow(/MOBILE_PORT/);
+});
+
+test("a build needs no MOBILE_PORT", () => {
+  vi.stubEnv("MOBILE_PORT", "");
+  expect(resolve().base).toBe("/app/");
+});
+
+test("the dev server still requires MOBILE_PORT", () => {
+  vi.stubEnv("MOBILE_PORT", "");
+  expect(resolveDev).toThrow(/MOBILE_PORT is missing/);
 });
 
 test("the manifest uses the brand theme color", () => {

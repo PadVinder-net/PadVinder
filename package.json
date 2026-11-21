@@ -13,6 +13,7 @@
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "dev:https": "DEV_HTTPS=1 pnpm --parallel --filter \"./apps/*\" dev",
     "build": "pnpm -r --filter \"./apps/*\" build",
+    "release:build": "./scripts/build-release.sh",
     "test:e2e": "playwright test",
     "test:visual": "vitest run --config packages/ui/vitest.visual.config.ts",
     "test:visual:docker": "./scripts/visual-tests.sh",

@@ -12,3 +12,5 @@ playwright-report
 # Reference screenshots are made in the Playwright image only (pnpm screenshots:update)
 **/__screenshots__/**/*-darwin.png
 **/__screenshots__/**/*-win32.png
+release/
+padvinder-release.tar.gz

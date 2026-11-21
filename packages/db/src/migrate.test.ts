@@ -37,3 +37,25 @@ END $$;`,
     await rm(folder, { recursive: true });
   }
 });
+
+test("rejects a folder without migrations", async () => {
+  const empty = await mkdtemp(join(tmpdir(), "no-migrations-"));
+  try {
+    await expect(runMigrations(t!.url, empty)).rejects.toThrow(`No migrations found in ${empty}`);
+  } finally {
+    await rm(empty, { recursive: true });
+  }
+});
+
+test("rejects a folder that does not exist", async () => {
+  const missing = join(tmpdir(), "padvinder-missing-migrations");
+  await expect(runMigrations(t!.url, missing)).rejects.toThrow(`No migrations found in ${missing}`);
+});
+
+test("rejects a folder without migrations before connecting", async () => {
+  const missing = join(tmpdir(), "padvinder-missing-migrations");
+  // Port 1 refuses connections, so a connection attempt would fail with another error.
+  await expect(runMigrations("postgres://x:y@127.0.0.1:1/none", missing)).rejects.toThrow(
+    /No migrations found/,
+  );
+});
