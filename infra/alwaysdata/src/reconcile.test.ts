@@ -172,3 +172,53 @@ test("apply refuses a plan that does not belong to the desired resources", async
   ).rejects.toThrow(/does not match/);
   expect(writes()).toEqual([]);
 });
+
+test("a create-only field stored differently stops apply right after that create", async () => {
+  // Stands in for an API that normalizes the locale it was given.
+  const normalizing: AlwaysdataApi = {
+    ...api,
+    create: (kind, body, identity) =>
+      api.create(kind, kind === "database" ? { ...body, locale: "C" } : body, identity),
+  };
+  await expect(applyPlan(normalizing, desired, await planResources(api, desired))).rejects.toThrow(
+    /locale "C" instead of "C.UTF-8"/,
+  );
+  expect(writes().map((r) => `${r.method} ${r.path}`)).toEqual([
+    "POST /v1/ssh/",
+    "POST /v1/database/",
+  ]);
+});
+
+test("a create-only field the API does not return gives a warning, not a conflict", async () => {
+  const warnings: string[] = [];
+  const dropping: AlwaysdataApi = {
+    ...api,
+    create: (kind, body, identity) => {
+      const { extensions: _dropped, ...rest } = body;
+      return api.create(kind, rest, identity);
+    },
+  };
+  await applyPlan(dropping, desired, await planResources(api, desired), {
+    warn: (message) => warnings.push(message),
+  });
+  expect(warnings).toEqual([
+    "Could not verify extensions of new database acme_staging: the API does not report it",
+  ]);
+  const plan = await planResources(api, desired);
+  expect(plan.every((c) => c.action === "ok")).toBe(true);
+  expect(plan[1]).toMatchObject({ kind: "database", unverified: ["extensions"] });
+});
+
+test("addresses in another order are the same addresses", async () => {
+  const site = {
+    kind: "site" as const,
+    identity: { field: "name", value: "s" },
+    fields: { name: "s", addresses: ["a.example", "b.example"] },
+  };
+  fake.resources.get("site")?.push({ id: 5, name: "s", addresses: ["b.example", "a.example"] });
+  expect(await planResources(api, [site])).toEqual([expect.objectContaining({ action: "ok" })]);
+  fake.resources.get("site")![0]!.addresses = ["a.example"];
+  expect(await planResources(api, [site])).toEqual([
+    expect.objectContaining({ action: "update", fields: ["addresses"] }),
+  ]);
+});

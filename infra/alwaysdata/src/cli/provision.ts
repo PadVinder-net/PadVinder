@@ -4,6 +4,7 @@
 // Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, DEPLOY_SSH_KEY_FILE and
 // SSH_KNOWN_HOSTS_FILE from the environment. Its output may land in a public log: every line
 // goes through redact(), and the account name shows as <account>.
+import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import { createAlwaysdataApi, type AlwaysdataApi, type ResourceKind } from "../api.ts";
 import { loadInfraConfig, type InfraConfig } from "../config.ts";
@@ -17,7 +18,7 @@ import {
 import { applyPlan, planResources, type PlannedChange } from "../reconcile.ts";
 import { redact } from "../redact.ts";
 import { createSshRemote, type Remote } from "../remote.ts";
-import { desiredResources } from "../resources.ts";
+import { desiredResources, type DesiredResource } from "../resources.ts";
 
 export type ProvisionArgs = {
   environment: EnvironmentName;
@@ -32,8 +33,10 @@ export const usage = `Usage: pnpm infra:provision --environment <staging|product
   --apply            Carry out the plan, then write the env file on the server.
                      Without it nothing changes.
   --rotate-password  Send the database password again, also to an existing database user.
-  --inspect          Only list every resource of each kind as JSON, without password-like
-                     fields, to confirm the field names in resources.ts.`;
+                     If you changed DATABASE_PASSWORD, pass --rotate-password.
+  --inspect          Only print, per kind, the field names and value types of the
+                     account's resources, and the values of the fields provisioning
+                     manages on its own resources, to confirm the names in resources.ts.`;
 
 export class UsageError extends Error {
   constructor(problem: string) {
@@ -86,21 +89,105 @@ export function formatPlan(plan: readonly PlannedChange[]): string[] {
         : change.fields && change.action !== "ok"
           ? ` (${change.fields.join(", ")})`
           : "";
-    return `${change.action.padEnd(8)} ${change.kind.padEnd(13)} ${change.identity}${detail}`;
+    const unverified =
+      change.unverified && change.unverified.length > 0
+        ? `; cannot verify ${change.unverified.join(", ")}: the API does not report it`
+        : "";
+    return `${change.action.padEnd(8)} ${change.kind.padEnd(13)} ${change.identity}${detail}${unverified}`;
   });
 }
 
 const inspectedKinds: ResourceKind[] = ["ssh", "database", "database/user", "site", "service"];
 const sensitiveFieldPattern = /password|secret|key|token/i;
 
-function withoutSensitiveFields(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutSensitiveFields);
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([name]) => !sensitiveFieldPattern.test(name))
-      .map(([name, field]) => [name, withoutSensitiveFields(field)]),
-  );
+/** The JSON type of a value, without the value: `string`, `number[]`, `object{id: number}`. */
+export function shapeOf(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) {
+    const elements = [...new Set(value.map(shapeOf))].sort();
+    if (elements.length === 0) return "unknown[]";
+    return elements.length === 1 ? `${elements[0]}[]` : `(${elements.join(" | ")})[]`;
+  }
+  if (typeof value === "object") {
+    // Keys stay: they show the structure. For a dictionary such as a database user's
+    // permissions they are database names, which Alwaysdata shows to every tenant anyway.
+    const fields = Object.entries(value).map(([name, field]) => `${name}: ${shapeOf(field)}`);
+    return `object{${fields.join(", ")}}`;
+  }
+  return typeof value;
+}
+
+/** `A=1 B=2` becomes `A=<value> B=<value>`: the names, never the values. */
+function environmentNames(value: unknown): unknown {
+  if (typeof value !== "string") return shapeOf(value);
+  return value
+    .split(/\s+/)
+    .filter((word) => word !== "")
+    .map((word) => {
+      const name = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(word)?.[1];
+      return name === undefined ? "<value>" : `${name}=<value>`;
+    })
+    .join(" ");
+}
+
+/**
+ * What `--inspect` prints. The output may land in a public log, so other resources only
+ * show field names and value types, never values (their environment, commands and
+ * addresses are not ours to publish). Only for our own resources (matched by identity) does
+ * it show the values of the fields provisioning manages, without write-only or
+ * password-like fields, and with only the variable names of `environment`.
+ */
+export async function inspectAccount(
+  api: AlwaysdataApi,
+  desired: readonly DesiredResource[],
+): Promise<Record<string, { fields: Record<string, string>; ours: Record<string, unknown>[] }>> {
+  const result: Record<
+    string,
+    { fields: Record<string, string>; ours: Record<string, unknown>[] }
+  > = {};
+  for (const kind of inspectedKinds) {
+    const resources = await api.list(kind);
+    const shapes = new Map<string, Set<string>>();
+    for (const resource of resources) {
+      for (const [name, value] of Object.entries(resource)) {
+        const set = shapes.get(name) ?? new Set<string>();
+        set.add(shapeOf(value));
+        shapes.set(name, set);
+      }
+    }
+    const fields = Object.fromEntries(
+      [...shapes.entries()].map(([name, set]) => [name, [...set].sort().join(" | ")]),
+    );
+
+    const ours: Record<string, unknown>[] = [];
+    for (const want of desired.filter((d) => d.kind === kind)) {
+      for (const resource of resources) {
+        if (resource[want.identity.field] !== want.identity.value) continue;
+        const shown: Record<string, unknown> = { id: resource.id };
+        for (const name of Object.keys(want.fields)) {
+          if (want.writeOnly?.includes(name)) continue;
+          const value = resource[name];
+          // A password-like name may still hold a harmless flag, such as can_use_password.
+          if (sensitiveFieldPattern.test(name) && typeof value !== "boolean") continue;
+          shown[name] =
+            value === undefined
+              ? "<absent>"
+              : name === "environment"
+                ? environmentNames(value)
+                : value;
+        }
+        ours.push(shown);
+      }
+    }
+    result[kind] = { fields, ours };
+  }
+  return result;
+}
+
+/** The SHA-256 of a remote file, or undefined when it does not exist. */
+async function remoteChecksum(remote: Remote, path: string): Promise<string | undefined> {
+  const { stdout } = await remote.exec(`if [ -f ${path} ]; then sha256sum < ${path}; fi`);
+  return /\b([0-9a-f]{64})\b/.exec(stdout)?.[1];
 }
 
 /** Runs the provisioning and returns the exit code. Every printed line is redacted. */
@@ -119,11 +206,9 @@ export async function runProvision(input: {
 
   try {
     if (args.inspect) {
-      const inspected: Record<string, unknown> = {};
-      for (const kind of inspectedKinds) {
-        inspected[kind] = withoutSensitiveFields(await api.list(kind));
-      }
-      print(JSON.stringify(inspected, null, 2));
+      // No password is needed to find our resources; write-only fields are never shown.
+      const desired = desiredResources(config.account, args.environment, "");
+      print(JSON.stringify(await inspectAccount(api, desired), null, 2));
       return 0;
     }
 
@@ -144,16 +229,16 @@ export async function runProvision(input: {
       return 0;
     }
 
-    await applyPlan(api, desired, plan);
+    await applyPlan(api, desired, plan, { warn: (message) => print(`Warning: ${message}`) });
     print("Applied the plan.");
     const directory = environmentDirectory(env);
+    const content = renderEnvFile({ account: config.account, env, databasePassword });
+    let envFileChanged: boolean;
     try {
       const remote = input.remote();
-      await remote.writeFile(
-        `${directory}/.env`,
-        renderEnvFile({ account: config.account, env, databasePassword }),
-        0o600,
-      );
+      const before = await remoteChecksum(remote, `${directory}/.env`);
+      envFileChanged = before !== createHash("sha256").update(content).digest("hex");
+      await remote.writeFile(`${directory}/.env`, content, 0o600);
       await remote.exec(`mkdir -p -- ${directory}/releases`);
     } catch (error) {
       print(
@@ -162,6 +247,14 @@ export async function runProvision(input: {
       throw error;
     }
     print(`Wrote ${directory}/.env and created ${directory}/releases on the server.`);
+    const passwordRotated = plan.some(
+      (change) => change.action === "update" && change.fields?.includes("password"),
+    );
+    if (envFileChanged || passwordRotated) {
+      print(
+        `The services must be restarted to use the new ${passwordRotated ? "database password" : "env file"}: pnpm infra:services --environment ${env} --restart`,
+      );
+    }
     return 0;
   } catch (error) {
     print(`Provisioning failed: ${error instanceof Error ? error.message : String(error)}`);

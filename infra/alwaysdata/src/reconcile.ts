@@ -13,12 +13,33 @@ export type PlannedChange = {
   reason?: string;
   /** Id of the existing resource. */
   id?: number;
+  /** Create-only fields that the API does not report, so they cannot be checked. */
+  unverified?: string[];
 };
 
 const key = (kind: ResourceKind, identity: { field: string; value: string }) =>
   `${kind} ${identity.field}=${JSON.stringify(identity.value)}`;
 
 const describe = (value: unknown) => (value === undefined ? "nothing" : JSON.stringify(value));
+
+const isPrimitive = (value: unknown) => value === null || typeof value !== "object";
+
+/**
+ * Whether a field on the server holds the desired value. Lists of plain values (such as a
+ * site's addresses) are compared as sets: the API may return them in another order.
+ */
+export function sameValue(actual: unknown, wanted: unknown): boolean {
+  if (
+    Array.isArray(actual) &&
+    Array.isArray(wanted) &&
+    actual.every(isPrimitive) &&
+    wanted.every(isPrimitive)
+  ) {
+    const sort = (values: unknown[]) => values.map((v) => JSON.stringify(v)).sort();
+    return isDeepStrictEqual(sort(actual), sort(wanted));
+  }
+  return isDeepStrictEqual(actual, wanted);
+}
 
 /** Whether a listed field value points at the resource with this id. */
 function refersTo(actual: unknown, id: number): boolean {
@@ -76,10 +97,12 @@ export async function planResources(
         const id = resolve(wanted);
         return id === undefined || !refersTo(existing[field], id);
       }
-      return !isDeepStrictEqual(existing[field], wanted);
+      return !sameValue(existing[field], wanted);
     };
 
-    const fixed = createOnly.filter(differs);
+    // A create-only field the API does not report cannot be checked; see checkCreateOnlyFields.
+    const unverified = createOnly.filter((field) => !(field in existing));
+    const fixed = createOnly.filter((field) => field in existing && differs(field));
     if (fixed.length > 0) {
       return {
         ...base,
@@ -99,21 +122,25 @@ export async function planResources(
       if (writeOnly.includes(field)) return options.rotatePassword === true;
       return differs(field);
     });
+    const checked = { ...base, id: existing.id, ...(unverified.length > 0 ? { unverified } : {}) };
     return changed.length === 0
-      ? { ...base, id: existing.id, action: "ok" }
-      : { ...base, id: existing.id, action: "update", fields: changed };
+      ? { ...checked, action: "ok" }
+      : { ...checked, action: "update", fields: changed };
   });
 }
 
 /**
  * Carries out a plan from `planResources` for the same desired resources: creates and
- * updates in order. Refuses a plan with a conflict, before changing anything.
+ * updates in order. Refuses a plan with a conflict, before changing anything. After each
+ * create it checks the create-only fields of the new resource, and stops at a mismatch.
  */
 export async function applyPlan(
   api: AlwaysdataApi,
   desired: readonly DesiredResource[],
   plan: readonly PlannedChange[],
+  options: { warn?: (message: string) => void } = {},
 ): Promise<void> {
+  const warn = options.warn ?? (() => {});
   const mismatch =
     plan.length !== desired.length ||
     plan.some(
@@ -153,6 +180,7 @@ export async function applyPlan(
       const body = resolveFields(resource.fields, Object.keys(resource.fields));
       const created = await api.create(resource.kind, body, resource.identity);
       ids.set(resourceKey, created.id);
+      checkCreateOnlyFields(resource, created, warn);
       continue;
     }
     if (change.id === undefined) throw new Error(`The plan has no id for ${resourceKey}`);
@@ -164,5 +192,30 @@ export async function applyPlan(
       );
     }
     ids.set(resourceKey, change.id);
+  }
+}
+
+/**
+ * A create-only field that the server stored differently (it ignored or normalized it) cannot
+ * be fixed later, so this stops before anything else is created. A field that is absent from
+ * the returned resource only gives a warning: the API may simply not echo it (these field
+ * names are unverified), and failing on that would block every first run.
+ */
+function checkCreateOnlyFields(
+  resource: DesiredResource,
+  created: Resource,
+  warn: (message: string) => void,
+): void {
+  for (const field of resource.createOnly ?? []) {
+    const wanted = resource.fields[field];
+    if (!(field in created)) {
+      warn(
+        `Could not verify ${field} of new ${resource.kind} ${resource.identity.value}: the API does not report it`,
+      );
+    } else if (!sameValue(created[field], wanted)) {
+      throw new Error(
+        `New ${resource.kind} ${resource.identity.value} has ${field} ${describe(created[field])} instead of ${describe(wanted)}; ${field} can only be set on create, so fix it by hand. Stopped before creating anything else`,
+      );
+    }
   }
 }

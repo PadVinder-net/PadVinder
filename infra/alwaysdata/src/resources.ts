@@ -64,6 +64,8 @@ export function desiredResources(
         annotation,
         command: `node --env-file=release.env --env-file=/home/${account}/${directory}/.env ${program}/dist/main.js`,
         working_directory: `${directory}/current`,
+        // UNVERIFIED: the format of `environment` ("NAME=value" pairs separated by spaces,
+        // per the help pages; quoting is not documented).
         environment: "NODEJS_VERSION=24",
         // UNVERIFIED: whether a listed service shows `ssh_user` as an id (assumed) or an object.
         ssh_user: idOf("ssh", sshUser),
@@ -79,6 +81,7 @@ export function desiredResources(
       identity: sshUser,
       fields: {
         name: sshUser.value,
+        // UNVERIFIED: the value's spelling; the API documentation lists BASH, ZSH, ... as choices.
         shell: "BASH",
         can_use_password: false,
         // UNVERIFIED: that "" means the account root `/home/<account>`, so the server paths
@@ -120,6 +123,8 @@ export function desiredResources(
       fields: {
         name: `padvinder-${env}`,
         type: "reverse_proxy",
+        // UNVERIFIED: whether the API keeps the order; lists of plain values are compared as
+        // sets, so another order is not a change.
         addresses: environment.addresses,
         ssl_force: true,
         // UNVERIFIED: the field name of a reverse proxy's target URL, and whether the proxy

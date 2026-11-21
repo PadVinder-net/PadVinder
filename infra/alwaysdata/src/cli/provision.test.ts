@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { createAlwaysdataApi, type AlwaysdataApi } from "../api.ts";
@@ -34,14 +35,27 @@ let fake: FakeAlwaysdata;
 let api: AlwaysdataApi;
 let calls: { method: string; args: unknown[] }[];
 let output: string[];
+// Remembers written files, and answers the checksum command for them.
+let remoteFiles: Map<string, string>;
+const checksumCommand =
+  "if [ -f padvinder/staging/.env ]; then sha256sum < padvinder/staging/.env; fi";
 const fakeRemote: Remote = {
   exec: async (...callArgs) => {
     calls.push({ method: "exec", args: callArgs });
-    return { stdout: "", stderr: "" };
+    const file = /sha256sum < (\S+); fi$/.exec(callArgs[0])?.[1];
+    const content = file === undefined ? undefined : remoteFiles.get(file);
+    const stdout =
+      content === undefined ? "" : `${createHash("sha256").update(content).digest("hex")}  -\n`;
+    return { stdout, stderr: "" };
   },
-  writeFile: async (...callArgs) => void calls.push({ method: "writeFile", args: callArgs }),
+  writeFile: async (...callArgs) => {
+    calls.push({ method: "writeFile", args: callArgs });
+    remoteFiles.set(callArgs[0], callArgs[1]);
+  },
   upload: async (...callArgs) => void calls.push({ method: "upload", args: callArgs }),
 };
+const restartNotice =
+  /services must be restarted.*pnpm infra:services --environment staging --restart/;
 
 beforeAll(async () => {
   fake = await startFakeAlwaysdata();
@@ -59,6 +73,7 @@ beforeEach(() => {
   for (const items of fake.resources.values()) items.length = 0;
   calls = [];
   output = [];
+  remoteFiles = new Map();
 });
 
 const run = (provisionArgs: ProvisionArgs) =>
@@ -98,6 +113,7 @@ test("with --apply it creates the resources, then writes the env file and the re
   expect(await run(args({ apply: true }))).toBe(0);
   expect(writes().filter((r) => r.method === "POST")).toHaveLength(6);
   expect(calls).toEqual([
+    { method: "exec", args: [checksumCommand] },
     {
       method: "writeFile",
       args: [
@@ -108,7 +124,52 @@ test("with --apply it creates the resources, then writes the env file and the re
     },
     { method: "exec", args: ["mkdir -p -- padvinder/staging/releases"] },
   ]);
+  expect(output.join("\n")).toMatch(restartNotice);
   expectNoSecrets(output.join("\n"));
+});
+
+test("a restart is asked for only when the env file changed or the password was rotated", async () => {
+  await run(args({ apply: true }));
+  output = [];
+  expect(await run(args({ apply: true }))).toBe(0);
+  expect(output.join("\n")).not.toMatch(/restart/);
+
+  output = [];
+  expect(await run(args({ apply: true, rotatePassword: true }))).toBe(0);
+  expect(output.join("\n")).toMatch(restartNotice);
+
+  remoteFiles.set("padvinder/staging/.env", "DATABASE_URL=old\n");
+  output = [];
+  expect(await run(args({ apply: true }))).toBe(0);
+  expect(output.join("\n")).toMatch(restartNotice);
+  expect(remoteFiles.get("padvinder/staging/.env")).toBe(
+    renderEnvFile({ account: config.account, env: "staging", databasePassword: password }),
+  );
+});
+
+test("a create-only field the API leaves out of the new resource gives a warning", async () => {
+  // Stands in for an API that ignores an unknown field on create.
+  const dropping: AlwaysdataApi = {
+    ...api,
+    create: (kind, body, identity) => {
+      const { extensions: _dropped, ...rest } = body;
+      return api.create(kind, rest, identity);
+    },
+  };
+  const code = await runProvision({
+    args: args({ apply: true }),
+    config,
+    api: dropping,
+    remote: () => fakeRemote,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(0);
+  expect(output.join("\n")).toMatch(
+    /Warning: Could not verify extensions of new database <account>_staging/,
+  );
+  output = [];
+  expect(await run(args())).toBe(0);
+  expect(output.join("\n")).toMatch(/ok\s+database\s+<account>_staging; cannot verify extensions/);
 });
 
 test("a second --apply writes nothing to the API and rewrites the same env file", async () => {
@@ -161,28 +222,71 @@ test("an API error exits 1 with a redacted message", async () => {
   expectNoSecrets(output.join("\n"));
 });
 
-test("--inspect lists every resource without password-like fields", async () => {
-  fake.resources.get("database/user")!.push({
-    id: 7,
-    name: "acmecorp_staging",
-    password: "x",
-    permissions: { acmecorp_staging: "FULL" },
-    nested: { api_key: "x", Token: "x", ok: true },
+test("--inspect shows only field types of other resources, and the managed values of ours", async () => {
+  await run(args({ apply: true }));
+  fake.requests.length = 0;
+  output = [];
+  fake.resources.get("service")!.push({
+    id: 90,
+    annotation: "other app",
+    command: "node other.js --token=abc",
+    environment: "SECRET_X=abc OTHER=1",
+    ssh_user: 1,
   });
-  fake.resources.get("ssh")!.push({ id: 8, name: "acmecorp_deploy", publicKeys: ["x"] });
+  fake.resources.get("site")!.push({
+    id: 91,
+    name: "other",
+    type: "php",
+    addresses: ["other.example"],
+    ip: "2001:db8::1",
+  });
+  const ourUser = fake.resources.get("database/user")![0]!;
+  ourUser.nested = { api_key: "zzz", ok: true };
+
   expect(await run(args({ inspect: true }))).toBe(0);
   expect(writes()).toEqual([]);
-  const inspected = JSON.parse(output.join("\n")) as Record<string, unknown[]>;
+  const text = output.join("\n");
+  for (const value of ["SECRET_X", "abc", "other.example", "2001:db8", "other.js", "zzz"]) {
+    expect(text).not.toContain(value);
+  }
+  expectNoSecrets(text);
+
+  const inspected = JSON.parse(text) as Record<
+    string,
+    { fields: Record<string, string>; ours: Record<string, unknown>[] }
+  >;
   expect(Object.keys(inspected)).toEqual(["ssh", "database", "database/user", "site", "service"]);
-  expect(inspected["database/user"]).toEqual([
+  expect(inspected.site?.fields).toMatchObject({
+    addresses: "string[]",
+    ssl_force: "boolean",
+    ip: "string",
+  });
+  expect(inspected.service?.fields).toMatchObject({ ssh_user: "number", environment: "string" });
+  expect(inspected["database/user"]?.fields).toMatchObject({
+    password: "string",
+    permissions: "object{<account>_staging: string}",
+    nested: "object{api_key: string, ok: boolean}",
+  });
+  expect(inspected.service?.ours).toEqual([
+    expect.objectContaining({
+      annotation: "padvinder-api (staging)",
+      command:
+        "node --env-file=release.env --env-file=/home/<account>/padvinder/staging/.env api/dist/main.js",
+      environment: "NODEJS_VERSION=<value>",
+    }),
+    expect.objectContaining({ annotation: "padvinder-worker (staging)" }),
+  ]);
+  expect(inspected.ssh?.ours).toEqual([
+    expect.objectContaining({ name: "<account>_deploy", can_use_password: false }),
+  ]);
+  expect(inspected["database/user"]?.ours).toEqual([
     {
-      id: 7,
+      id: ourUser.id,
       name: "<account>_staging",
+      type: "POSTGRESQL",
       permissions: { "<account>_staging": "FULL" },
-      nested: { ok: true },
     },
   ]);
-  expect(inspected.ssh).toEqual([{ id: 8, name: "<account>_deploy" }]);
 });
 
 test("parseProvisionArgs reads the flags and rejects anything else", () => {
