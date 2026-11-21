@@ -17,6 +17,18 @@ import {
 
 export type Identity = { field: string; value: string };
 
+export type ServiceProgram = "api" | "worker";
+
+/** The annotation that identifies a service: `padvinder-api (staging)`. */
+export const serviceAnnotation = (program: ServiceProgram, env: EnvironmentName) =>
+  `padvinder-${program} (${env})`;
+
+/**
+ * UNVERIFIED: the name of a service's on/off field. Deploys turn a disabled service on
+ * (staging may be switched off); `pnpm infra:services` turns services on and off.
+ */
+export const serviceDisabledField = "is_disabled";
+
 const referenceTag = Symbol("reference");
 
 /** A field value that is the id of another resource, known once that resource exists. */
@@ -55,8 +67,8 @@ export function desiredResources(
   const database = databaseName(account, env);
   const sshUser: Identity = { field: "name", value: sshUserName(account) };
 
-  const service = (program: "api" | "worker"): DesiredResource => {
-    const annotation = `padvinder-${program} (${env})`;
+  const service = (program: ServiceProgram): DesiredResource => {
+    const annotation = serviceAnnotation(program, env);
     return {
       kind: "service",
       identity: { field: "annotation", value: annotation },
