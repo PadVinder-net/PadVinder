@@ -10,8 +10,13 @@ if (!mobilePort) throw new Error("MOBILE_PORT is not set. Run scripts/setup-work
 export default defineConfig({
   testDir: "e2e",
   testMatch: "**/*.spec.ts",
-  reporter: process.env.CI ? "github" : "list",
-  use: { baseURL: `http://localhost:${mobilePort}` },
+  // In CI: annotations on the pull request, plus an HTML report and traces of failed tests,
+  // which the e2e job uploads as an artifact.
+  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  use: {
+    baseURL: `http://localhost:${mobilePort}`,
+    ...(process.env.CI ? { trace: "retain-on-failure" } : {}),
+  },
   projects: [{ name: "chromium", use: { ...devices["Pixel 7"] } }],
   webServer: {
     command: "pnpm dev",
