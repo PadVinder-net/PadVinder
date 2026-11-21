@@ -9,6 +9,7 @@ export default defineConfig({
     projects: [
       "packages/*",
       "apps/*",
+      "infra/*",
       { test: { name: "scripts", include: ["scripts/**/*.test.ts"] } },
     ],
     // Root-level, so it runs once per run, not once per project.
