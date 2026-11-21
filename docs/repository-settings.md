@@ -13,7 +13,7 @@ Settings, Rules, Rulesets, New ruleset, New branch ruleset.
   - Restrict deletions.
   - Require linear history.
   - Require a pull request before merging. Required approvals: 0 while there is one developer; raise it when there are more. Allowed merge methods: squash and rebase (linear history rules out merge commits).
-  - Require status checks to pass. Turn on "Require branches to be up to date before merging". Add these checks: `check`, `visual`, `e2e`, `scan` and `release / build`. Confirm the exact names in the picker after the first run: a job that calls a reusable workflow shows as `<caller job> / <called job>`, which is why the last one is `release / build`.
+  - Require status checks to pass. Turn on "Require branches to be up to date before merging". Add these checks: `check`, `visual`, `e2e`, `scan`, `deploy-test` and `release / build`. Confirm the exact names in the picker after the first run: a job that calls a reusable workflow shows as `<caller job> / <called job>`, which is why the last one is `release / build`.
   - Block force pushes.
 - Bypass list: leave empty, so the rules also apply to admins.
 
@@ -50,6 +50,7 @@ gh api repos/OWNER/REPO/rulesets --method POST --input - <<'JSON'
           { "context": "visual" },
           { "context": "e2e" },
           { "context": "scan" },
+          { "context": "deploy-test" },
           { "context": "release / build" }
         ]
       }
@@ -108,8 +109,41 @@ gh api repos/OWNER/REPO/vulnerability-alerts --method PUT
 gh api repos/OWNER/REPO/automated-security-fixes --method PUT
 ```
 
-## 4. Check afterwards
+## 4. Environments for deployment
 
-- Open a pull request and confirm that all five checks run and that the merge button waits for them.
+Settings, Environments. The workflows in `.github/workflows/` (`deploy.yml`, `provision.yml`, `staging-services.yml`) enter these environments, and only there do they see the secrets. Where each value comes from is in `infra/alwaysdata/README.md`, "GitHub setup".
+
+- [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, with the branch rules `main`, `staging/**` and `provision/staging`. No required reviewers.
+- [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off, or one maintainer blocks himself. Deployment branches and tags: `main` and `provision/production`.
+- [ ] In both environments, the secrets `ALWAYSDATA_API_KEY`, `DEPLOY_SSH_KEY` and `DATABASE_PASSWORD` (a different one per environment), and the variables `ALWAYSDATA_ACCOUNT` and `SSH_KNOWN_HOSTS`. One deploy key may serve both environments: both use the same SSH user.
+
+Through the API (the environment names are created on the first call; add the secrets and variables with `gh secret set` and `gh variable set`, see the README):
+
+```sh
+gh api repos/OWNER/REPO/environments/staging --method PUT --input - <<'JSON'
+{ "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
+JSON
+for pattern in main 'staging/**' provision/staging; do
+  gh api repos/OWNER/REPO/environments/staging/deployment-branch-policies --method POST -f name="$pattern" -f type=branch
+done
+
+# REVIEWER_ID: gh api users/<login> --jq .id
+gh api repos/OWNER/REPO/environments/production --method PUT --input - <<JSON
+{
+  "reviewers": [{ "type": "User", "id": REVIEWER_ID }],
+  "prevent_self_review": false,
+  "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
+}
+JSON
+for pattern in main provision/production; do
+  gh api repos/OWNER/REPO/environments/production/deployment-branch-policies --method POST -f name="$pattern" -f type=branch
+done
+```
+
+GitHub's wildcards do not match `/`, so a staging branch is `staging/<name>` with no further slash. Secrets and variables are per environment: set each in both.
+
+## 5. Check afterwards
+
+- Open a pull request and confirm that all six checks run and that the merge button waits for them.
 - Try pushing directly to `main`, and force-pushing: both must be refused.
 - A required check that never reports blocks the merge forever. If a job is renamed in the workflow, update the ruleset in the same change.

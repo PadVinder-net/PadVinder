@@ -8,7 +8,7 @@ This file summarizes the technical chapter (section 16) of the project plan of 2
 
 ## Current state
 
-The repository holds the monorepo skeleton (21 November 2026): one vertical slice through every layer (the health endpoint, see "Reference example"), local development, tests and the generated API client. CI runs on every pull request (see "CI"), and a release can be built as a directory, a tarball and a container image. Deployment (pull request 3), the `infra/` deploy scripts and authentication do not exist yet, and there are no write endpoints. Update this file in the same pull request when you change a command or a path below.
+The repository holds the monorepo skeleton (21 November 2026): one vertical slice through every layer (the health endpoint, see "Reference example"), local development, tests and the generated API client. CI runs on every pull request (see "CI"), and a release can be built as a directory, a tarball and a container image. Deployment to Alwaysdata exists (22 November 2026, pull request 3): provisioning and deploy scripts in `infra/alwaysdata/`, and the workflows that run them. It is tested against fakes only; nothing has run against the real account yet, and the Alwaysdata questions in "Open technical points" stay open until the first deploy to staging (see "Verification" in `infra/alwaysdata/README.md`). Authentication does not exist yet, and there are no write endpoints. Update this file in the same pull request when you change a command or a path below.
 
 Milestones:
 
@@ -102,6 +102,7 @@ packages/
   api-client/       openapi.json and the generated client (committed)
   ui/               Shared React components (Tailwind, shadcn/ui), Storybook; the map will live here too
 infra/
+  alwaysdata/       Provisioning and deploy scripts for Alwaysdata, and their README
   container/        Dockerfile of the release image
 e2e/                Playwright tests
 scripts/            Workspace setup and teardown, env loading, Vitest global setup
@@ -264,25 +265,26 @@ Service worker, camera and push work only over HTTPS, also during local developm
 
 Needs Docker, and pnpm 12 (it downloads Node 24 by itself). Run commands from the repository root.
 
-| Command                                     | What it does                                                                                                                                                        |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `./scripts/setup-workspace.sh`              | One-time setup per workspace, safe to repeat: `pnpm install`, `.env`, shared database container, this workspace's databases, migrations, seed, Playwright Chromium. |
-| `pnpm dev`                                  | API, worker, mobile and portal with hot reload, in one process group                                                                                                |
-| `pnpm dev:https`                            | Same over HTTPS, for an iPhone on the local network (POSIX shells)                                                                                                  |
-| `pnpm check`                                | Type check (also `scripts/`, `e2e/` and the root configs), Oxlint, Oxfmt check, `check:generated`, Vitest. **Every agent runs it before finishing**                 |
-| `pnpm check:generated`                      | Regenerates the OpenAPI description, the client and the migrations in place and fails if that changed any file (review and commit the result). Part of `pnpm check` |
-| `pnpm test:visual:docker`                   | Storybook visual tests, run in the Playwright Docker image (needs Docker)                                                                                           |
-| `pnpm screenshots:update`                   | Same, but rewrites the reference images in `packages/ui/src/__screenshots__`. The only way to make them                                                             |
-| `pnpm release:build`                        | Builds everything into `release/` and `padvinder-release.tar.gz` (refuses a dirty tree; `--allow-dirty` for a local test)                                           |
-| `pnpm release:image`, `pnpm release:smoke`  | Build the container image `padvinder:local` from the tarball; start it against a fresh database and check `/api/health`, `/app/` and `/`                            |
-| `pnpm scan:secrets`, `pnpm lint:workflows`  | Gitleaks over the whole git history; actionlint (with shellcheck) over `.github/workflows` (both in Docker)                                                         |
-| `pnpm test`, `pnpm test:e2e`                | Vitest only; Playwright (needs plain `pnpm dev`, not `dev:https`)                                                                                                   |
-| `pnpm test:fake-host`                       | `infra/alwaysdata` over SSH against a fake host container (needs Docker): `*.fake-host.test.ts`, not in `pnpm test`                                                 |
-| `pnpm format`                               | Oxfmt writes (it also formats Markdown)                                                                                                                             |
-| `pnpm db:generate`, `db:migrate`, `db:seed` | Create a migration after a schema change; apply migrations; seed made-up data                                                                                       |
-| `pnpm api:generate`                         | Regenerate `openapi.json` and the client after any API schema change                                                                                                |
-| `pnpm storybook`, `pnpm build`              | Storybook for `packages/ui`; production builds of the apps                                                                                                          |
-| `./scripts/teardown-workspace.sh`           | Drops this workspace's databases (Conductor archive script)                                                                                                         |
+| Command                                                  | What it does                                                                                                                                                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `./scripts/setup-workspace.sh`                           | One-time setup per workspace, safe to repeat: `pnpm install`, `.env`, shared database container, this workspace's databases, migrations, seed, Playwright Chromium.                                                 |
+| `pnpm dev`                                               | API, worker, mobile and portal with hot reload, in one process group                                                                                                                                                |
+| `pnpm dev:https`                                         | Same over HTTPS, for an iPhone on the local network (POSIX shells)                                                                                                                                                  |
+| `pnpm check`                                             | Type check (also `scripts/`, `e2e/` and the root configs), Oxlint, Oxfmt check, `check:generated`, Vitest. **Every agent runs it before finishing**                                                                 |
+| `pnpm check:generated`                                   | Regenerates the OpenAPI description, the client and the migrations in place and fails if that changed any file (review and commit the result). Part of `pnpm check`                                                 |
+| `pnpm test:visual:docker`                                | Storybook visual tests, run in the Playwright Docker image (needs Docker)                                                                                                                                           |
+| `pnpm screenshots:update`                                | Same, but rewrites the reference images in `packages/ui/src/__screenshots__`. The only way to make them                                                                                                             |
+| `pnpm release:build`                                     | Builds everything into `release/` and `padvinder-release.tar.gz` (refuses a dirty tree; `--allow-dirty` for a local test)                                                                                           |
+| `pnpm release:image`, `pnpm release:smoke`               | Build the container image `padvinder:local` from the tarball; start it against a fresh database and check `/api/health`, `/app/` and `/`                                                                            |
+| `pnpm scan:secrets`, `pnpm lint:workflows`               | Gitleaks over the whole git history; actionlint (with shellcheck) over `.github/workflows` (both in Docker)                                                                                                         |
+| `pnpm test`, `pnpm test:e2e`                             | Vitest only; Playwright (needs plain `pnpm dev`, not `dev:https`)                                                                                                                                                   |
+| `pnpm infra:provision`, `infra:deploy`, `infra:services` | Plan or apply the Alwaysdata resources of an environment; deploy a release tarball; turn an environment's services on or off or restart them. Need the account's credentials; usage in `infra/alwaysdata/README.md` |
+| `pnpm test:fake-host`                                    | `infra/alwaysdata` over SSH against a fake host container (needs Docker): `*.fake-host.test.ts`, not in `pnpm test`                                                                                                 |
+| `pnpm format`                                            | Oxfmt writes (it also formats Markdown)                                                                                                                                                                             |
+| `pnpm db:generate`, `db:migrate`, `db:seed`              | Create a migration after a schema change; apply migrations; seed made-up data                                                                                                                                       |
+| `pnpm api:generate`                                      | Regenerate `openapi.json` and the client after any API schema change                                                                                                                                                |
+| `pnpm storybook`, `pnpm build`                           | Storybook for `packages/ui`; production builds of the apps                                                                                                                                                          |
+| `./scripts/teardown-workspace.sh`                        | Drops this workspace's databases (Conductor archive script)                                                                                                                                                         |
 
 Details:
 
@@ -323,16 +325,22 @@ GitHub Actions, `.github/workflows/ci.yml`, on every pull request and on `workfl
 - `visual`: the Storybook visual tests in the Playwright image. Failures upload `visual-diffs`.
 - `e2e`: Playwright end-to-end tests against `pnpm dev`, in the Playwright image.
 - `scan`: gitleaks over the whole history, and actionlint (`pnpm scan:secrets`, `pnpm lint:workflows`).
-- `release / build` (the reusable `build-release.yml`): builds the release, builds the container image from the tarball, smoke-tests it, and uploads the tarball as artifact `release-<full commit sha>` for 7 days. Pull request 3 deploys from that artifact.
+- `release / build` (the reusable `build-release.yml`): builds the release, builds the container image from the tarball, smoke-tests it, and uploads the tarball as artifact `release-<full commit sha>`. The deploy workflow calls it too and deploys that tarball.
+- `deploy-test`: `pnpm test:fake-host` with the tarball of the same run: the deploy scripts over SSH against a fake host container.
 
-Workflows use no secrets, run with read-only permissions, and pin every action to a full commit SHA. Tools run as pinned Docker images from scripts in `scripts/`, so the same command works locally. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for npm, GitHub Actions and Docker files. It does not update the `container:` and `services:` images inside workflows: update those by hand (the Playwright tag together with the package, see "Visual tests").
+The CI workflow uses no secrets. Only the deploy workflows (`deploy.yml`, `provision.yml`, `staging-services.yml`) do, through the GitHub environments `staging` and `production`. All workflows run with read-only permissions, and pin every action to a full commit SHA. Tools run as pinned Docker images from scripts in `scripts/`, so the same command works locally. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for npm, GitHub Actions and Docker files. It does not update the `container:` and `services:` images inside workflows: update those by hand (the Playwright tag together with the package, see "Visual tests").
 
-### Planned workflow (deployment not built yet)
+### Workflow and deployment
 
 - **Every change goes through a pull request and CI,** also with one developer. Short-lived branches from `main`.
-- **Deployment:** merging to `main` deploys to staging automatically; production follows after approval. Migrations run on the server in the deploy step, before the services restart. Staging shares 1 GB of RAM with production, so it may be switched off when unused.
 - **Branch protection** on `main` requires the CI checks; see `docs/repository-settings.md`.
 - **Do not install dependencies on the server.** The artifact contains everything.
+
+#### Deployment
+
+Merging to `main` builds one release and deploys it to staging; production follows after the maintainer approves it in the run. Pushing a branch named `staging/<name>` deploys that branch to staging. Migrations run on the server before the services restart; a failed health check switches back to the previous release. Provisioning (`pnpm infra:provision`, the Provision workflow, or a push to `provision/<env>` for a read-only plan) makes the Alwaysdata sites, services, databases and SSH user, and writes the env file. Staging shares 1 GB of RAM with production and may be switched off (the Staging services workflow).
+
+Everything else is in `infra/alwaysdata/README.md`: what runs where, the one-time GitHub and Alwaysdata setup, the first-run order, operating notes (rollback, rotating secrets, logs), DNS, rebuilding on another host, and the checklist of what is not yet verified. Update it in the same pull request when you change a deploy script, a workflow or an environment name.
 
 ### Tests
 
