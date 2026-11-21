@@ -1,5 +1,5 @@
 // Creates and updates the Alwaysdata resources of one environment, and writes its env file.
-// Usage: pnpm infra:provision --environment <staging|production> [--apply] [--rotate-password]
+// Usage: pnpm infra:provision --environment <staging|production> [--apply [--rotate-password]]
 //        pnpm infra:provision --environment <staging|production> --inspect
 // Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, DEPLOY_SSH_KEY_FILE and
 // SSH_KNOWN_HOSTS_FILE from the environment. Its output may land in a public log: every line
@@ -27,13 +27,15 @@ export type ProvisionArgs = {
   inspect: boolean;
 };
 
-export const usage = `Usage: pnpm infra:provision --environment <staging|production> [--apply] [--rotate-password]
+export const usage = `Usage: pnpm infra:provision --environment <staging|production> [--apply [--rotate-password]]
        pnpm infra:provision --environment <staging|production> --inspect
 
   --apply            Carry out the plan, then write the env file on the server.
                      Without it nothing changes.
   --rotate-password  Send the database password again, also to an existing database user.
-                     If you changed DATABASE_PASSWORD, pass --rotate-password.
+                     If you changed DATABASE_PASSWORD, pass --rotate-password. Needs
+                     --apply. Without it, --apply refuses to write a password to the
+                     env file that differs from the one already there.
   --inspect          Only print, per kind, the field names and value types of the
                      account's resources, and the values of the fields provisioning
                      manages on its own resources, to confirm the names in resources.ts.`;
@@ -71,6 +73,9 @@ export function parseProvisionArgs(argv: string[]): ProvisionArgs {
   }
   if (values.inspect && (values.apply || values["rotate-password"])) {
     throw new UsageError("--inspect changes nothing; leave out --apply and --rotate-password.");
+  }
+  if (values["rotate-password"] && !values.apply) {
+    throw new UsageError("--rotate-password changes the password: pass --apply too.");
   }
   return {
     environment,
@@ -190,6 +195,19 @@ async function remoteChecksum(remote: Remote, path: string): Promise<string | un
   return /\b([0-9a-f]{64})\b/.exec(stdout)?.[1];
 }
 
+/** The DATABASE_URL in a remote env file, or undefined when there is none. Never print it. */
+async function remoteDatabaseUrl(remote: Remote, path: string): Promise<string | undefined> {
+  const { stdout } = await remote.exec(
+    `if [ -f ${path} ]; then grep -m 1 '^DATABASE_URL=' ${path} || true; fi`,
+  );
+  return /^DATABASE_URL=(.*)$/m.exec(stdout)?.[1];
+}
+
+const databaseUrlOf = (envFile: string) => /^DATABASE_URL=(.*)$/m.exec(envFile)?.[1];
+
+export const passwordMismatchMessage =
+  "The database password in GitHub differs from the one on the server. Run Provision again with rotate-password, or restore the old secret.";
+
 /** Runs the provisioning and returns the exit code. Every printed line is redacted. */
 export async function runProvision(input: {
   args: ProvisionArgs;
@@ -233,17 +251,37 @@ export async function runProvision(input: {
     print("Applied the plan.");
     const directory = environmentDirectory(env);
     const content = renderEnvFile({ account: config.account, env, databasePassword });
-    let envFileChanged: boolean;
-    try {
-      const remote = input.remote();
-      const before = await remoteChecksum(remote, `${directory}/.env`);
-      envFileChanged = before !== createHash("sha256").update(content).digest("hex");
-      await remote.writeFile(`${directory}/.env`, content, 0o600);
-      await remote.exec(`mkdir -p -- ${directory}/releases`);
-    } catch (error) {
+    const sshHint = () =>
       print(
         `Could not write ${directory}/.env over SSH. On the first run, add the deploy public key to SSH user ${sshUserName(config.account)} in the Alwaysdata panel, then run again with --apply.`,
       );
+    let remote: Remote;
+    let existingDatabaseUrl: string | undefined;
+    let before: string | undefined;
+    try {
+      remote = input.remote();
+      existingDatabaseUrl = await remoteDatabaseUrl(remote, `${directory}/.env`);
+      before = await remoteChecksum(remote, `${directory}/.env`);
+    } catch (error) {
+      sshHint();
+      throw error;
+    }
+    // Without --rotate-password the existing database user keeps its old password, so a new
+    // password in the env file would break the next restart, and the rollback with it.
+    if (
+      !args.rotatePassword &&
+      existingDatabaseUrl !== undefined &&
+      existingDatabaseUrl !== databaseUrlOf(content)
+    ) {
+      print(passwordMismatchMessage);
+      return 1;
+    }
+    const envFileChanged = before !== createHash("sha256").update(content).digest("hex");
+    try {
+      await remote.writeFile(`${directory}/.env`, content, 0o600);
+      await remote.exec(`mkdir -p -- ${directory}/releases`);
+    } catch (error) {
+      sshHint();
       throw error;
     }
     print(`Wrote ${directory}/.env and created ${directory}/releases on the server.`);

@@ -18,6 +18,12 @@ on:
         description: Carry out the plan. Without it, only print the plan.
         type: boolean
         default: false
+      rotate-password:
+        description: >-
+          Send DATABASE_PASSWORD to the existing database user too. Needed after changing the
+          secret; only together with apply.
+        type: boolean
+        default: false
       inspect:
         description: Also print the field names and value types of the account's resources.
         type: boolean
@@ -86,10 +92,15 @@ jobs:
           ENVIRONMENT: ${{ needs.target.outputs.environment }}
           # Empty on push: a push only plans.
           APPLY: ${{ inputs.apply }}
+          ROTATE_PASSWORD: ${{ inputs.rotate-password }}
         run: |
           args=(--environment "$ENVIRONMENT")
           if [[ "$APPLY" == "true" ]]; then
             args+=(--apply)
+          fi
+          # Without apply the CLI rejects this with a usage error.
+          if [[ "$ROTATE_PASSWORD" == "true" ]]; then
+            args+=(--rotate-password)
           fi
           pnpm infra:provision "${args[@]}"
       # Read-only, so it also runs when the plan failed: its output helps find out why.

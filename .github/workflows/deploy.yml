@@ -79,15 +79,37 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      # The approval may come long after the push. If main has moved on since, a newer run
+      # deploys a newer commit: do not put this older one live in between.
+      - name: Check that this is still the head of main
+        id: head
+        env:
+          COMMIT: ${{ github.sha }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          head="$(git ls-remote "$REPOSITORY_URL" refs/heads/main | cut -f1)"
+          if [[ -z "$head" ]]; then
+            echo "::error::Could not read the head of main."
+            exit 1
+          fi
+          if [[ "$head" == "$COMMIT" ]]; then
+            echo "current=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipped: main has moved on to $head since $COMMIT. Its own run deploys it."
+            echo "current=false" >>"$GITHUB_OUTPUT"
+          fi
+      - if: steps.head.outputs.current == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.release.outputs.artifact-name }}
       # After the dependencies are installed, so no install script sees the key.
-      - uses: ./.github/actions/alwaysdata-credentials
+      - if: steps.head.outputs.current == 'true'
+        uses: ./.github/actions/alwaysdata-credentials
         with:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ vars.SSH_KNOWN_HOSTS }}
       - name: Deploy
+        if: steps.head.outputs.current == 'true'
         env:
           ALWAYSDATA_ACCOUNT: ${{ vars.ALWAYSDATA_ACCOUNT }}
           ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}

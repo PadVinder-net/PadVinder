@@ -7,7 +7,12 @@ import type { InfraConfig } from "../config.ts";
 import { renderEnvFile } from "../env-file.ts";
 import type { Remote } from "../remote.ts";
 import { startFakeAlwaysdata, type FakeAlwaysdata } from "../testing/fake-api.ts";
-import { parseProvisionArgs, runProvision, type ProvisionArgs } from "./provision.ts";
+import {
+  parseProvisionArgs,
+  passwordMismatchMessage,
+  runProvision,
+  type ProvisionArgs,
+} from "./provision.ts";
 
 const password = "p@ss/w+rd";
 const apiKey = "api/key+value";
@@ -35,18 +40,28 @@ let fake: FakeAlwaysdata;
 let api: AlwaysdataApi;
 let calls: { method: string; args: unknown[] }[];
 let output: string[];
-// Remembers written files, and answers the checksum command for them.
+// Remembers written files, and answers the DATABASE_URL and checksum commands for them.
 let remoteFiles: Map<string, string>;
+const databaseUrlCommand =
+  "if [ -f padvinder/staging/.env ]; then grep -m 1 '^DATABASE_URL=' padvinder/staging/.env || true; fi";
 const checksumCommand =
   "if [ -f padvinder/staging/.env ]; then sha256sum < padvinder/staging/.env; fi";
 const fakeRemote: Remote = {
   exec: async (...callArgs) => {
     calls.push({ method: "exec", args: callArgs });
-    const file = /sha256sum < (\S+); fi$/.exec(callArgs[0])?.[1];
-    const content = file === undefined ? undefined : remoteFiles.get(file);
-    const stdout =
-      content === undefined ? "" : `${createHash("sha256").update(content).digest("hex")}  -\n`;
-    return { stdout, stderr: "" };
+    const checksumFile = /sha256sum < (\S+); fi$/.exec(callArgs[0])?.[1];
+    if (checksumFile !== undefined) {
+      const content = remoteFiles.get(checksumFile);
+      const stdout =
+        content === undefined ? "" : `${createHash("sha256").update(content).digest("hex")}  -\n`;
+      return { stdout, stderr: "" };
+    }
+    const grepFile = /'\^DATABASE_URL=' (\S+) \|\| true; fi$/.exec(callArgs[0])?.[1];
+    if (grepFile !== undefined) {
+      const line = /^DATABASE_URL=.*$/m.exec(remoteFiles.get(grepFile) ?? "")?.[0];
+      return { stdout: line === undefined ? "" : `${line}\n`, stderr: "" };
+    }
+    return { stdout: "", stderr: "" };
   },
   writeFile: async (...callArgs) => {
     calls.push({ method: "writeFile", args: callArgs });
@@ -113,6 +128,7 @@ test("with --apply it creates the resources, then writes the env file and the re
   expect(await run(args({ apply: true }))).toBe(0);
   expect(writes().filter((r) => r.method === "POST")).toHaveLength(6);
   expect(calls).toEqual([
+    { method: "exec", args: [databaseUrlCommand] },
     { method: "exec", args: [checksumCommand] },
     {
       method: "writeFile",
@@ -138,13 +154,51 @@ test("a restart is asked for only when the env file changed or the password was 
   expect(await run(args({ apply: true, rotatePassword: true }))).toBe(0);
   expect(output.join("\n")).toMatch(restartNotice);
 
-  remoteFiles.set("padvinder/staging/.env", "DATABASE_URL=old\n");
+  // Another line changed, the password did not.
+  const envFile = renderEnvFile({
+    account: config.account,
+    env: "staging",
+    databasePassword: password,
+  });
+  remoteFiles.set("padvinder/staging/.env", envFile.replace("LOG_LEVEL=info", "LOG_LEVEL=debug"));
   output = [];
   expect(await run(args({ apply: true }))).toBe(0);
   expect(output.join("\n")).toMatch(restartNotice);
+  expect(remoteFiles.get("padvinder/staging/.env")).toBe(envFile);
+});
+
+test("--apply refuses a password that differs from the env file's, unless --rotate-password", async () => {
+  expect(await run(args({ apply: true }))).toBe(0);
+  const oldPassword = "old-secret-value";
+  const oldEnvFile = renderEnvFile({
+    account: config.account,
+    env: "staging",
+    databasePassword: oldPassword,
+  });
+  remoteFiles.set("padvinder/staging/.env", oldEnvFile);
+  calls = [];
+  output = [];
+  fake.requests.length = 0;
+
+  expect(await run(args({ apply: true }))).toBe(1);
+  const text = output.join("\n");
+  expect(text).toContain(passwordMismatchMessage);
+  expect(text).not.toContain(oldPassword);
+  expect(text).not.toMatch(/postgres:\/\//);
+  expectNoSecrets(text);
+  expect(calls.filter((call) => call.method !== "exec")).toEqual([]);
+  expect(calls.map((call) => call.args[0])).not.toContain("mkdir -p -- padvinder/staging/releases");
+  expect(writes()).toEqual([]);
+  expect(remoteFiles.get("padvinder/staging/.env")).toBe(oldEnvFile);
+
+  output = [];
+  expect(await run(args({ apply: true, rotatePassword: true }))).toBe(0);
+  expect(writes().some((r) => r.method === "PATCH")).toBe(true);
   expect(remoteFiles.get("padvinder/staging/.env")).toBe(
     renderEnvFile({ account: config.account, env: "staging", databasePassword: password }),
   );
+  expect(output.join("\n")).toMatch(restartNotice);
+  expect(output.join("\n")).not.toContain(oldPassword);
 });
 
 test("a create-only field the API leaves out of the new resource gives a warning", async () => {
@@ -293,8 +347,8 @@ test("parseProvisionArgs reads the flags and rejects anything else", () => {
   expect(parseProvisionArgs(["--environment", "production", "--apply"])).toEqual(
     args({ environment: "production", apply: true }),
   );
-  expect(parseProvisionArgs(["--environment=staging", "--rotate-password"])).toEqual(
-    args({ rotatePassword: true }),
+  expect(parseProvisionArgs(["--environment=staging", "--apply", "--rotate-password"])).toEqual(
+    args({ apply: true, rotatePassword: true }),
   );
   for (const bad of [
     [],
@@ -302,6 +356,7 @@ test("parseProvisionArgs reads the flags and rejects anything else", () => {
     ["--environment", "staging", "--force"],
     ["--environment", "staging", "extra"],
     ["--environment", "staging", "--inspect", "--apply"],
+    ["--environment", "staging", "--rotate-password"],
   ]) {
     expect(() => parseProvisionArgs(bad)).toThrow(/Usage/);
   }
@@ -313,6 +368,13 @@ test("the CLI exits 2 with usage on an unknown flag and 1 on missing variables",
   const unknown = spawnSync(process.execPath, [script, "--bogus"], { env, encoding: "utf8" });
   expect(unknown.status).toBe(2);
   expect(unknown.stderr).toMatch(/Usage/);
+  const rotateOnly = spawnSync(
+    process.execPath,
+    [script, "--environment", "staging", "--rotate-password"],
+    { env, encoding: "utf8" },
+  );
+  expect(rotateOnly.status).toBe(2);
+  expect(rotateOnly.stderr).toMatch(/--rotate-password changes the password: pass --apply too/);
   const missing = spawnSync(process.execPath, [script, "--environment", "staging"], {
     env,
     encoding: "utf8",
