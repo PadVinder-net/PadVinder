@@ -64,6 +64,25 @@ test("a missing service exits 1 with a redacted message", async () => {
   expect(text).not.toContain(apiKey);
 });
 
+test("an IP address in an error shows as <ip>", async () => {
+  const unreachable: AlwaysdataApi = {
+    ...api,
+    list: async () => {
+      throw new Error(
+        "GET /v1/service/ failed with 0: network error: connect ECONNREFUSED 192.0.2.10:443",
+      );
+    },
+  };
+  const code = await runServices({
+    args: parseServicesArgs(["--environment", "staging", "--restart"]),
+    config: { environment: "staging", account, apiKey },
+    api: unreachable,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(1);
+  expect(output.join("\n")).toContain("connect ECONNREFUSED <ip>:443");
+});
+
 test("parseServicesArgs needs exactly one action", () => {
   expect(parseServicesArgs(["--environment", "production", "--restart"])).toEqual({
     environment: "production",

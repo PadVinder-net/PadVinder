@@ -337,6 +337,24 @@ test("an SSH failure after apply exits 1 and says how to add the deploy key", as
   expectNoSecrets(text);
 });
 
+test("an IP address in an SSH error shows as <ip>", async () => {
+  const failing: Remote = {
+    ...fakeRemote,
+    exec: async () => {
+      throw new Error("ssh: connect to host 2001:db8::1 port 22: Connection refused");
+    },
+  };
+  const code = await runProvision({
+    args: args({ apply: true }),
+    config,
+    api,
+    remote: () => failing,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(1);
+  expect(output.join("\n")).toContain("connect to host <ip> port 22");
+});
+
 test("an API error exits 1 with a redacted message", async () => {
   fake.failNext(400);
   expect(await run(args({ apply: true }))).toBe(1);

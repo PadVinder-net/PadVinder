@@ -1,12 +1,13 @@
 // Turns the API and worker services of one environment on or off, or restarts them.
 // Usage: pnpm infra:services --environment <staging|production> (--enable | --disable | --restart)
 // Reads ALWAYSDATA_ACCOUNT and ALWAYSDATA_API_KEY from the environment. Every printed line
-// goes through redact(), and the account name shows as <account>.
+// goes through redactForLog(): secrets are hidden, IP addresses show as <ip> and the account
+// name as <account>.
 import { parseArgs } from "node:util";
 import { createAlwaysdataApi, type AlwaysdataApi } from "../api.ts";
 import { loadInfraConfig, type InfraConfig } from "../config.ts";
 import { isEnvironmentName, type EnvironmentName } from "../environments.ts";
-import { redact } from "../redact.ts";
+import { redactForLog } from "../redact.ts";
 import { findServices, restartServices, setServicesEnabled } from "../services.ts";
 
 const actions = ["enable", "disable", "restart"] as const;
@@ -66,8 +67,7 @@ export async function runServices(input: {
   print: (line: string) => void;
 }): Promise<number> {
   const { args, config, api } = input;
-  const print = (text: string) =>
-    input.print(redact(text, [config.apiKey]).replaceAll(config.account, "<account>"));
+  const print = (text: string) => input.print(redactForLog(text, [config.apiKey], config.account));
   try {
     const env = args.environment;
     if (args.action === "restart") {

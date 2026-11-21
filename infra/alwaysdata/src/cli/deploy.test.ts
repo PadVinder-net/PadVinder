@@ -36,7 +36,9 @@ let uploadedFrom: string | undefined;
 const remote: Remote = {
   exec: async (command) => {
     remoteCalls.push(command);
-    throw new Error(`Permission denied for ${config.account}_deploy (key ${apiKey})`);
+    throw new Error(
+      `Permission denied for ${config.account}_deploy (key ${apiKey}) from 192.0.2.10 via 2001:db8::1`,
+    );
   },
   writeFile: async () => {
     throw new Error("not used");
@@ -118,13 +120,15 @@ test("unpacks the tarball, deploys from it and removes the unpacked copy", async
   expect(leftover).toEqual([]);
 });
 
-test("output never contains the API key or the account", async () => {
+test("output never contains the API key, the account or an IP address", async () => {
   const tarball = await makeTarball(commit);
   expect(await deployWith(args(tarball))).toBe(1);
   const text = output.join("\n");
   expect(text).toMatch(/Permission denied for <account>_deploy/);
   expect(text).not.toContain(apiKey);
   expect(text).not.toContain(config.account);
+  expect(text).toContain("from <ip> via <ip>");
+  expect(text).not.toMatch(/192\.0\.2\.10|2001:db8/);
 });
 
 test("a tarball without release/ is refused", async () => {

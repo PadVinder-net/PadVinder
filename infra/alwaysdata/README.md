@@ -55,7 +55,7 @@ The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`
 
 ## The scripts
 
-All three read their settings from environment variables with the same names as the GitHub secrets. Errors name missing variables, never their values. Every line they print goes through `redact()`.
+All three read their settings from environment variables with the same names as the GitHub secrets. Errors name missing variables, never their values. Every line they print goes through `redactForLog()`: secrets show as `***`, IP addresses as `<ip>` and the account name as `<account>`.
 
 | Command                                                                                        | Needs                                                                            | What it does                                                                                                                                         |
 | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |

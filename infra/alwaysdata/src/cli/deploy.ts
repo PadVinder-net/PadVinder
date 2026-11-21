@@ -3,8 +3,9 @@
 // Usage: pnpm infra:deploy --environment <staging|production> --tarball <path> --commit <sha>
 //          [--health-url <url>]
 // Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DEPLOY_SSH_KEY_FILE and SSH_KNOWN_HOSTS_FILE
-// from the environment. Its output lands in a public log: every line goes through redact(),
-// and the account name shows as <account>.
+// from the environment. Its output lands in a public log: every line goes through
+// redactForLog(): secrets are hidden, IP addresses show as <ip> and the account name as
+// <account>.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -15,7 +16,7 @@ import { createAlwaysdataApi, type AlwaysdataApi } from "../api.ts";
 import { loadInfraConfig, type InfraConfig } from "../config.ts";
 import { deploy, type DeployOptions } from "../deploy.ts";
 import { environments, isEnvironmentName, type EnvironmentName } from "../environments.ts";
-import { redact } from "../redact.ts";
+import { redactForLog } from "../redact.ts";
 import { createSshRemote, type Remote } from "../remote.ts";
 
 const run = promisify(execFile);
@@ -92,8 +93,7 @@ export async function runDeploy(input: {
   health?: DeployOptions["health"];
 }): Promise<number> {
   const { args, config } = input;
-  const print = (text: string) =>
-    input.print(redact(text, [config.apiKey]).replaceAll(config.account, "<account>"));
+  const print = (text: string) => input.print(redactForLog(text, [config.apiKey], config.account));
   const workDir = await mkdtemp(join(tmpdir(), "padvinder-release-"));
   try {
     await run("tar", ["-xzf", args.tarball, "-C", workDir]);

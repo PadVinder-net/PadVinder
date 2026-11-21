@@ -3,7 +3,8 @@
 //        pnpm infra:provision --environment <staging|production> --inspect
 // Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, DEPLOY_SSH_KEY_FILE and
 // SSH_KNOWN_HOSTS_FILE from the environment. Its output may land in a public log: every line
-// goes through redact(), and the account name shows as <account>.
+// goes through redactForLog(): secrets are hidden, IP addresses show as <ip> and the account
+// name as <account>.
 import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import { createAlwaysdataApi, type AlwaysdataApi, type ResourceKind } from "../api.ts";
@@ -16,7 +17,7 @@ import {
   type EnvironmentName,
 } from "../environments.ts";
 import { applyPlan, planResources, type PlannedChange } from "../reconcile.ts";
-import { redact } from "../redact.ts";
+import { redactForLog } from "../redact.ts";
 import { createSshRemote, type Remote } from "../remote.ts";
 import { desiredResources, type DesiredResource } from "../resources.ts";
 
@@ -219,8 +220,7 @@ export async function runProvision(input: {
 }): Promise<number> {
   const { args, config, api } = input;
   const secrets = [config.apiKey, config.databasePassword ?? ""];
-  const print = (text: string) =>
-    input.print(redact(text, secrets).replaceAll(config.account, "<account>"));
+  const print = (text: string) => input.print(redactForLog(text, secrets, config.account));
 
   try {
     if (args.inspect) {
