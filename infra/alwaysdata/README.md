@@ -76,14 +76,14 @@ Provisioning is idempotent: a second run plans `ok` for everything and writes no
 
 1. Checks that the tarball's `release.env` names the given commit, finds both services by their annotation, and reads where `current` points.
 2. Uploads the release with rsync over SSH into a new `releases/<name>`, hard-linking unchanged files from the previous release.
-3. Runs the migrations on the server from the new release, with the env file's `DATABASE_URL`. If they fail, the new directory is removed and nothing else changes.
+3. Runs the migrations on the server from the new release, with the env file's `DATABASE_URL`. They may take 10 minutes at most (`timeout 600`); the error says so when they were stopped. If they fail, the new directory is removed and nothing else changes.
 4. Switches `current` to the new release.
-5. Turns disabled services on, restarts the API and then the worker through the Alwaysdata API.
+5. Reads the services again, turns disabled ones on, and restarts the API and then the worker through the Alwaysdata API. Every API request gives up after 30 seconds.
 6. Polls `https://<address>/api/health` for up to 3 minutes until it answers HTTP 200 with the new commit, `status: ok` and a worker heartbeat from after the restart.
-7. If the restart or the health check fails, it switches `current` back, restarts again and waits for the previous commit's health. The run fails either way, and the error says whether the rollback worked. Migrations are not undone: the old release runs against the migrated database, which is why migrations are additive first (two-step rule in `AGENTS.md`).
+7. If the restart or the health check fails, it switches `current` back, reads the services again and turns on any that Alwaysdata switched off (it does that after repeated quick failures), restarts again and waits for the previous commit's health. The run fails either way, and the error says whether the rollback worked. Migrations are not undone: the old release runs against the migrated database, which is why migrations are additive first (two-step rule in `AGENTS.md`).
 8. Removes old releases.
 
-A deploy with a rollback takes about 7 minutes at most; the workflow jobs time out after 20.
+A deploy with a rollback takes about 7 minutes plus the time of the migrations (at most 10); the workflow jobs time out after 20.
 
 ## GitHub workflows
 
@@ -207,6 +207,7 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 
 - **Merging to `main`** deploys to staging, then waits for your approval for production. Approve in the run (Review deployments).
 - **A branch on staging:** push it to `staging/<name>`. Every push redeploys. Delete the branch afterwards; the next merge to `main` puts `main` back on staging.
+- **A branch's migrations stay on staging.** Deploying a `staging/**` branch applies its migrations to the staging database, and Drizzle tracks migrations by name. If such a migration is later changed or dropped before the merge, staging no longer matches `main`'s migrations: the changed one is never run again, and a dropped one's tables stay. When that happens, recreate the staging database (drop it in the panel and run Provision with `apply`, which creates it with the right locale) or restore it from a backup taken before the branch, then deploy `main` again.
 - **A skipped production job shows green.** When you approve an older run after `main` has moved on, the production job deploys nothing; its summary has the notice "Skipped: main has moved on". The newest run deploys the newest commit.
 - **Rollback.** A failed health check rolls back on its own. For a manual rollback of production: revert the change on `main` (a pull request), which deploys the reverted state; re-running an older run's production job does not work, because it skips when its commit is no longer the head of `main`. In a hurry, deploy an older commit locally (check it out, `pnpm release:build`, `pnpm infra:deploy`). Re-running an older run's staging job does put that older commit on staging, as long as its artifact exists (30 days).
 - **Do not start Provision (either environment) or Staging services while a deploy of that environment is queued.** They share the concurrency group `deploy-<env>` (`deploy-staging` and `deploy-production`), and GitHub cancels a pending run when a newer one joins the group. A running job is never cancelled. If a deploy was cancelled this way, re-run it (Re-run failed jobs).
