@@ -8,6 +8,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "test": "vitest run",
+    "test:fake-host": "vitest run --project infra-alwaysdata --config infra/alwaysdata/vitest.fake-host.config.ts",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm check:generated && pnpm test",
     "check:generated": "node scripts/check-generated.ts",
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
