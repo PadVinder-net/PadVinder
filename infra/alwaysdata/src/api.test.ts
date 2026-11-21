@@ -104,18 +104,82 @@ test("does not retry a 400", async () => {
 });
 
 test("an error names method, path and status, without the API key", async () => {
+  fake.failNext(400);
+  const error = await api.list("site").catch((e: unknown) => e);
+  expect((error as Error).message).toMatch(/GET \/v1\/site\/ failed with 400/);
+  expect((error as Error).message).not.toContain(apiKey);
+});
+
+test("redacts the key in an error body, also near the truncation point", async () => {
   const echoing = createAlwaysdataApi({
     apiKey,
     account: "acme",
     minIntervalMs: 0,
-    fetch: async () => new Response(`bad key ${apiKey}`, { status: 400 }),
+    fetch: async () => new Response(`${"x".repeat(490)}${apiKey}`, { status: 400 }),
   });
-  const error = await echoing.list("site").catch((e: unknown) => e);
-  expect((error as Error).message).toMatch(/GET \/v1\/site\/ failed with 400/);
-  expect((error as Error).message).not.toContain(apiKey);
+  const error = (await echoing.list("site").catch((e: unknown) => e)) as Error;
+  expect(error.message).toMatch(/failed with 400/);
+  expect(error.message).not.toContain(apiKey.slice(0, 8));
+});
 
-  fake.failNext(400);
-  await expect(api.list("site")).rejects.toThrow(/GET \/v1\/site\/ failed with 400/);
+test("a retried create does not make a second resource", async () => {
+  fake.failNextAfterApply(503);
+  const created = await api.create(
+    "database",
+    { name: "acme_staging" },
+    { field: "name", value: "acme_staging" },
+  );
+  expect(created.name).toBe("acme_staging");
+  expect(fake.resources.get("database")).toHaveLength(1);
+  expect(fake.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+});
+
+test("create retries a POST that was not stored", async () => {
+  fake.failNext(503);
+  await api.create("ssh", { name: "u" }, { field: "name", value: "u" });
+  expect(fake.requests.filter((r) => r.method === "POST")).toHaveLength(2);
+  expect(fake.resources.get("ssh")).toHaveLength(1);
+});
+
+test("create throws when two resources share the identity", async () => {
+  fake.resources.get("ssh")?.push({ id: 91, name: "u" }, { id: 92, name: "u" });
+  await expect(api.create("ssh", { name: "u" }, { field: "name", value: "u" })).rejects.toThrow(
+    /expected one/,
+  );
+});
+
+test("a network error is retried for GET and wrapped without secrets", async () => {
+  let calls = 0;
+  const flaky = createAlwaysdataApi({
+    apiKey,
+    account: "acme",
+    baseUrl: fake.baseUrl,
+    minIntervalMs: 0,
+    retryDelayMs: 1,
+    fetch: (input, init) => {
+      calls++;
+      if (calls === 1) return Promise.reject(new TypeError("fetch failed"));
+      return fetch(input, init);
+    },
+  });
+  await expect(flaky.list("site")).resolves.toEqual([]);
+  expect(calls).toBe(2);
+
+  const down = createAlwaysdataApi({
+    apiKey,
+    account: "acme",
+    minIntervalMs: 0,
+    fetch: () => {
+      calls = 100;
+      return Promise.reject(new TypeError(`reset ${apiKey}`));
+    },
+  });
+  const error = (await down
+    .create("ssh", { name: "u" }, { field: "name", value: "u" })
+    .catch((e: unknown) => e)) as Error;
+  expect(calls).toBe(100);
+  expect(error.message).toMatch(/POST \/v1\/ssh\/ failed with 0: network error/);
+  expect(error.message).not.toContain(apiKey);
 });
 
 test("spaces requests by minIntervalMs", async () => {

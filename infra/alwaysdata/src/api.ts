@@ -67,33 +67,52 @@ export function createAlwaysdataApi(options: AlwaysdataApiOptions): AlwaysdataAp
     return run;
   }
 
-  async function request(method: string, path: string, body?: unknown): Promise<string> {
+  const secrets = [options.apiKey, authorization.slice("Basic ".length)];
+
+  /**
+   * `beforeRetry` runs before a retry of a non-idempotent request; when it returns true the
+   * earlier attempt is taken to have succeeded and no retry is sent.
+   */
+  async function request(
+    method: string,
+    path: string,
+    body?: unknown,
+    beforeRetry?: () => Promise<boolean>,
+  ): Promise<string> {
     for (let attempt = 1; ; attempt++) {
       const headers: Record<string, string> = {
         Authorization: authorization,
         Accept: "application/json",
       };
       if (body !== undefined) headers["Content-Type"] = "application/json";
-      const response = await schedule(() =>
-        doFetch(`${baseUrl}${path}`, {
-          method,
-          headers,
-          body: body === undefined ? undefined : JSON.stringify(body),
-        }),
-      );
-      const text = await response.text();
+      let response: Response;
+      let text: string;
+      try {
+        response = await schedule(() =>
+          doFetch(`${baseUrl}${path}`, {
+            method,
+            headers,
+            body: body === undefined ? undefined : JSON.stringify(body),
+          }),
+        );
+        text = await response.text();
+      } catch (cause) {
+        // Only a GET is safe to resend when we do not know whether the server got the request.
+        if (method === "GET" && attempt < maxTries) {
+          await sleep(retryDelayMs * 2 ** (attempt - 1));
+          continue;
+        }
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new AlwaysdataError(method, path, 0, redact(`network error: ${detail}`, secrets));
+      }
       if (response.ok) return text;
       const retryable = response.status === 429 || response.status >= 500;
       if (retryable && attempt < maxTries) {
         await sleep(retryDelayMs * 2 ** (attempt - 1));
+        if (beforeRetry && (await beforeRetry())) return "";
         continue;
       }
-      throw new AlwaysdataError(
-        method,
-        path,
-        response.status,
-        redact(text.slice(0, 500), [options.apiKey]),
-      );
+      throw new AlwaysdataError(method, path, response.status, redact(text, secrets).slice(0, 500));
     }
   }
 
@@ -107,12 +126,25 @@ export function createAlwaysdataApi(options: AlwaysdataApiOptions): AlwaysdataAp
   return {
     list,
     async create(kind, body, identity) {
-      await request("POST", collectionPath(kind), body);
-      const matches = (await list(kind)).filter((r) => r[identity.field] === identity.value);
-      const created = matches.sort((a, b) => b.id - a.id)[0];
+      const findMatches = async () =>
+        (await list(kind)).filter((r) => r[identity.field] === identity.value);
+      // A 5xx may come after the server stored the resource: look before every retry.
+      await request(
+        "POST",
+        collectionPath(kind),
+        body,
+        async () => (await findMatches()).length > 0,
+      );
+      const matches = await findMatches();
+      const [created, ...duplicates] = matches;
       if (!created) {
         throw new Error(
           `Created ${kind} with ${identity.field} "${identity.value}" but did not find it afterwards`,
+        );
+      }
+      if (duplicates.length > 0) {
+        throw new Error(
+          `Found ${matches.length} ${kind} resources with ${identity.field} "${identity.value}"; expected one`,
         );
       }
       return created;

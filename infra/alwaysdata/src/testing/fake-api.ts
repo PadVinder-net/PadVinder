@@ -10,6 +10,8 @@ export type FakeAlwaysdata = {
   requests: { method: string; path: string; body: unknown }[];
   /** The next request answers with this status; calls queue up. */
   failNext(status: number): void;
+  /** The next request is applied, then answers with this status. */
+  failNextAfterApply(status: number): void;
   close(): Promise<void>;
 };
 
@@ -17,7 +19,7 @@ export type FakeAlwaysdata = {
 export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
   const resources = new Map<ResourceKind, Resource[]>(kinds.map((kind) => [kind, []]));
   const requests: FakeAlwaysdata["requests"] = [];
-  const failures: number[] = [];
+  const failures: { status: number; afterApply: boolean }[] = [];
   let nextId = 1;
 
   const server = createServer(async (req, res) => {
@@ -28,13 +30,17 @@ export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
     const path = (req.url ?? "/").split("?")[0] ?? "/";
     requests.push({ method, path, body: raw === "" ? undefined : JSON.parse(raw) });
 
+    const failure = failures.shift();
     const send = (status: number, body?: unknown) => {
+      if (failure?.afterApply) {
+        status = failure.status;
+        body = { detail: "forced failure" };
+      }
       res.writeHead(status, body === undefined ? {} : { "Content-Type": "application/json" });
       res.end(body === undefined ? undefined : JSON.stringify(body));
     };
 
-    const failure = failures.shift();
-    if (failure !== undefined) return send(failure, { detail: "forced failure" });
+    if (failure && !failure.afterApply) return send(failure.status, { detail: "forced failure" });
     if (!req.headers.authorization?.startsWith("Basic ")) return send(401, { detail: "no auth" });
 
     const body = raw === "" ? {} : (JSON.parse(raw) as Record<string, unknown>);
@@ -68,7 +74,8 @@ export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
     baseUrl: `http://127.0.0.1:${port}`,
     resources,
     requests,
-    failNext: (status) => void failures.push(status),
+    failNext: (status) => void failures.push({ status, afterApply: false }),
+    failNextAfterApply: (status) => void failures.push({ status, afterApply: true }),
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.closeAllConnections();
