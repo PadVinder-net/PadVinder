@@ -11,6 +11,8 @@ export type LoginFlowProps = {
   onOpenMail?: () => void;
 };
 
+const connectionMessage = "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.";
+
 export function LoginFlow({
   requestLoginCode,
   logInWithCode,
@@ -33,6 +35,8 @@ export function LoginFlow({
       const result = await action();
       if (result.ok) onOk();
       else setError(result.message);
+    } catch {
+      setError(connectionMessage);
     } finally {
       busy.current = false;
       setPending(false);

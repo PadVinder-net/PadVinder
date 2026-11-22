@@ -60,6 +60,7 @@ export function NameForm({ onSubmit, pending, error }: NameFormProps) {
             type="tel"
             autoComplete="tel"
             inputMode="tel"
+            aria-describedby={error ? "profile-error" : undefined}
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
             className={inputClass}

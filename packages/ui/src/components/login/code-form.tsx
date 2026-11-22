@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isCompleteCode, normalizeCode } from "../../lib/code";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -32,6 +32,20 @@ export function CodeForm({
   // The code that was already handed to onSubmit, so a re-render never submits it twice.
   const submittedCode = useRef<string | null>(null);
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wasPending = useRef(pending);
+
+  // After every attempt (wrong code, new code sent) the field starts empty again, so the same
+  // code can be typed, pasted or autofilled again.
+  useEffect(() => {
+    if (wasPending.current && !pending) {
+      setCode("");
+      submittedCode.current = null;
+      inputRef.current?.focus();
+    }
+    wasPending.current = pending;
+  }, [pending]);
+
   function handleChange(value: string) {
     const next = normalizeCode(value);
     setCode(next);
@@ -55,6 +69,8 @@ export function CodeForm({
         </Label>
         <Input
           id="login-code"
+          ref={inputRef}
+          readOnly={pending}
           name="code"
           type="text"
           autoComplete="one-time-code"
@@ -69,7 +85,7 @@ export function CodeForm({
         {resent && !error ? <p role="status">We hebben de code opnieuw gestuurd.</p> : null}
       </div>
       {onOpenMail ? (
-        <WideButton type="button" pending={pending} onClick={onOpenMail}>
+        <WideButton type="button" onClick={onOpenMail}>
           Open je mail
         </WideButton>
       ) : null}

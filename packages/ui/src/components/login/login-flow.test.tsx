@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { LoginFlow, type LoginResult } from "./login-flow";
@@ -80,4 +80,51 @@ test("a double tap on Stuur code asks once", async () => {
   await userEvent.dblClick(button);
   await screen.findByRole("heading", { name: "Vul je code in" });
   expect(requestLoginCode).toHaveBeenCalledOnce();
+});
+test("two submits in the same tick ask once", async () => {
+  const { requestLoginCode } = setup();
+  await userEvent.type(screen.getByLabelText("E-mailadres"), "noor@example.test");
+  const form = screen.getByRole("button", { name: "Stuur code" }).closest("form")!;
+  act(() => {
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+  });
+  await screen.findByRole("heading", { name: "Vul je code in" });
+  expect(requestLoginCode).toHaveBeenCalledOnce();
+});
+test("a rejected request shows the connection message and the user can retry", async () => {
+  const requestLoginCode = vi
+    .fn<(email: string) => Promise<LoginResult>>()
+    .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    .mockResolvedValue(ok);
+  render(
+    <LoginFlow requestLoginCode={requestLoginCode} logInWithCode={vi.fn()} onLoggedIn={vi.fn()} />,
+  );
+  await userEvent.type(screen.getByLabelText("E-mailadres"), "noor@example.test");
+  await userEvent.click(screen.getByRole("button", { name: "Stuur code" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Stuur code" }));
+  await screen.findByRole("heading", { name: "Vul je code in" });
+});
+test("a rejected login shows the connection message and the same code can be sent again", async () => {
+  const logInWithCode = vi
+    .fn<(email: string, code: string) => Promise<LoginResult>>()
+    .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    .mockResolvedValue(ok);
+  const onLoggedIn = vi.fn();
+  render(
+    <LoginFlow
+      requestLoginCode={async () => ok}
+      logInWithCode={logInWithCode}
+      onLoggedIn={onLoggedIn}
+    />,
+  );
+  await toCodeStep();
+  await userEvent.type(screen.getByLabelText("Code"), "123456");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Het lukt nu niet.");
+  await userEvent.type(screen.getByLabelText("Code"), "123456");
+  await vi.waitFor(() => expect(onLoggedIn).toHaveBeenCalledOnce());
+  expect(logInWithCode).toHaveBeenCalledTimes(2);
 });

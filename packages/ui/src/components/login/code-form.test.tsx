@@ -85,10 +85,9 @@ test("Stuur opnieuw and Ander e-mailadres call their handlers", async () => {
 });
 test("buttons are disabled while pending", () => {
   setup({ pending: true, onOpenMail: vi.fn() });
-  expect(screen.getAllByRole("button", { name: "Even geduld…" })).toHaveLength(2);
-  for (const button of screen.getAllByRole("button", { name: "Even geduld…" })) {
-    expect(button).toBeDisabled();
-  }
+  expect(screen.getAllByRole("button", { name: "Even geduld…" })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Even geduld…" })).toBeDisabled();
+  expect(screen.getByLabelText("Code")).toHaveAttribute("readonly");
 });
 test("shows an error and the resent message", () => {
   setup({ error: "Deze code klopt niet. Kijk nog eens in je mail." });
@@ -97,4 +96,33 @@ test("shows an error and the resent message", () => {
 test("shows that the code was sent again", () => {
   setup({ resent: true });
   expect(screen.getByText("We hebben de code opnieuw gestuurd.")).toBeVisible();
+});
+test("a seventh digit does not submit again", async () => {
+  const { onSubmit } = setup();
+  await userEvent.type(screen.getByLabelText("Code"), "1234567");
+  expect(onSubmit).toHaveBeenCalledExactlyOnceWith("123456");
+});
+test("after an attempt the field is empty and the same code can be submitted again", async () => {
+  const { onSubmit, rerender } = setup();
+  const props = {
+    email: "noor@example.test",
+    onSubmit,
+    onResend: vi.fn(),
+    onChangeEmail: vi.fn(),
+  };
+  await userEvent.type(screen.getByLabelText("Code"), "123456");
+  rerender(<CodeForm {...props} pending />);
+  rerender(<CodeForm {...props} pending={false} error="Deze code klopt niet." />);
+  expect(screen.getByLabelText("Code")).toHaveValue("");
+  expect(screen.getByLabelText("Code")).toHaveFocus();
+  await userEvent.paste("123456");
+  expect(onSubmit).toHaveBeenCalledTimes(2);
+  rerender(<CodeForm {...props} pending />);
+  rerender(<CodeForm {...props} pending={false} error="Deze code klopt niet." />);
+  await userEvent.type(screen.getByLabelText("Code"), "654321");
+  expect(onSubmit).toHaveBeenLastCalledWith("654321");
+});
+test("Open je mail stays enabled while pending", () => {
+  setup({ pending: true, onOpenMail: vi.fn() });
+  expect(screen.getByRole("button", { name: "Open je mail" })).toBeEnabled();
 });

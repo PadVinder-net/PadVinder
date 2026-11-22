@@ -38,3 +38,9 @@ test("the button is disabled while pending", () => {
   render(<NameForm onSubmit={vi.fn()} pending />);
   expect(screen.getByRole("button", { name: "Even geduld…" })).toBeDisabled();
 });
+test("a server error is linked to the phone field", () => {
+  render(<NameForm onSubmit={vi.fn()} pending={false} error="Het lukt nu niet." />);
+  expect(screen.getByLabelText("Telefoonnummer (mag leeg)")).toHaveAccessibleDescription(
+    "Het lukt nu niet.",
+  );
+});
