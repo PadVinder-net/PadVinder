@@ -35,7 +35,7 @@ async function shutdown(signal: string): Promise<void> {
 }
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
-// Alwaysdata restarts a service by sending SIGHUP and starting it again once it has exited.
+// Alwaysdata restarts a service by sending SIGTERM and starting it again once it has exited. SIGHUP is handled the same way.
 process.on("SIGHUP", () => void shutdown("SIGHUP"));
 
 try {

@@ -40,7 +40,7 @@ async function freePort(): Promise<number> {
 }
 
 test("SIGHUP shuts down cleanly with exit 0", async () => {
-  // Alwaysdata restarts a service by sending SIGHUP and starting it again once it exits.
+  // Alwaysdata restarts a service by sending SIGTERM and starting it again once it exits. SIGHUP is handled the same way.
   const child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
     cwd: `${import.meta.dirname}/..`,
     env: {
