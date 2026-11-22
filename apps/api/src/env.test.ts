@@ -6,6 +6,11 @@ const valid = {
   DATABASE_URL: "postgres://x",
   API_PORT: "4100",
   ALLOWED_ORIGINS: "http://localhost:4101, http://localhost:4102",
+  AUTH_SECRET: "test-secret-test-secret-test-secret-1234",
+  PUBLIC_ORIGIN: "http://localhost:4101",
+  SMTP_HOST: "localhost",
+  SMTP_PORT: "54325",
+  MAIL_FROM: "PadVinder <noreply@padvinder.test>",
 };
 
 test("parses a valid environment and applies defaults", () =>
@@ -17,6 +22,12 @@ test("parses a valid environment and applies defaults", () =>
     GIT_COMMIT: "dev",
     MIN_APP_VERSION: "2027.0.0",
     LOG_LEVEL: "info",
+    AUTH_SECRET: "test-secret-test-secret-test-secret-1234",
+    PUBLIC_ORIGIN: "http://localhost:4101",
+    SMTP_HOST: "localhost",
+    SMTP_PORT: 54325,
+    MAIL_FROM: "PadVinder <noreply@padvinder.test>",
+    LOGIN_RATE_LIMITS: "on",
   }));
 
 test("defaults API_HOST to ::", () => expect(loadApiEnv(valid).API_HOST).toBe("::"));
@@ -56,3 +67,30 @@ test("resolves relative dist dirs against the working directory", () => {
   expect(env.MOBILE_DIST_DIR).toBe(resolve(process.cwd(), "mobile"));
   expect(env.PORTAL_DIST_DIR).toBe("/abs/portal");
 });
+
+test("names a missing AUTH_SECRET", () =>
+  expect(() => loadApiEnv({ ...valid, AUTH_SECRET: undefined })).toThrow(/AUTH_SECRET/));
+test("rejects a short AUTH_SECRET", () =>
+  expect(() => loadApiEnv({ ...valid, AUTH_SECRET: "short" })).toThrow(/AUTH_SECRET/));
+test("PUBLIC_ORIGIN must be one of ALLOWED_ORIGINS", () =>
+  expect(() => loadApiEnv({ ...valid, PUBLIC_ORIGIN: "https://elsewhere.example" })).toThrow(
+    /PUBLIC_ORIGIN/,
+  ));
+test("login rate limits default to on", () =>
+  expect(loadApiEnv({ ...valid, LOGIN_RATE_LIMITS: undefined }).LOGIN_RATE_LIMITS).toBe("on"));
+test("refuses LOGIN_RATE_LIMITS=off on an HTTPS origin", () =>
+  expect(() =>
+    loadApiEnv({
+      ...valid,
+      ALLOWED_ORIGINS: "https://padvinder.net",
+      PUBLIC_ORIGIN: "https://padvinder.net",
+      LOGIN_RATE_LIMITS: "off",
+    }),
+  ).toThrow(/LOGIN_RATE_LIMITS/));
+test("allows LOGIN_RATE_LIMITS=off on http://localhost", () =>
+  expect(loadApiEnv({ ...valid, LOGIN_RATE_LIMITS: "off" }).LOGIN_RATE_LIMITS).toBe("off"));
+test("reads optional SMTP credentials", () =>
+  expect(loadApiEnv({ ...valid, SMTP_USER: "u", SMTP_PASSWORD: "p" })).toMatchObject({
+    SMTP_USER: "u",
+    SMTP_PASSWORD: "p",
+  }));

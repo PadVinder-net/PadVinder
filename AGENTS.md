@@ -264,24 +264,24 @@ Service worker, camera and push work only over HTTPS, also during local developm
 
 Needs Docker, and pnpm 12 (it downloads Node 24 by itself). Run commands from the repository root.
 
-| Command                                     | What it does                                                                                                                                                        |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `./scripts/setup-workspace.sh`              | One-time setup per workspace, safe to repeat: `pnpm install`, `.env`, shared database container, this workspace's databases, migrations, seed, Playwright Chromium. |
-| `pnpm dev`                                  | API, worker, mobile and portal with hot reload, in one process group                                                                                                |
-| `pnpm dev:https`                            | Same over HTTPS, for an iPhone on the local network (POSIX shells)                                                                                                  |
-| `pnpm check`                                | Type check (also `scripts/`, `e2e/` and the root configs), Oxlint, Oxfmt check, `check:generated`, Vitest. **Every agent runs it before finishing**                 |
-| `pnpm check:generated`                      | Regenerates the OpenAPI description, the client and the migrations in place and fails if that changed any file (review and commit the result). Part of `pnpm check` |
-| `pnpm test:visual:docker`                   | Storybook visual tests, run in the Playwright Docker image (needs Docker)                                                                                           |
-| `pnpm screenshots:update`                   | Same, but rewrites the reference images in `packages/ui/src/__screenshots__`. The only way to make them                                                             |
-| `pnpm release:build`                        | Builds everything into `release/` and `padvinder-release.tar.gz` (refuses a dirty tree; `--allow-dirty` for a local test)                                           |
-| `pnpm release:image`, `pnpm release:smoke`  | Build the container image `padvinder:local` from the tarball; start it against a fresh database and check `/api/health`, `/app/` and `/`                            |
-| `pnpm scan:secrets`, `pnpm lint:workflows`  | Gitleaks over the whole git history; actionlint (with shellcheck) over `.github/workflows` (both in Docker)                                                         |
-| `pnpm test`, `pnpm test:e2e`                | Vitest only; Playwright (needs plain `pnpm dev`, not `dev:https`)                                                                                                   |
-| `pnpm format`                               | Oxfmt writes (it also formats Markdown)                                                                                                                             |
-| `pnpm db:generate`, `db:migrate`, `db:seed` | Create a migration after a schema change; apply migrations; seed made-up data                                                                                       |
-| `pnpm api:generate`                         | Regenerate `openapi.json` and the client after any API schema change                                                                                                |
-| `pnpm storybook`, `pnpm build`              | Storybook for `packages/ui`; production builds of the apps                                                                                                          |
-| `./scripts/teardown-workspace.sh`           | Drops this workspace's databases (Conductor archive script)                                                                                                         |
+| Command                                     | What it does                                                                                                                                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `./scripts/setup-workspace.sh`              | One-time setup per workspace, safe to repeat: `pnpm install`, `.env`, shared database and Mailpit (mail) containers, this workspace's databases, migrations, seed, Playwright Chromium. |
+| `pnpm dev`                                  | API, worker, mobile and portal with hot reload, in one process group                                                                                                                    |
+| `pnpm dev:https`                            | Same over HTTPS, for an iPhone on the local network (POSIX shells)                                                                                                                      |
+| `pnpm check`                                | Type check (also `scripts/`, `e2e/` and the root configs), Oxlint, Oxfmt check, `check:generated`, Vitest. **Every agent runs it before finishing**                                     |
+| `pnpm check:generated`                      | Regenerates the OpenAPI description, the client and the migrations in place and fails if that changed any file (review and commit the result). Part of `pnpm check`                     |
+| `pnpm test:visual:docker`                   | Storybook visual tests, run in the Playwright Docker image (needs Docker)                                                                                                               |
+| `pnpm screenshots:update`                   | Same, but rewrites the reference images in `packages/ui/src/__screenshots__`. The only way to make them                                                                                 |
+| `pnpm release:build`                        | Builds everything into `release/` and `padvinder-release.tar.gz` (refuses a dirty tree; `--allow-dirty` for a local test)                                                               |
+| `pnpm release:image`, `pnpm release:smoke`  | Build the container image `padvinder:local` from the tarball; start it against a fresh database and check `/api/health`, `/app/` and `/`                                                |
+| `pnpm scan:secrets`, `pnpm lint:workflows`  | Gitleaks over the whole git history; actionlint (with shellcheck) over `.github/workflows` (both in Docker)                                                                             |
+| `pnpm test`, `pnpm test:e2e`                | Vitest only; Playwright (needs plain `pnpm dev`, not `dev:https`)                                                                                                                       |
+| `pnpm format`                               | Oxfmt writes (it also formats Markdown)                                                                                                                                                 |
+| `pnpm db:generate`, `db:migrate`, `db:seed` | Create a migration after a schema change; apply migrations; seed made-up data                                                                                                           |
+| `pnpm api:generate`                         | Regenerate `openapi.json` and the client after any API schema change                                                                                                                    |
+| `pnpm storybook`, `pnpm build`              | Storybook for `packages/ui`; production builds of the apps                                                                                                                              |
+| `./scripts/teardown-workspace.sh`           | Drops this workspace's databases (Conductor archive script)                                                                                                                             |
 
 Details:
 

@@ -16,6 +16,12 @@ const env: ApiEnv = {
   GIT_COMMIT: "openapi",
   MIN_APP_VERSION: "2027.0.0",
   LOG_LEVEL: "error",
+  AUTH_SECRET: "test-secret-test-secret-test-secret-1234",
+  PUBLIC_ORIGIN: "http://localhost",
+  SMTP_HOST: "localhost",
+  SMTP_PORT: 54325,
+  MAIL_FROM: "PadVinder <noreply@padvinder.test>",
+  LOGIN_RATE_LIMITS: "off",
 };
 
 const outputPath = resolve(

@@ -9,4 +9,10 @@ export const testEnv: ApiEnv = {
   GIT_COMMIT: "test-commit",
   MIN_APP_VERSION: "2027.0.0",
   LOG_LEVEL: "info",
+  AUTH_SECRET: "test-secret-test-secret-test-secret-1234",
+  PUBLIC_ORIGIN: "http://localhost:4101",
+  SMTP_HOST: "localhost",
+  SMTP_PORT: 54325,
+  MAIL_FROM: "PadVinder <noreply@padvinder.test>",
+  LOGIN_RATE_LIMITS: "off",
 };
