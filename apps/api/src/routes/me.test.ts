@@ -284,3 +284,17 @@ test("me shows null after a withdrawal", async () => {
 test("a member without requests has membershipRequest null", async () => {
   expect((await getMe(cast.members.volunteer.headers)).membershipRequest).toBeNull();
 });
+
+test("me shows an older pending request over a newer withdrawn or rejected one", async () => {
+  for (const status of ["withdrawn", "rejected"] as const) {
+    const user = await loginAs(ctx, `older-pending-${status}@example.test`, { name: "Ouder" });
+    const older = await askToJoin(user.headers, cast.workingGroup.workingGroupId);
+    const newer = await askToJoin(user.headers, cast.otherGroup.workingGroupId);
+    expect([older.res.statusCode, newer.res.statusCode]).toEqual([201, 201]);
+    await ctx.t.db
+      .update(membershipRequests)
+      .set({ status, decidedAt: new Date() })
+      .where(eq(membershipRequests.id, newer.id));
+    expect((await getMe(user.headers)).membershipRequest, status).toEqual(older.res.json());
+  }
+});

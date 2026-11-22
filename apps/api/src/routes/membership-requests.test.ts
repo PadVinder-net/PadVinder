@@ -56,22 +56,25 @@ async function newGroup(name: string) {
 test("everyone logged in may ask, except for a group they belong to", async () => {
   // The cast's coordinator and volunteer belong to cast.workingGroup; admin rights do not count
   // as a membership.
-  await expectStatuses(
-    cast,
-    {
-      platformAdmin: 201,
-      organizationAdmin: 201,
-      coordinator: 409,
-      volunteer: 409,
-      volunteerOtherGroup: 201,
-      coordinatorOtherOrganization: 201,
-      applicant: 201,
-      anonymous: 401,
-    },
-    (headers) => post({ headers }, body()),
-  );
-  // Clean up, so the other tests start from a cast without requests.
-  await ctx.t.db.delete(membershipRequests);
+  try {
+    await expectStatuses(
+      cast,
+      {
+        platformAdmin: 201,
+        organizationAdmin: 201,
+        coordinator: 409,
+        volunteer: 409,
+        volunteerOtherGroup: 201,
+        coordinatorOtherOrganization: 201,
+        applicant: 201,
+        anonymous: 401,
+      },
+      (headers) => post({ headers }, body()),
+    );
+  } finally {
+    // Clean up, so the other tests start from a cast without requests, also after a failure.
+    await ctx.t.db.delete(membershipRequests);
+  }
 });
 
 test("an applicant asks to join: 201 and a pending request", async () => {

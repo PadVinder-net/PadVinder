@@ -247,14 +247,24 @@ export async function withdrawMembershipRequest(
 }
 
 /**
- * The request `/api/me` shows: the user's newest request (by `received_at`, then `id`) when it
- * is pending or rejected, otherwise `null`.
+ * The request `/api/me` shows (spec: "their open or latest rejected membership request"): the
+ * user's newest pending request; when there is none, their newest request if it was rejected;
+ * otherwise `null`. "Newest" is by `received_at`, then `id`. A newer withdrawn or rejected request
+ * never hides one that is still open.
  */
 export async function getCurrentMembershipRequest(
   db: Db | DbTransaction,
   userId: string,
 ): Promise<MembershipRequestRecord | null> {
-  const [newest] = await selectRequests(db, eq(membershipRequests.userId, userId), { limit: 1 });
-  if (!newest || (newest.status !== "pending" && newest.status !== "rejected")) return null;
-  return withoutOrganizationId(newest);
+  const ofUser = eq(membershipRequests.userId, userId);
+  const [pending] = await selectRequests(
+    db,
+    and(ofUser, eq(membershipRequests.status, "pending")),
+    {
+      limit: 1,
+    },
+  );
+  if (pending) return withoutOrganizationId(pending);
+  const [newest] = await selectRequests(db, ofUser, { limit: 1 });
+  return newest?.status === "rejected" ? withoutOrganizationId(newest) : null;
 }

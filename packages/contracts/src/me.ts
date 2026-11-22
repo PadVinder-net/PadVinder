@@ -22,8 +22,9 @@ export const meResponseSchema = z
     ),
     organizationAdminOf: z.array(z.object({ id: z.string(), name: z.string() })),
     /**
-     * The user's newest request (by arrival at the server) when it is pending or rejected,
-     * otherwise `null`. The app shows the waiting screen or the rejection from it.
+     * The user's open request: the newest pending one (by arrival at the server). When there is
+     * none, the newest request if it was rejected; otherwise `null`. The app shows the waiting
+     * screen or the rejection from it.
      */
     membershipRequest: membershipRequestSchema.nullable(),
   })

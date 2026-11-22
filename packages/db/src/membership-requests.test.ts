@@ -323,19 +323,22 @@ async function holdUncommittedRow(row: typeof membershipRequests.$inferInsert) {
   });
   await ready;
   return {
+    /** Throws when no connection ever waited on the row, so a test cannot pass without the race. */
     async commitWhenBlocked() {
-      for (let i = 0; i < 100; i++) {
+      let sawBlocked = false;
+      for (let i = 0; i < 100 && !sawBlocked; i++) {
         const [blocked] = await db()
           .execute<{ n: number }>(
             sql`select count(*)::int as n from pg_stat_activity
               where datname = current_database() and wait_event_type = 'Lock'`,
           )
           .then((r) => r.rows);
-        if (blocked!.n > 0) break;
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        sawBlocked = blocked!.n > 0;
+        if (!sawBlocked) await new Promise((resolve) => setTimeout(resolve, 20));
       }
       commit();
       await done;
+      if (!sawBlocked) throw new Error("No connection waited on the uncommitted row");
     },
   };
 }
@@ -437,7 +440,7 @@ test("someone else's or an unknown request is not_found; a decided one already_d
   expect((await rowsOf(userId))[0]!.status).toBe("rejected");
 });
 
-test("the current request is the newest one when it is pending or rejected", async () => {
+test("the current request is the newest pending one, else the newest when it is rejected", async () => {
   const userId = await newUser();
   expect(await getCurrentMembershipRequest(db(), userId)).toBeNull();
 
@@ -463,6 +466,39 @@ test("the current request is the newest one when it is pending or rejected", asy
   expect(await getCurrentMembershipRequest(db(), userId)).toMatchObject({ id: newer });
 
   await withdrawMembershipRequest(db(), { id: newer, userId, now });
+  expect(await getCurrentMembershipRequest(db(), userId)).toBeNull();
+});
+
+test("an older pending request wins over a newer withdrawn or rejected one", async () => {
+  for (const status of ["withdrawn", "rejected"] as const) {
+    const userId = await newUser();
+    const older = uuidv7();
+    await create(userId, groups[0]!, { id: older });
+    const newer = uuidv7();
+    await create(userId, groups[1]!, { id: newer, now: new Date(now.getTime() + 1000) });
+    await db()
+      .update(membershipRequests)
+      .set({ status, decidedAt: now })
+      .where(eq(membershipRequests.id, newer));
+    expect(await getCurrentMembershipRequest(db(), userId), status).toMatchObject({
+      id: older,
+      status: "pending",
+    });
+  }
+});
+
+test("the newest of two pending requests wins; a rejection older than a withdrawal is not shown", async () => {
+  const userId = await newUser();
+  const first = uuidv7();
+  await create(userId, groups[0]!, { id: first });
+  const second = uuidv7();
+  await create(userId, groups[1]!, { id: second, now: new Date(now.getTime() + 1000) });
+  expect((await getCurrentMembershipRequest(db(), userId))?.id).toBe(second);
+  await db()
+    .update(membershipRequests)
+    .set({ status: "rejected", decidedAt: now })
+    .where(eq(membershipRequests.id, first));
+  await withdrawMembershipRequest(db(), { id: second, userId, now });
   expect(await getCurrentMembershipRequest(db(), userId)).toBeNull();
 });
 
