@@ -266,7 +266,7 @@ test("no command prints the help and exits 0", ...);
 
 - Consumes: `getAccess`, `Access`, `MembershipRole` (Task 1); `apiError` (plan 1).
 - Produces:
-  - `type Actor = { userId: string } & Access`. `loadActor` now also calls `getAccess`.
+  - `type Actor = { user: UserProfile } & Access` (plan 1 already reads `user` together with the session). `readSession` in `actor.ts` now also calls `getAccess`, and `actor.ts` exports `loadActor(app, request): Promise<Actor | null>` again for routes that take an optional login (plan 1's review removed it while nothing used it).
   - `type WorkingGroupTarget = { workingGroupId: string; organizationId: string }`
   - `type Relation = "platformAdmin" | "organizationAdmin" | "coordinator" | "volunteer" | "outsider"`
   - `relationTo(actor: Actor, target: WorkingGroupTarget): Relation` (the strongest one that applies, in that order)
@@ -484,9 +484,9 @@ test("hidden details leave the version rows out", () => {
   - `audienceOf(type: LiveEventType): LiveEventAudience`: the declared audience, or `"platform-admins"` when none is declared.
   - A comment at the union explains: an event for `user` carries `userId`; for the two working-group audiences `workingGroupId` and `organizationId`; for `organization` `organizationId`.
 - Produces (API):
-  - `shouldDeliver(actor: Actor, audience: LiveEventAudience, address: { userId?: string; workingGroupId?: string; organizationId?: string }): boolean`. Platform admins receive everything. `user`: `address.userId === actor.userId`. `working-group-coordinators`: relation is coordinator or organization admin. `working-group-members`: relation is anything but outsider. `organization`: a membership or admin row in that organization. An address that lacks the field its audience needs is delivered to platform admins only.
+  - `shouldDeliver(actor: Actor, audience: LiveEventAudience, address: { userId?: string; workingGroupId?: string; organizationId?: string }): boolean`. Platform admins receive everything. `user`: `address.userId === actor.user.id`. `working-group-coordinators`: relation is coordinator or organization admin. `working-group-members`: relation is anything but outsider. `organization`: a membership or admin row in that organization. An address that lacks the field its audience needs is delivered to platform admins only.
   - The stream loads the actor when it opens and filters every event with `shouldDeliver`. Every `SESSION_RECHECK_MS = 300_000` it loads the actor again: gone means the stream ends; otherwise the fresh actor replaces the old one. `AppDeps` gains an optional `sessionRecheckMs?: number` (default `SESSION_RECHECK_MS`) so a test can use a short interval.
-- Produces (client): `ServerEventHandlers` gains `onClosed?: () => void`, called when the browser gives up on the stream (the server answered with a non-200 status, so `readyState` is closed). The apps refetch me in it, so a closed stream after a logout elsewhere leads to the login screen. Wire that into the shared query client setup from plan 1.
+- Client: already done in plan 1's review. `subscribeToServerEvents` calls `onClosed` when the browser gives up on the stream (a non-200 answer) and opens it again after a growing pause; `useHealthLiveUpdates` refetches me in it. Every new subscription does the same, so a closed stream after a logout elsewhere leads to the login screen.
 
 - [ ] **Step 1: Write the failing tests.**
 

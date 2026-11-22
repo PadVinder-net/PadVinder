@@ -59,8 +59,10 @@ CREATE TABLE "login_code_requests" (
 );
 --> statement-breakpoint
 CREATE INDEX "accounts_user_id_idx" ON "accounts" ("user_id");--> statement-breakpoint
+CREATE INDEX "rate_limits_last_request_idx" ON "rate_limits" ("last_request");--> statement-breakpoint
 CREATE INDEX "sessions_user_id_idx" ON "sessions" ("user_id");--> statement-breakpoint
 CREATE INDEX "verifications_identifier_idx" ON "verifications" ("identifier");--> statement-breakpoint
 CREATE INDEX "login_code_requests_email_requested_at_idx" ON "login_code_requests" ("email","requested_at");--> statement-breakpoint
+CREATE INDEX "login_code_requests_requested_at_idx" ON "login_code_requests" ("requested_at");--> statement-breakpoint
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE;

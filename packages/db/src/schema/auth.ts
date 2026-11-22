@@ -89,10 +89,15 @@ export const verifications = pgTable(
   (table) => [index("verifications_identifier_idx").on(table.identifier)],
 );
 
-export const rateLimits = pgTable("rate_limits", {
-  id: id(),
-  key: text("key").notNull().unique(),
-  count: integer("count").notNull(),
-  // Milliseconds since the epoch (Date.now()), not a timestamp: Better Auth stores a number.
-  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
-});
+// One row per IP address and path. Better Auth never deletes them; `pruneLoginData` does.
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    id: id(),
+    key: text("key").notNull().unique(),
+    count: integer("count").notNull(),
+    // Milliseconds since the epoch (Date.now()), not a timestamp: Better Auth stores a number.
+    lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+  },
+  (table) => [index("rate_limits_last_request_idx").on(table.lastRequest)],
+);

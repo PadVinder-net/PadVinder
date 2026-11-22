@@ -1,8 +1,10 @@
+import type { LoginResult } from "@padvinder/contracts";
 import { useRef, useState } from "react";
+import { connectionMessage, loginErrorMessage } from "../../lib/messages";
 import { CodeForm } from "./code-form";
 import { EmailForm } from "./email-form";
 
-export type LoginResult = { ok: true } | { ok: false; message: string };
+export type { LoginResult };
 
 export type LoginFlowProps = {
   requestLoginCode(email: string): Promise<LoginResult>;
@@ -10,8 +12,6 @@ export type LoginFlowProps = {
   onLoggedIn(): void;
   onOpenMail?: () => void;
 };
-
-const connectionMessage = "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.";
 
 export function LoginFlow({
   requestLoginCode,
@@ -34,7 +34,7 @@ export function LoginFlow({
     try {
       const result = await action();
       if (result.ok) onOk();
-      else setError(result.message);
+      else setError(loginErrorMessage(result.error));
     } catch {
       setError(connectionMessage);
     } finally {

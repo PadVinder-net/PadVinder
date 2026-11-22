@@ -1,12 +1,7 @@
-import {
-  apiErrorCodes,
-  meResponseSchema,
-  updateMeRequestSchema,
-  type MeResponse,
-} from "@padvinder/contracts";
-import { getUserProfile, updateUserProfile, type Db } from "@padvinder/db";
+import { meResponseSchema, updateMeRequestSchema, type MeResponse } from "@padvinder/contracts";
+import { updateUserProfile, type Db } from "@padvinder/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
-import { apiError, errorResponses } from "../errors";
+import { errorResponses } from "../errors";
 
 export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
   app.get(
@@ -19,12 +14,8 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
         response: { 200: meResponseSchema, ...errorResponses(401) },
       },
     },
-    async (request): Promise<MeResponse> => {
-      const user = await getUserProfile(db, request.actor!.userId);
-      // A session of a user that is gone: treat as logged out.
-      if (!user) throw apiError(401, apiErrorCodes.notLoggedIn, "Log in first");
-      return { user };
-    },
+    // Read together with the session by `requireActor`: no second query.
+    async (request): Promise<MeResponse> => ({ user: request.actor!.user }),
   );
 
   app.patch(
@@ -39,7 +30,7 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
       },
     },
     async (request): Promise<MeResponse> => {
-      const user = await updateUserProfile(db, request.actor!.userId, request.body);
+      const user = await updateUserProfile(db, request.actor!.user.id, request.body);
       return { user };
     },
   );

@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { logInWithCode, loginErrorMessage, logOut, requestLoginCode } from "./auth-client";
+import { logInWithCode, logOut, requestLoginCode } from "./auth-client";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -37,22 +37,23 @@ test("an invalid address maps to invalid_email", async () => {
   expect(await requestLoginCode("nope")).toEqual({ ok: false, error: "invalid_email" });
 });
 
-test("429 on requesting a code maps to too_many_codes, with or without a code", async () => {
-  stubFetch(() => Response.json({ code: "TOO_MANY_REQUESTS", message: "x" }, { status: 429 }));
-  expect(await requestLoginCode("a@example.test")).toEqual({ ok: false, error: "too_many_codes" });
-  stubFetch(() =>
-    Response.json({ message: "Too many requests. Please try again later." }, { status: 429 }),
-  );
-  expect(await requestLoginCode("a@example.test")).toEqual({ ok: false, error: "too_many_codes" });
+const ipLimit = () =>
+  Response.json({ message: "Too many requests. Please try again later." }, { status: 429 });
+
+test.each([
+  ["TOO_MANY_LOGIN_CODES", "too_many_codes"],
+  ["TOO_MANY_LOGIN_CODES_TODAY", "too_many_codes_today"],
+])("429 %s on requesting a code maps to %s", async (code, error) => {
+  stubFetch(() => Response.json({ code, message: "x" }, { status: 429 }));
+  expect(await requestLoginCode("a@example.test")).toEqual({ ok: false, error });
 });
 
-test("429 on checking a code maps to too_many_attempts", async () => {
-  stubFetch(() =>
-    Response.json({ message: "Too many requests. Please try again later." }, { status: 429 }),
-  );
+test("429 without our code is the limit per IP address: too_busy", async () => {
+  stubFetch(ipLimit);
+  expect(await requestLoginCode("a@example.test")).toEqual({ ok: false, error: "too_busy" });
   expect(await logInWithCode("a@example.test", "000000")).toEqual({
     ok: false,
-    error: "too_many_attempts",
+    error: "too_busy",
   });
 });
 
@@ -96,17 +97,4 @@ test("never asks for the session, which the API does not serve", async () => {
   await logOut();
   await new Promise((resolve) => setTimeout(resolve, 100));
   expect(requests.some((r) => r.url.includes("get-session"))).toBe(false);
-});
-
-test("every LoginError has a Dutch text", () => {
-  for (const e of [
-    "invalid_email",
-    "wrong_code",
-    "code_expired",
-    "too_many_attempts",
-    "too_many_codes",
-    "failed",
-  ] as const)
-    expect(loginErrorMessage(e).length).toBeGreaterThan(10);
-  expect(loginErrorMessage("wrong_code")).toBe("Deze code klopt niet. Kijk nog eens in je mail.");
 });

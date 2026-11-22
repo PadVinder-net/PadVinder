@@ -1,28 +1,8 @@
 import { createAuthClient } from "better-auth/client";
 import { emailOTPClient } from "better-auth/client/plugins";
+import type { LoginError, LoginResult } from "@padvinder/contracts";
 
-export type LoginError =
-  | "invalid_email"
-  | "wrong_code"
-  | "code_expired"
-  | "too_many_attempts"
-  | "too_many_codes"
-  | "failed";
-
-export type LoginResult = { ok: true } | { ok: false; error: LoginError };
-
-const messages: Record<LoginError, string> = {
-  invalid_email: "Vul een geldig e-mailadres in.",
-  wrong_code: "Deze code klopt niet. Kijk nog eens in je mail.",
-  code_expired: "Deze code is verlopen. Vraag een nieuwe code aan.",
-  too_many_attempts: "Te veel pogingen. Vraag een nieuwe code aan.",
-  too_many_codes: "Je hebt te vaak een code aangevraagd. Probeer het over een kwartier opnieuw.",
-  failed: "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.",
-};
-
-export function loginErrorMessage(error: LoginError): string {
-  return messages[error];
-}
+export type { LoginError, LoginResult };
 
 let authClient: ReturnType<typeof createClient> | undefined;
 
@@ -47,9 +27,11 @@ function getAuthClient() {
 
 type AuthFailure = { status?: number; code?: string } | null | undefined;
 
-// Better Auth error codes, as the API sends them (see apps/api/src/auth/login.test.ts).
-function toLoginError(failure: AuthFailure, onTooManyRequests: LoginError): LoginError {
-  if (failure?.status === 429) return onTooManyRequests;
+/**
+ * Error codes as the API sends them (see apps/api/src/auth/login.test.ts). A 429 with one of our
+ * own codes is the limit per address; a 429 without one is Better Auth's limit per IP address.
+ */
+function toLoginError(failure: AuthFailure): LoginError {
   switch (failure?.code) {
     case "INVALID_EMAIL":
       return "invalid_email";
@@ -59,18 +41,19 @@ function toLoginError(failure: AuthFailure, onTooManyRequests: LoginError): Logi
       return "code_expired";
     case "TOO_MANY_ATTEMPTS":
       return "too_many_attempts";
+    case "TOO_MANY_LOGIN_CODES":
+      return "too_many_codes";
+    case "TOO_MANY_LOGIN_CODES_TODAY":
+      return "too_many_codes_today";
     default:
-      return "failed";
+      return failure?.status === 429 ? "too_busy" : "failed";
   }
 }
 
-async function attempt(
-  call: () => Promise<{ error: AuthFailure }>,
-  onTooManyRequests: LoginError,
-): Promise<LoginResult> {
+async function attempt(call: () => Promise<{ error: AuthFailure }>): Promise<LoginResult> {
   try {
     const { error } = await call();
-    return error ? { ok: false, error: toLoginError(error, onTooManyRequests) } : { ok: true };
+    return error ? { ok: false, error: toLoginError(error) } : { ok: true };
   } catch {
     return { ok: false, error: "failed" };
   }
@@ -78,16 +61,12 @@ async function attempt(
 
 /** Mails a login code. Never throws. */
 export function requestLoginCode(email: string): Promise<LoginResult> {
-  return attempt(
-    () => getAuthClient().emailOtp.sendVerificationOtp({ email, type: "sign-in" }),
-    "too_many_codes",
-  );
+  return attempt(() => getAuthClient().emailOtp.sendVerificationOtp({ email, type: "sign-in" }));
 }
 
 /** Logs in with the code from the mail; the API sets the session cookie. Never throws. */
 export function logInWithCode(email: string, code: string): Promise<LoginResult> {
-  // A 429 here is the per-IP limit on checking codes.
-  return attempt(() => getAuthClient().signIn.emailOtp({ email, otp: code }), "too_many_attempts");
+  return attempt(() => getAuthClient().signIn.emailOtp({ email, otp: code }));
 }
 
 /**
@@ -95,5 +74,5 @@ export function logInWithCode(email: string, code: string): Promise<LoginResult>
  * so the caller must not act as if the user is logged out.
  */
 export function logOut(): Promise<LoginResult> {
-  return attempt(() => getAuthClient().signOut(), "failed");
+  return attempt(() => getAuthClient().signOut());
 }

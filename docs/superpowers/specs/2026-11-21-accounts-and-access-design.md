@@ -157,11 +157,11 @@ Settings that differ from Better Auth's defaults, and why:
 Rate limits _(numbers are the author's call)_:
 
 - **Per IP address,** through Better Auth's limiter: asking for a code at most 30 times per 5 minutes, checking a code at most 60 times per 5 minutes. The numbers leave room for an instruction evening where a room of volunteers on one Wi-Fi network logs in together. Guessing a code is stopped by the 5 tries per code, not by this limit.
-- **Per email address,** which Better Auth does not offer: our own check in a hook that runs before Better Auth's send route, counted in PostgreSQL. At most 3 requests per 15 minutes and 10 per day for one address. Over the limit the API answers 429 and no code is made or sent. It cannot live inside the function that sends the mail: Better Auth swallows what that function throws and answers 200. The counters are deleted after 24 hours, because they hold email addresses.
+- **Per email address,** which Better Auth does not offer: our own check in a hook that runs before Better Auth's send route, counted in PostgreSQL. At most 3 requests per 15 minutes and 10 per 24 hours for one address. Over the limit the API answers 429 with the code `TOO_MANY_LOGIN_CODES` or, for the daily limit, `TOO_MANY_LOGIN_CODES_TODAY`, and no code is made or sent. A 429 without one of these codes is the limit per IP address; the app shows a different text for each of the three. It cannot live inside the function that sends the mail: Better Auth swallows what that function throws and answers 200. The counters are deleted after 24 hours, because they hold email addresses; Better Auth's counters per IP address too, because their keys hold the address. Sessions store neither the IP address nor the browser.
 - **Switching the limits off.** `LOGIN_RATE_LIMITS=off` turns both limits off, for local development and the Playwright run, where every request comes from one address. The API refuses to start with that setting when `PUBLIC_ORIGIN` is an HTTPS origin, so it cannot be on in staging or production. The setup script writes it to `.env`. Tests of the limits themselves switch them on. The check of the code, its expiry and the 5 tries per code have no switch.
 - The client IP comes from the reverse proxy's header. Which header Alwaysdata's proxy sets, and whether it overwrites or appends, is checked on staging before the limits are trusted.
 
-The apps use Better Auth's browser client only for three calls: send a code, sign in with a code, sign out. It lives in one module in `packages/api-client`, which also maps Better Auth's error codes to our Dutch messages. Everything the app needs to know about the user comes from our own `GET /api/me`.
+The apps use Better Auth's browser client only for three calls: send a code, sign in with a code, sign out. It lives in one module in `packages/api-client`, which maps Better Auth's error codes to a `LoginError` code; `packages/ui` picks the Dutch message for it. Everything the app needs to know about the user comes from our own `GET /api/me`.
 
 After the code is accepted, a new account has no name yet. The app sees that in `/api/me` and asks for it.
 
@@ -345,6 +345,8 @@ Messages:
 | Code expired                    | "Deze code is verlopen. Vraag een nieuwe code aan."                            |
 | Too many wrong tries            | "Te veel pogingen. Vraag een nieuwe code aan."                                 |
 | Too many codes requested        | "Je hebt te vaak een code aangevraagd. Probeer het over een kwartier opnieuw." |
+| Too many codes in 24 hours      | "Je hebt te vaak een code aangevraagd. Probeer het morgen opnieuw."            |
+| Limit per IP address            | "Het is nu erg druk. Probeer het over een paar minuten opnieuw."               |
 | Too many membership requests    | "Je hebt vandaag te vaak een aanmelding gestuurd. Probeer het morgen opnieuw." |
 | No connection or a server error | "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw."           |
 

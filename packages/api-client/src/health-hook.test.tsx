@@ -3,28 +3,9 @@ import { healthyFixture, workerStaleFixture } from "@padvinder/contracts/fixture
 import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { getHealthQueryKey } from "./generated/@tanstack/react-query.gen";
+import { FakeEventSource } from "./testing";
+import { getHealthQueryKey, getMeQueryKey } from "./generated/@tanstack/react-query.gen";
 import { useHealthLiveUpdates } from "./health-live-updates";
-
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
-  listeners = new Map<string, Array<(event: MessageEvent) => void>>();
-  onopen: (() => void) | null = null;
-  closed = false;
-  constructor(readonly url: string) {
-    FakeEventSource.instances.push(this);
-  }
-  addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
-  }
-  close() {
-    this.closed = true;
-  }
-  emit(type: string, data: string) {
-    for (const listener of this.listeners.get(type) ?? [])
-      listener(new MessageEvent(type, { data }));
-  }
-}
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -75,4 +56,19 @@ test("closes the connection on unmount", () => {
   const { unmount } = setup();
   unmount();
   expect(FakeEventSource.instances[0]!.closed).toBe(true);
+});
+
+test("asks /api/me again when the server refuses the stream", () => {
+  vi.useFakeTimers();
+  const { client } = setup();
+  const spy = vi.spyOn(client, "invalidateQueries");
+  FakeEventSource.instances[0]!.fail(true);
+  expect(spy).toHaveBeenCalledWith({ queryKey: getMeQueryKey() });
+});
+
+test("a dropped connection does not ask /api/me", () => {
+  const { client } = setup();
+  const spy = vi.spyOn(client, "invalidateQueries");
+  FakeEventSource.instances[0]!.fail(false);
+  expect(spy).not.toHaveBeenCalled();
 });

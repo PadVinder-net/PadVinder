@@ -53,3 +53,24 @@ test("a failing me query itself does not invalidate itself in a loop", async () 
     .catch(() => {});
   expect(spy).not.toHaveBeenCalled();
 });
+
+test("when the me query finds the session gone, the data of that user is dropped", async () => {
+  const client = clientWithMe();
+  client.setQueryData(["other"], "data of the previous user");
+  client.getMutationCache().build(client, { mutationFn: async () => "x" });
+  await client.fetchQuery({ queryKey: getMeQueryKey(), queryFn: async () => null, staleTime: 0 });
+  expect(client.getQueryData(["other"])).toBeUndefined();
+  expect(client.getMutationCache().getAll()).toHaveLength(0);
+  expect(client.getQueryData(getMeQueryKey())).toBeNull();
+});
+
+test("a me query that finds a user keeps the other data", async () => {
+  const client = clientWithMe();
+  client.setQueryData(["other"], "data");
+  await client.fetchQuery({
+    queryKey: getMeQueryKey(),
+    queryFn: async () => meFixture,
+    staleTime: 0,
+  });
+  expect(client.getQueryData(["other"])).toBe("data");
+});

@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "10",
   "dialect": "postgres",
-  "id": "db420bf9-f7b1-4310-9814-cebb298a19d5",
+  "id": "b799c905-4955-48b4-bac1-ccaf79576ca2",
   "prevIds": [
     "c93ede7c-ff52-46c2-9c3d-b30b0b9f7c0f"
   ],
@@ -149,6 +149,26 @@
       "statementTarget": [
         "index",
         "public",
+        "rate_limits",
+        "rate_limits_last_request_idx"
+      ],
+      "writes": [
+        "s|idx|public.rate_limits_last_request_idx",
+        "n|idx|public.rate_limits_last_request_idx",
+        "e|idx|public.rate_limits_last_request_idx",
+        "n|rel|public.rate_limits_last_request_idx"
+      ],
+      "reads": [
+        "n|tbl|public.rate_limits",
+        "n|sch|public",
+        "n|col|public.rate_limits.last_request"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
         "sessions",
         "sessions_user_id_idx"
       ],
@@ -202,6 +222,26 @@
         "n|tbl|public.login_code_requests",
         "n|sch|public",
         "n|col|public.login_code_requests.email",
+        "n|col|public.login_code_requests.requested_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "login_code_requests",
+        "login_code_requests_requested_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.login_code_requests_requested_at_idx",
+        "n|idx|public.login_code_requests_requested_at_idx",
+        "e|idx|public.login_code_requests_requested_at_idx",
+        "n|rel|public.login_code_requests_requested_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.login_code_requests",
+        "n|sch|public",
         "n|col|public.login_code_requests.requested_at"
       ]
     },
@@ -1006,6 +1046,29 @@
       "op": "create",
       "row": {
         "schema": "public",
+        "table": "rate_limits",
+        "name": "rate_limits_last_request_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "last_request",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
         "table": "sessions",
         "name": "sessions_user_id_idx",
         "nameExplicit": true,
@@ -1063,6 +1126,29 @@
             "nullsFirst": false,
             "opclass": null
           },
+          {
+            "value": "requested_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "login_code_requests",
+        "name": "login_code_requests_requested_at_idx",
+        "nameExplicit": true,
+        "columns": [
           {
             "value": "requested_at",
             "isExpression": false,

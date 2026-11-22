@@ -62,6 +62,22 @@ test("rejects an allowed origin that is not a URL", () =>
     /ALLOWED_ORIGINS/,
   ));
 
+// `new URL` throws on these; the cross-field check must still report the variable, not crash.
+test.each([
+  ["PUBLIC_ORIGIN", { PUBLIC_ORIGIN: "padvinder.net" }],
+  ["ALLOWED_ORIGINS", { ALLOWED_ORIGINS: "padvinder.net" }],
+  ["PUBLIC_ORIGIN", { PUBLIC_ORIGIN: "padvinder.net", LOGIN_RATE_LIMITS: "off" }],
+])("an unparseable origin names %s", (name, change) =>
+  expect(() => loadApiEnv({ ...valid, ...change })).toThrow(
+    new RegExp(`^Invalid API environment: (.*; )?${name}(\\.0)?: [^;]*$`),
+  ),
+);
+
+test("a missing PUBLIC_ORIGIN and ALLOWED_ORIGINS are named, not a crash", () =>
+  expect(() =>
+    loadApiEnv({ ...valid, PUBLIC_ORIGIN: undefined, ALLOWED_ORIGINS: undefined }),
+  ).toThrow(/^Invalid API environment: .*ALLOWED_ORIGINS.*PUBLIC_ORIGIN/));
+
 test("resolves relative dist dirs against the working directory", () => {
   const env = loadApiEnv({ ...valid, MOBILE_DIST_DIR: "mobile", PORTAL_DIST_DIR: "/abs/portal" });
   expect(env.MOBILE_DIST_DIR).toBe(resolve(process.cwd(), "mobile"));

@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { getMe, updateMe, type GetMeResponse, type UpdateMeData } from "./generated";
 import { logOut } from "./auth-client";
 import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
@@ -20,6 +26,19 @@ export function meQueryOptions() {
       throw error ?? new Error(`Me request failed with status ${status}`);
     },
   });
+}
+
+/**
+ * Drops every cached query except `me`, and every mutation: what the previous user saw must not
+ * show for the next one on the same device. Called on logging out, on logging in, and when the
+ * me query finds the session gone (`createQueryClient`). `me` stays because the gate watches it.
+ */
+export function clearOtherUserData(queryClient: QueryClient): void {
+  const meId = getMeQueryKey()[0]._id;
+  queryClient.removeQueries({
+    predicate: (query) => (query.queryKey[0] as { _id?: string } | undefined)?._id !== meId,
+  });
+  queryClient.getMutationCache().clear();
 }
 
 export function useMe() {
@@ -62,12 +81,8 @@ export function useLogOut() {
         return;
       }
     }
-    const meKey = getMeQueryKey();
-    queryClient.setQueryData(meKey, null);
-    queryClient.removeQueries({
-      predicate: (query) => (query.queryKey[0] as { _id?: string })._id !== meKey[0]._id,
-    });
-    queryClient.getMutationCache().clear();
+    queryClient.setQueryData(getMeQueryKey(), null);
+    clearOtherUserData(queryClient);
   }
 
   return { logOut: handleLogOut, failed };

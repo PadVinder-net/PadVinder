@@ -1,5 +1,5 @@
 import { useLogOut } from "@padvinder/api-client";
-import { Button } from "@padvinder/ui";
+import { Button, logOutFailedMessage } from "@padvinder/ui";
 import { Link } from "react-router";
 
 export function HomePage() {
@@ -12,7 +12,7 @@ export function HomePage() {
       </Link>
       {failed ? (
         <p role="alert" className="mt-6 text-base text-destructive">
-          Uitloggen lukt nu niet. Controleer je verbinding en probeer het opnieuw.
+          {logOutFailedMessage}
         </p>
       ) : null}
       <Button variant="outline" className="mt-6 block" onClick={() => void logOut()}>
