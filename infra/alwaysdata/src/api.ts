@@ -4,14 +4,23 @@ import { redact } from "./redact.ts";
 export type Resource = { id: number; [field: string]: unknown };
 export type ResourceKind = "site" | "database" | "database/user" | "service";
 
+/** How a resource is found in its list: a field and the value it holds. */
+export type Identity = { field: string; value: string };
+
+/**
+ * Whether a resource has the identity. A list field (such as a site's `addresses`) matches
+ * when it contains the value; any other field when it equals the value. Strings compare
+ * exactly. Planning, create and `--inspect` all find resources with this one function.
+ */
+export function matchesIdentity(resource: Resource, identity: Identity): boolean {
+  const value = resource[identity.field];
+  return Array.isArray(value) ? value.includes(identity.value) : value === identity.value;
+}
+
 export interface AlwaysdataApi {
   list(kind: ResourceKind): Promise<Resource[]>;
   /** Creates a resource and returns it, found again in the list by `identity`. */
-  create(
-    kind: ResourceKind,
-    body: Record<string, unknown>,
-    identity: { field: string; value: string },
-  ): Promise<Resource>;
+  create(kind: ResourceKind, body: Record<string, unknown>, identity: Identity): Promise<Resource>;
   update(kind: ResourceKind, id: number, patch: Record<string, unknown>): Promise<void>;
   restartService(id: number): Promise<void>;
 }
@@ -142,7 +151,7 @@ export function createAlwaysdataApi(options: AlwaysdataApiOptions): AlwaysdataAp
     list,
     async create(kind, body, identity) {
       const findMatches = async () =>
-        (await list(kind)).filter((r) => r[identity.field] === identity.value);
+        (await list(kind)).filter((r) => matchesIdentity(r, identity));
       // A 5xx may come after the server stored the resource: look before every retry.
       await request(
         "POST",

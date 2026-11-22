@@ -15,12 +15,27 @@ export type FakeAlwaysdata = {
   close(): Promise<void>;
 };
 
-/** In-memory stand-in for the Alwaysdata API. Requires Basic auth; POST answers 201 with no body. */
+/**
+ * In-memory stand-in for the Alwaysdata API. Requires Basic auth; POST answers 201 with no
+ * body. Like the real API (22 November 2026) a new site does not keep the `name` it was sent,
+ * and a database user's `permissions` list every database of the account, NONE where the user
+ * has no rights.
+ */
 export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
   const resources = new Map<ResourceKind, Resource[]>(kinds.map((kind) => [kind, []]));
   const requests: FakeAlwaysdata["requests"] = [];
   const failures: { status: number; afterApply: boolean }[] = [];
   let nextId = 1;
+
+  /** A database user as listed: its permissions name every database, NONE by default. */
+  const withAllDatabases = (user: Resource): Resource => {
+    const stored = (user.permissions ?? {}) as Record<string, unknown>;
+    const databases = (resources.get("database") ?? []).map((database) => String(database.name));
+    return {
+      ...user,
+      permissions: Object.fromEntries(databases.map((name) => [name, stored[name] ?? "NONE"])),
+    };
+  };
 
   const server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -52,14 +67,20 @@ export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
     const items = resources.get(match[1] as ResourceKind) ?? [];
     const id = match[2] === undefined ? undefined : Number(match[2]);
 
-    if (id === undefined && method === "GET") return send(200, items);
+    const kind = match[1] as ResourceKind;
+    const shown = (item: Resource) => (kind === "database/user" ? withAllDatabases(item) : item);
+    if (id === undefined && method === "GET") return send(200, items.map(shown));
     if (id === undefined && method === "POST") {
-      items.push({ ...body, id: nextId++ });
+      const newId = nextId++;
+      // The real API names the site itself; what it chooses is not known, only that it is
+      // not the name sent.
+      const fields = kind === "site" ? { ...body, name: `site-${newId}` } : body;
+      items.push({ ...fields, id: newId });
       return send(201);
     }
     const item = items.find((r) => r.id === id);
     if (!item) return send(404, { detail: "not found" });
-    if (method === "GET") return send(200, item);
+    if (method === "GET") return send(200, shown(item));
     if (method === "PATCH") {
       Object.assign(item, body, { id });
       return send(204);

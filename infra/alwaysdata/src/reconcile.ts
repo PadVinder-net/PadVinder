@@ -1,14 +1,25 @@
 import { isDeepStrictEqual } from "node:util";
-import type { AlwaysdataApi, Resource, ResourceKind } from "./api.ts";
+import {
+  matchesIdentity,
+  type AlwaysdataApi,
+  type Identity,
+  type Resource,
+  type ResourceKind,
+} from "./api.ts";
 import type { DesiredResource } from "./resources.ts";
 
 export type PlannedChange = {
   action: "create" | "update" | "ok" | "conflict";
   kind: ResourceKind;
-  /** The identity value, such as the resource's name. */
+  /** The identity value, such as the resource's name or a site's address. */
   identity: string;
   /** Fields to send: all of them on create, only the changed ones on update. */
   fields?: string[];
+  /**
+   * On update, the values of changed `derived` fields, computed from what the server held
+   * when planning. Never printed: only `fields` is.
+   */
+  derivedValues?: Record<string, unknown>;
   /** Why a conflict needs a human. */
   reason?: string;
   /** Id of the existing resource. */
@@ -17,7 +28,7 @@ export type PlannedChange = {
   unverified?: string[];
 };
 
-const key = (kind: ResourceKind, identity: { field: string; value: string }) =>
+const key = (kind: ResourceKind, identity: Identity) =>
   `${kind} ${identity.field}=${JSON.stringify(identity.value)}`;
 
 const describe = (value: unknown) => (value === undefined ? "nothing" : JSON.stringify(value));
@@ -55,8 +66,8 @@ export async function planResources(
     lists.set(kind, await api.list(kind));
   }
 
-  const find = (kind: ResourceKind, identity: { field: string; value: string }) =>
-    (lists.get(kind) ?? []).filter((r) => r[identity.field] === identity.value);
+  const find = (kind: ResourceKind, identity: Identity) =>
+    (lists.get(kind) ?? []).filter((r) => matchesIdentity(r, identity));
 
   return desired.map((resource): PlannedChange => {
     const base = { kind: resource.kind, identity: resource.identity.value };
@@ -75,7 +86,12 @@ export async function planResources(
 
     const createOnly = resource.createOnly ?? [];
     const writeOnly = resource.writeOnly ?? [];
-    const differs = (field: string) => !sameValue(existing[field], resource.fields[field]);
+    const derived = resource.derived ?? {};
+    const wanted = (field: string) => {
+      const derive = derived[field];
+      return derive ? derive(existing[field]) : resource.fields[field];
+    };
+    const differs = (field: string) => !sameValue(existing[field], wanted(field));
 
     // A create-only field the API does not report cannot be checked; see checkCreateOnlyFields.
     const unverified = createOnly.filter((field) => !(field in existing));
@@ -100,9 +116,20 @@ export async function planResources(
       return differs(field);
     });
     const checked = { ...base, id: existing.id, ...(unverified.length > 0 ? { unverified } : {}) };
-    return changed.length === 0
-      ? { ...checked, action: "ok" }
-      : { ...checked, action: "update", fields: changed };
+    if (changed.length === 0) return { ...checked, action: "ok" };
+    const changedDerived = changed.filter((field) => field in derived);
+    return {
+      ...checked,
+      action: "update",
+      fields: changed,
+      ...(changedDerived.length > 0
+        ? {
+            derivedValues: Object.fromEntries(
+              changedDerived.map((field) => [field, wanted(field)]),
+            ),
+          }
+        : {}),
+    };
   });
 }
 
@@ -147,7 +174,10 @@ export async function applyPlan(
       throw new Error(`The plan has no id for ${key(resource.kind, resource.identity)}`);
     }
     if (change.action === "update") {
-      await api.update(resource.kind, change.id, pick(resource.fields, change.fields ?? []));
+      await api.update(resource.kind, change.id, {
+        ...pick(resource.fields, change.fields ?? []),
+        ...change.derivedValues,
+      });
     }
   }
 }

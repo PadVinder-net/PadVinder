@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
-import { createAlwaysdataApi, type AlwaysdataApi, type Resource } from "./api.ts";
+import { createAlwaysdataApi, matchesIdentity, type AlwaysdataApi, type Resource } from "./api.ts";
 import { applyPlan, planResources } from "./reconcile.ts";
-import { desiredResources } from "./resources.ts";
+import { databaseUserPermissions, desiredResources } from "./resources.ts";
 import { startFakeAlwaysdata, type FakeAlwaysdata } from "./testing/fake-api.ts";
 
 const password = "p@ss/w+rd";
@@ -27,7 +27,7 @@ beforeEach(() => {
 
 const writes = () => fake.requests.filter((r) => r.method !== "GET");
 const stored = (kind: Parameters<AlwaysdataApi["list"]>[0], field: string, value: string) => {
-  const found = fake.resources.get(kind)?.find((r) => r[field] === value);
+  const found = fake.resources.get(kind)?.find((r) => matchesIdentity(r, { field, value }));
   if (!found) throw new Error(`no ${kind} with ${field} ${value}`);
   return found;
 };
@@ -37,7 +37,7 @@ test("an empty account plans five creates in order, and no SSH user", async () =
   expect(plan.map((c) => [c.action, c.kind, c.identity])).toEqual([
     ["create", "database", "acme_staging"],
     ["create", "database/user", "acme_staging"],
-    ["create", "site", "padvinder-staging"],
+    ["create", "site", "staging.padvinder.net"],
     ["create", "service", "padvinder-api (staging)"],
     ["create", "service", "padvinder-worker (staging)"],
   ]);
@@ -63,10 +63,23 @@ test("apply creates the resources; the services name no SSH user", async () => {
     password,
     permissions: { acme_staging: "FULL" },
   });
-  expect(stored("site", "name", "padvinder-staging")).toMatchObject({
+  const site = stored("site", "addresses", "staging.padvinder.net");
+  expect(site).toMatchObject({
     type: "reverse_proxy",
     addresses: ["staging.padvinder.net"],
     ssl_force: true,
+    url: "http://services-acme.alwaysdata.net:8301",
+  });
+  // The API does not keep a site's name, so none is sent.
+  const sitePost = fake.requests.find((r) => r.method === "POST" && r.path === "/v1/site/");
+  expect(sitePost?.body).not.toHaveProperty("name");
+  // The API has no encoding field.
+  const databasePost = fake.requests.find((r) => r.method === "POST" && r.path === "/v1/database/");
+  expect(databasePost?.body).toEqual({
+    name: "acme_staging",
+    type: "POSTGRESQL",
+    locale: "C.UTF-8",
+    extensions: ["postgis"],
   });
 });
 
@@ -206,4 +219,155 @@ test("addresses in another order are the same addresses", async () => {
   expect(await planResources(api, [site])).toEqual([
     expect.objectContaining({ action: "update", fields: ["addresses"] }),
   ]);
+});
+
+test("a database user with rights on another database gets NONE there", async () => {
+  fake.resources
+    .get("database")
+    ?.push({ id: 1, name: "acme_production" }, { id: 2, name: "acme_staging" });
+  fake.resources.get("database/user")?.push({
+    id: 3,
+    name: "acme_staging",
+    type: "POSTGRESQL",
+    permissions: { acme_production: "FULL", acme_staging: "FULL" },
+  });
+  const plan = await planResources(api, desired.slice(0, 2));
+  expect(plan).toEqual([
+    expect.objectContaining({ action: "ok", kind: "database" }),
+    expect.objectContaining({ action: "update", kind: "database/user", fields: ["permissions"] }),
+  ]);
+  fake.requests.length = 0;
+  await applyPlan(api, desired.slice(0, 2), plan);
+  expect(writes()).toEqual([
+    {
+      method: "PATCH",
+      path: "/v1/database/user/3/",
+      body: { permissions: { acme_production: "NONE", acme_staging: "FULL" } },
+    },
+  ]);
+  expect((await planResources(api, desired.slice(0, 2))).map((c) => c.action)).toEqual([
+    "ok",
+    "ok",
+  ]);
+});
+
+test("a database user without rights on its own database gets FULL there", async () => {
+  fake.resources
+    .get("database")
+    ?.push({ id: 1, name: "acme_production" }, { id: 2, name: "acme_staging" });
+  // The fake lists both databases with NONE.
+  fake.resources.get("database/user")?.push({ id: 3, name: "acme_staging", permissions: {} });
+  const plan = await planResources(api, desired.slice(1, 2));
+  expect(plan).toEqual([expect.objectContaining({ action: "update", fields: ["permissions"] })]);
+  fake.requests.length = 0;
+  await applyPlan(api, desired.slice(1, 2), plan);
+  expect(writes()[0]?.body).toEqual({
+    permissions: { acme_production: "NONE", acme_staging: "FULL" },
+  });
+});
+
+test("a database user with FULL on its own database and NONE elsewhere is ok", async () => {
+  fake.resources
+    .get("database")
+    ?.push({ id: 1, name: "acme_production" }, { id: 2, name: "acme_staging" });
+  fake.resources.get("database/user")?.push({
+    id: 3,
+    name: "acme_staging",
+    type: "POSTGRESQL",
+    permissions: { acme_production: "NONE", acme_staging: "FULL" },
+  });
+  expect(await planResources(api, desired.slice(1, 2))).toEqual([
+    expect.objectContaining({ action: "ok", kind: "database/user" }),
+  ]);
+});
+
+test("databaseUserPermissions: FULL on its own database, NONE on every other listed one", () => {
+  expect(databaseUserPermissions("a_staging", undefined)).toEqual({ a_staging: "FULL" });
+  expect(databaseUserPermissions("a_staging", { a_production: "FULL", a_staging: "NONE" })).toEqual(
+    { a_production: "NONE", a_staging: "FULL" },
+  );
+  expect(databaseUserPermissions("a_staging", { a_production: "READ" })).toEqual({
+    a_production: "NONE",
+    a_staging: "FULL",
+  });
+});
+
+test("the account as found on 22 November 2026: only the services are created", async () => {
+  // The database and its user exist, the site exists under a name the API chose, and there
+  // are no services. Production's site and database are there too.
+  fake.resources.get("database")?.push(
+    {
+      id: 10,
+      name: "acme_production",
+      type: "POSTGRESQL",
+      locale: "C.UTF-8",
+      extensions: ["postgis"],
+    },
+    {
+      id: 11,
+      name: "acme_staging",
+      type: "POSTGRESQL",
+      locale: "C.UTF-8",
+      extensions: ["postgis"],
+      permissions: { acme_staging: "FULL" },
+    },
+  );
+  fake.resources.get("database/user")?.push({
+    id: 20,
+    name: "acme_staging",
+    type: "POSTGRESQL",
+    permissions: { acme_production: "NONE", acme_staging: "FULL" },
+  });
+  fake.resources.get("site")?.push(
+    {
+      id: 30,
+      name: "padvinder.net",
+      type: "reverse_proxy",
+      addresses: ["padvinder.net"],
+      ssl_force: true,
+      url: "http://services-acme.alwaysdata.net:8300",
+    },
+    {
+      id: 31,
+      name: "staging.padvinder.net",
+      type: "reverse_proxy",
+      addresses: ["staging.padvinder.net"],
+      ssl_force: true,
+      url: "http://services-acme.alwaysdata.net:8301",
+    },
+  );
+
+  const plan = await planResources(api, desired);
+  expect(plan.map((c) => [c.action, c.kind, c.identity, c.id])).toEqual([
+    ["ok", "database", "acme_staging", 11],
+    ["ok", "database/user", "acme_staging", 20],
+    ["ok", "site", "staging.padvinder.net", 31],
+    ["create", "service", "padvinder-api (staging)", undefined],
+    ["create", "service", "padvinder-worker (staging)", undefined],
+  ]);
+  await applyPlan(api, desired, plan);
+  expect(writes().map((r) => `${r.method} ${r.path}`)).toEqual([
+    "POST /v1/service/",
+    "POST /v1/service/",
+  ]);
+  expect((await planResources(api, desired)).every((c) => c.action === "ok")).toBe(true);
+});
+
+test("a site with differing managed fields is updated, never created again", async () => {
+  fake.resources.get("site")?.push({
+    id: 31,
+    name: "something else",
+    type: "reverse_proxy",
+    addresses: ["staging.padvinder.net"],
+    ssl_force: false,
+    url: "http://services-acme.alwaysdata.net:8301",
+  });
+  const plan = await planResources(api, desired);
+  expect(plan[2]).toMatchObject({
+    action: "update",
+    kind: "site",
+    identity: "staging.padvinder.net",
+    id: 31,
+    fields: ["ssl_force"],
+  });
 });

@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
-import { createAlwaysdataApi, type AlwaysdataApi } from "./api.ts";
+import { createAlwaysdataApi, matchesIdentity, type AlwaysdataApi } from "./api.ts";
 import { startFakeAlwaysdata, type FakeAlwaysdata } from "./testing/fake-api.ts";
 
 const apiKey = "test-key/with+chars";
@@ -138,16 +138,48 @@ test("a retried create does not make a second resource", async () => {
 
 test("create retries a POST that was not stored", async () => {
   fake.failNext(503);
-  await api.create("site", { name: "u" }, { field: "name", value: "u" });
+  await api.create("database", { name: "u" }, { field: "name", value: "u" });
   expect(fake.requests.filter((r) => r.method === "POST")).toHaveLength(2);
-  expect(fake.resources.get("site")).toHaveLength(1);
+  expect(fake.resources.get("database")).toHaveLength(1);
 });
 
 test("create throws when two resources share the identity", async () => {
-  fake.resources.get("site")?.push({ id: 91, name: "u" }, { id: 92, name: "u" });
-  await expect(api.create("site", { name: "u" }, { field: "name", value: "u" })).rejects.toThrow(
-    /expected one/,
+  fake.resources.get("database")?.push({ id: 91, name: "u" }, { id: 92, name: "u" });
+  await expect(
+    api.create("database", { name: "u" }, { field: "name", value: "u" }),
+  ).rejects.toThrow(/expected one/);
+});
+
+test("an identity on a list field matches when the list contains the value exactly", () => {
+  const site = { id: 1, addresses: ["staging.padvinder.net", "www.example"] };
+  expect(matchesIdentity(site, { field: "addresses", value: "staging.padvinder.net" })).toBe(true);
+  expect(matchesIdentity(site, { field: "addresses", value: "padvinder.net" })).toBe(false);
+  expect(matchesIdentity(site, { field: "addresses", value: "STAGING.padvinder.net" })).toBe(false);
+  expect(matchesIdentity({ id: 2, name: "a" }, { field: "name", value: "a" })).toBe(true);
+  expect(matchesIdentity({ id: 2, name: ["a"] }, { field: "name", value: "a" })).toBe(true);
+  expect(matchesIdentity({ id: 2, name: "ab" }, { field: "name", value: "a" })).toBe(false);
+  expect(matchesIdentity({ id: 2 }, { field: "addresses", value: "a" })).toBe(false);
+});
+
+test("create finds a site by its address, although the API does not keep the name", async () => {
+  const identity = { field: "addresses", value: "staging.padvinder.net" };
+  fake.resources.get("site")?.push({ id: 90, name: "other", addresses: ["padvinder.net"] });
+  fake.failNextAfterApply(503);
+  const created = await api.create(
+    "site",
+    { name: "padvinder-staging", addresses: ["staging.padvinder.net"] },
+    identity,
   );
+  expect(created.name).not.toBe("padvinder-staging");
+  expect(created.addresses).toEqual(["staging.padvinder.net"]);
+  // The retry check found the stored site by address, so no second POST.
+  expect(fake.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+  expect(fake.resources.get("site")).toHaveLength(2);
+
+  fake.resources.get("site")?.push({ id: 92, addresses: ["staging.padvinder.net"] });
+  await expect(
+    api.create("site", { addresses: ["staging.padvinder.net"] }, identity),
+  ).rejects.toThrow(/Found 3 site resources with addresses "staging.padvinder.net"; expected one/);
 });
 
 test("a network error is retried for GET and wrapped without secrets", async () => {

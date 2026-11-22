@@ -1,4 +1,4 @@
-import type { ResourceKind } from "./api.ts";
+import type { Identity, ResourceKind } from "./api.ts";
 import {
   databaseName,
   environmentDirectory,
@@ -14,8 +14,6 @@ import {
  * --inspect`; if they differ, only this file changes.
  */
 
-export type Identity = { field: string; value: string };
-
 export type ServiceProgram = "api" | "worker";
 
 /** The annotation that identifies a service: `padvinder-api (staging)`. */
@@ -30,14 +28,44 @@ export const serviceDisabledField = "is_disabled";
 
 export type DesiredResource = {
   kind: ResourceKind;
-  /** The field that finds the resource in the list; it is in `fields` too. */
+  /**
+   * The field that finds the resource in the list; it is in `fields` too. A list field
+   * matches when it contains the value (see `matchesIdentity`).
+   */
   identity: Identity;
+  /** The values to send on create, and to compare with afterwards. */
   fields: Record<string, unknown>;
+  /**
+   * Fields whose desired value depends on what the server holds: compared with, and sent on
+   * update as, the value computed from the current one. `fields` still holds the create value.
+   */
+  derived?: Record<string, (current: unknown) => unknown>;
   /** Set only on create; a difference afterwards is a conflict for a human, never an update. */
   createOnly?: string[];
   /** Sent on create, never compared (the API does not return it); sent again only on rotation. */
   writeOnly?: string[];
 };
+
+/**
+ * The permissions a database user should have: FULL on its own database, NONE on every other
+ * database the API lists. The API keys `permissions` by database name and lists every
+ * database of the account (confirmed 22 November 2026, `--inspect`), so setting the others to
+ * NONE keeps the staging user out of production's database and the other way round. A
+ * database the API does not list is left out: the user has no rights on it anyway.
+ */
+export function databaseUserPermissions(
+  ownDatabase: string,
+  current: unknown,
+): Record<string, string> {
+  const listed =
+    current !== null && typeof current === "object" && !Array.isArray(current)
+      ? Object.keys(current)
+      : [];
+  return {
+    ...Object.fromEntries(listed.map((database) => [database, "NONE"])),
+    [ownDatabase]: "FULL",
+  };
+}
 
 export function desiredResources(
   account: string,
@@ -47,6 +75,8 @@ export function desiredResources(
   const environment = environments[env];
   const directory = environmentDirectory(env);
   const database = databaseName(account, env);
+  const [firstAddress] = environment.addresses;
+  if (firstAddress === undefined) throw new Error(`The ${env} environment has no address`);
 
   const service = (program: ServiceProgram): DesiredResource => {
     const annotation = serviceAnnotation(program, env);
@@ -77,13 +107,13 @@ export function desiredResources(
       fields: {
         name: database,
         type: "POSTGRESQL",
-        // UNVERIFIED: the API documentation names no fields for encoding, locale and
-        // extensions; these are guesses from the panel's create form.
-        encoding: "UTF8",
+        // `locale` and `extensions` are the API's names and formats (confirmed 22 November
+        // 2026, `--inspect`). The API has no encoding field; the migrate step's check of
+        // encoding and locale stays the hard gate, before anything is written.
         locale: "C.UTF-8",
         extensions: ["postgis"],
       },
-      createOnly: ["type", "encoding", "locale", "extensions"],
+      createOnly: ["type", "locale", "extensions"],
     },
     {
       kind: "database/user",
@@ -92,18 +122,20 @@ export function desiredResources(
         name: database,
         type: "POSTGRESQL",
         password: databasePassword,
-        // UNVERIFIED: the documentation is unclear whether the keys are database names
-        // (assumed) or ids.
-        permissions: { [database]: "FULL" },
+        // Keyed by database name (confirmed 22 November 2026, `--inspect`).
+        permissions: databaseUserPermissions(database, undefined),
       },
+      derived: { permissions: (current) => databaseUserPermissions(database, current) },
       createOnly: ["type"],
       writeOnly: ["password"],
     },
     {
       kind: "site",
-      identity: { field: "name", value: `padvinder-${env}` },
+      // Found by its first address: the API does not keep the `name` sent on create (22
+      // November 2026, `--inspect`), so a name would neither find the site nor stay equal.
+      // No name is sent at all.
+      identity: { field: "addresses", value: firstAddress },
       fields: {
-        name: `padvinder-${env}`,
         type: "reverse_proxy",
         // UNVERIFIED: whether the API keeps the order; lists of plain values are compared as
         // sets, so another order is not a change.

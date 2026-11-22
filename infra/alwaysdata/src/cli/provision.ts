@@ -7,7 +7,12 @@
 // show as <ip> and the account name as <account>.
 import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
-import { createAlwaysdataApi, type AlwaysdataApi, type ResourceKind } from "../api.ts";
+import {
+  createAlwaysdataApi,
+  matchesIdentity,
+  type AlwaysdataApi,
+  type ResourceKind,
+} from "../api.ts";
 import { loadInfraConfig, type InfraConfig } from "../config.ts";
 import { renderEnvFile } from "../env-file.ts";
 import {
@@ -168,7 +173,7 @@ export async function inspectAccount(
     const ours: Record<string, unknown>[] = [];
     for (const want of desired.filter((d) => d.kind === kind)) {
       for (const resource of resources) {
-        if (resource[want.identity.field] !== want.identity.value) continue;
+        if (!matchesIdentity(resource, want.identity)) continue;
         const shown: Record<string, unknown> = { id: resource.id };
         for (const name of Object.keys(want.fields)) {
           if (want.writeOnly?.includes(name)) continue;
