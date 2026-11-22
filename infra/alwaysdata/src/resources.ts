@@ -109,9 +109,10 @@ export function desiredResources(
         // sets, so another order is not a change.
         addresses: environment.addresses,
         ssl_force: true,
-        // UNVERIFIED: the field name of a reverse proxy's target URL, and whether the proxy
-        // accepts the services hostname (services are reachable over IPv6 only).
-        remote_url: `http://services-${account}.alwaysdata.net:${environment.apiPort}`,
+        // The reverse proxy's target is `url`: the API rejects a reverse_proxy site without it
+        // (22 November 2026). UNVERIFIED: whether the proxy accepts the services hostname
+        // (services are reachable over IPv6 only).
+        url: `http://services-${account}.alwaysdata.net:${environment.apiPort}`,
       },
     },
     service("api"),
