@@ -1,7 +1,7 @@
 import { meFixture } from "@padvinder/contracts/fixtures";
 import { expect, test, vi } from "vitest";
 import { getMeQueryKey } from "./index";
-import { createQueryClient } from "./query-client";
+import { createQueryClient, refetchMe } from "./query-client";
 
 const notLoggedIn = { statusCode: 401, error: "Unauthorized", message: "x", code: "not_logged_in" };
 
@@ -52,4 +52,10 @@ test("a failing me query itself does not invalidate itself in a loop", async () 
     })
     .catch(() => {});
   expect(spy).not.toHaveBeenCalled();
+});
+
+test("refetchMe invalidates the me query", () => {
+  const client = clientWithMe();
+  refetchMe(client);
+  expect(client.getQueryState(getMeQueryKey())?.isInvalidated).toBe(true);
 });

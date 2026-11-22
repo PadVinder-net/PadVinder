@@ -5,6 +5,9 @@ import {
   type LiveEventType,
 } from "@padvinder/contracts";
 
+/** `EventSource.CLOSED`, as a literal so a stand-in implementation needs no static fields. */
+const CLOSED = 2;
+
 /** One optional handler per event type; a new union member in `liveEventSchema` adds a key. */
 export type LiveEventHandlers = {
   [T in LiveEventType]?: (event: Extract<LiveEvent, { type: T }>) => void;
@@ -13,6 +16,12 @@ export type LiveEventHandlers = {
 export type ServerEventHandlers = {
   /** Called each time the connection opens, also after an automatic reconnect. */
   onOpen?: () => void;
+  /**
+   * Called when the browser gives up on the stream: the server answered with a status other than
+   * 200 (a 401 after logging out elsewhere), so it will not reconnect. Not called while it is
+   * reconnecting after a dropped connection.
+   */
+  onClosed?: () => void;
   events?: LiveEventHandlers;
 };
 
@@ -35,6 +44,9 @@ export function subscribeToServerEvents(
   const source = new EventSourceImpl(url);
 
   source.onopen = () => handlers.onOpen?.();
+  source.onerror = () => {
+    if (source.readyState === CLOSED) handlers.onClosed?.();
+  };
   for (const type of LIVE_EVENT_TYPES) {
     source.addEventListener(type, (message) => {
       let payload: unknown;

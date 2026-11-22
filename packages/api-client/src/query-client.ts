@@ -14,6 +14,11 @@ function isNotLoggedIn(error: unknown): boolean {
   );
 }
 
+/** Asks `/api/me` again, so an ended session leads to the login screen. */
+export function refetchMe(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: getMeQueryKey() });
+}
+
 /**
  * The generated client uses `baseUrl: ""`, so requests go to the same origin as the page.
  * Any query or mutation that fails with a 401 makes the app ask `/api/me` again, so an ended
@@ -21,7 +26,6 @@ function isNotLoggedIn(error: unknown): boolean {
  */
 export function createQueryClient(): QueryClient {
   const meKey = getMeQueryKey();
-  const refetchMe = () => void client.invalidateQueries({ queryKey: meKey });
   const client: QueryClient = new QueryClient({
     queryCache: new QueryCache({
       onError: (error, query) => {
@@ -29,12 +33,12 @@ export function createQueryClient(): QueryClient {
           isNotLoggedIn(error) &&
           (query.queryKey[0] as { _id?: string } | undefined)?._id !== meKey[0]._id
         )
-          refetchMe();
+          refetchMe(client);
       },
     }),
     mutationCache: new MutationCache({
       onError: (error) => {
-        if (isNotLoggedIn(error)) refetchMe();
+        if (isNotLoggedIn(error)) refetchMe(client);
       },
     }),
   });

@@ -19,6 +19,8 @@ class FakeEventSource {
   static instances: FakeEventSource[] = [];
   listeners = new Map<string, Array<(event: MessageEvent) => void>>();
   onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readyState = 0;
   closed = false;
   constructor(readonly url: string) {
     FakeEventSource.instances.push(this);
@@ -106,6 +108,23 @@ describe("subscribeToServerEvents", () => {
     source.onopen?.();
     source.onopen?.();
     expect(opened).toBe(2);
+  });
+
+  test("onClosed is called when the stream is closed for good", () => {
+    let closed = 0;
+    const { source } = subscribe({ onClosed: () => closed++ });
+    // A non-200 answer (a 401 after logging out elsewhere): the browser gives up.
+    source.readyState = 2;
+    source.onerror?.();
+    expect(closed).toBe(1);
+  });
+
+  test("onClosed is not called while the browser is reconnecting", () => {
+    let closed = 0;
+    const { source } = subscribe({ onClosed: () => closed++ });
+    source.readyState = 0;
+    source.onerror?.();
+    expect(closed).toBe(0);
   });
 
   test("the returned function closes the EventSource", () => {

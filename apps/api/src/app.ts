@@ -16,7 +16,7 @@ import type { Mailer } from "./mail/mailer";
 import { addOriginCheck } from "./plugins/origin-check";
 import { registerStaticApps } from "./plugins/static-apps";
 import type { NotificationHub } from "./realtime/notification-hub";
-import { eventsRoutes } from "./routes/events";
+import { eventsRoutes, SESSION_RECHECK_MS } from "./routes/events";
 import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { versionRoutes } from "./routes/version";
@@ -31,6 +31,8 @@ export type AppDeps = {
   logger?: boolean;
   /** Where the log goes instead of stdout, when `logger` is on (tests that read the log). */
   logStream?: { write(line: string): void };
+  /** How often an open event stream checks its session; default `SESSION_RECHECK_MS`. Tests. */
+  sessionRecheckMs?: number;
 };
 
 declare module "fastify" {
@@ -77,7 +79,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(healthRoutes, { env, db: deps.db });
       await api.register(versionRoutes, { env });
       await api.register(meRoutes, { db: deps.db });
-      await api.register(eventsRoutes, { notifications: deps.notifications });
+      await api.register(eventsRoutes, {
+        db: deps.db,
+        notifications: deps.notifications,
+        sessionRecheckMs: deps.sessionRecheckMs ?? SESSION_RECHECK_MS,
+      });
     },
     { prefix: "/api" },
   );

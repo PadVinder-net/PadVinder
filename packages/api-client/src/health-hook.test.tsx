@@ -3,13 +3,15 @@ import { healthyFixture, workerStaleFixture } from "@padvinder/contracts/fixture
 import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { getHealthQueryKey } from "./generated/@tanstack/react-query.gen";
+import { getHealthQueryKey, getMeQueryKey } from "./generated/@tanstack/react-query.gen";
 import { useHealthLiveUpdates } from "./health-live-updates";
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   listeners = new Map<string, Array<(event: MessageEvent) => void>>();
   onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readyState = 0;
   closed = false;
   constructor(readonly url: string) {
     FakeEventSource.instances.push(this);
@@ -69,6 +71,16 @@ test("refetches the health when the connection opens", () => {
   const spy = vi.spyOn(client, "invalidateQueries");
   FakeEventSource.instances[0]!.onopen?.();
   expect(spy).toHaveBeenCalledWith({ queryKey: getHealthQueryKey() });
+});
+
+test("asks for me again when the stream is closed for good", () => {
+  // A logout elsewhere: the stream's next connect gets a 401, and me leads to the login screen.
+  const { client } = setup();
+  const spy = vi.spyOn(client, "invalidateQueries");
+  const source = FakeEventSource.instances[0]!;
+  source.readyState = 2;
+  source.onerror?.();
+  expect(spy).toHaveBeenCalledWith({ queryKey: getMeQueryKey() });
 });
 
 test("closes the connection on unmount", () => {
