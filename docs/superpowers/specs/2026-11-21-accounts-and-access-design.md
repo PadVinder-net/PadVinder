@@ -350,7 +350,7 @@ Messages:
 | Too many membership requests    | "Je hebt vandaag te vaak een aanmelding gestuurd. Probeer het morgen opnieuw." |
 | No connection or a server error | "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw."           |
 
-**Name.** Heading "Hoe heet je?". Fields "Naam" and "Telefoonnummer (mag leeg)". Text "Je naam is te zien voor de mensen in je werkgroep. Je telefoonnummer alleen voor je coördinator." Button "Ga verder".
+**Name.** Heading "Hoe heet je?". Fields "Naam" and "Telefoonnummer (optioneel)". Text "Je naam is te zien voor de mensen in je werkgroep. Je telefoonnummer alleen voor de coördinator van de werkgroep." Button "Ga verder".
 
 **Choosing a working group** (the maintainer's design). Heading "Kies je werkgroep". A filter field at the top, "Zoek op werkgroep, organisatie of plaats", then one list of all working groups from all organizations. Each row shows the group's name, and below it the organization and the city. Typing filters the list in the browser: a row stays when the text occurs in its name, its organization or its city, ignoring case and accents. Choosing a row and tapping "Meld je aan" sends the request. No match: "Geen werkgroep gevonden."
 
