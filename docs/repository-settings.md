@@ -13,7 +13,7 @@ Settings, Rules, Rulesets, New ruleset, New branch ruleset.
   - Restrict deletions.
   - Require linear history.
   - Require a pull request before merging. Required approvals: 0 while there is one developer; raise it when there are more. Allowed merge methods: squash and rebase (linear history rules out merge commits).
-  - Require status checks to pass. Turn on "Require branches to be up to date before merging". Add these checks: `check`, `visual`, `e2e`, `scan` and `release / build`. Confirm the exact names in the picker after the first run: a job that calls a reusable workflow shows as `<caller job> / <called job>`, which is why the last one is `release / build`. Do not add `deploy-test` (workflow `deploy-test.yml`): it runs only on pull requests that touch the deploy path, a path-filtered workflow reports nothing on other pull requests, and a required check that never reports blocks the merge.
+  - Require status checks to pass. Turn on "Require branches to be up to date before merging". Add these checks: `check`, `visual`, `e2e`, `scan` and `release / build`. Confirm the exact names in the picker after the first run: a job that calls a reusable workflow shows as `<caller job> / <called job>`, which is why the last one is `release / build`. Do not add `deploy-test` (workflow `deploy-test.yml`): it runs only on pull requests that touch the deploy path, a path-filtered workflow reports nothing on other pull requests, and a required check that never reports blocks the merge. The CI jobs `visual`, `e2e` and `release / build` may skip when a pull request does not affect them; they are safe to require, because a job skipped by its condition reports as passed.
   - Block force pushes.
 - Bypass list: leave empty, so the rules also apply to admins.
 

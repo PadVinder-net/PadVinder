@@ -321,6 +321,8 @@ Copy this slice when you add a feature; it touches every layer. `packages/contra
 
 GitHub Actions, `.github/workflows/ci.yml`, on every pull request and on `workflow_dispatch`. The job names are the required status checks (see `docs/repository-settings.md` for the repository settings, which the maintainer applies by hand):
 
+`check` and `scan` run on every pull request. `visual`, `e2e` and `release / build` run only when the pull request changes something they test: a job `changes` feeds the changed paths to `scripts/ci-changes.ts`, whose rules are in `scripts/lib/ci-jobs.ts`. Documentation and unit tests alone skip all three; `visual` runs only for `packages/ui`, the workspace packages it depends on, and its script; dependencies, the tool chain and the CI files run everything; a path no rule knows runs `e2e` and `release`. A skipped job reports as passed, so it still satisfies the required check. If `changes` fails, or on `workflow_dispatch`, everything runs. When you add a file that one of these jobs depends on outside the paths it already covers, add it to the rules and their test.
+
 - `check`: `pnpm check` against a PostGIS service container (includes the generated-files check).
 - `visual`: the Storybook visual tests in the Playwright image. Failures upload `visual-diffs`.
 - `e2e`: Playwright end-to-end tests against `pnpm dev`, in the Playwright image.

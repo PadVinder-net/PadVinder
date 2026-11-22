@@ -21,6 +21,11 @@ on:
         type: number
         required: false
         default: 7
+      skip:
+        description: Skip the build; the job still reports, as skipped. CI sets it when a pull request cannot change the release.
+        type: boolean
+        required: false
+        default: false
     outputs:
       artifact-name:
         description: The name of the uploaded artifact, release-<commit>.
@@ -34,6 +39,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ !inputs.skip }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:

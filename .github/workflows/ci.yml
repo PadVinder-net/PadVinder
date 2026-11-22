@@ -1,4 +1,6 @@
 # The checks on every pull request. The job names are the required status checks.
+# check and scan always run. visual, e2e and release run only when the pull request changes
+# something they test (scripts/lib/ci-jobs.ts decides); a skipped job reports as passed.
 name: CI
 
 on:
@@ -13,6 +15,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Which of visual, e2e and release this pull request needs. If this job fails, they all
+  # run: their conditions skip a job only on an explicit "false". By hand
+  # (workflow_dispatch), everything runs.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      visual: ${{ steps.jobs.outputs.visual }}
+      e2e: ${{ steps.jobs.outputs.e2e }}
+      release: ${{ steps.jobs.outputs.release }}
+    steps:
+      # For a pull request, HEAD is the merge commit and HEAD^1 the tip of the base branch,
+      # so two commits are enough to see what the pull request changes.
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - if: github.event_name == 'pull_request'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - if: github.event_name == 'pull_request'
+        id: jobs
+        shell: bash
+        run: |
+          git diff --name-only HEAD^1 HEAD >"$RUNNER_TEMP/changed-paths"
+          echo "Changed paths:"
+          cat "$RUNNER_TEMP/changed-paths"
+          node scripts/ci-changes.ts <"$RUNNER_TEMP/changed-paths" | tee -a "$GITHUB_OUTPUT"
+
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -42,6 +75,8 @@ jobs:
       - run: pnpm check
 
   visual:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.visual != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # The reference screenshots were made in this image. Keep the tag equal to @playwright/test.
@@ -61,6 +96,8 @@ jobs:
           if-no-files-found: ignore
 
   e2e:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.e2e != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container: mcr.microsoft.com/playwright:v1.65.1-noble
@@ -112,5 +149,11 @@ jobs:
       - run: scripts/scan-secrets.sh
       - run: scripts/lint-workflows.sh
 
+  # Skipped inside the called workflow, not here: a skipped caller job reports as "release",
+  # and the required check "release / build" would never report.
   release:
+    needs: changes
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/build-release.yml
+    with:
+      skip: ${{ needs.changes.outputs.release == 'false' }}
