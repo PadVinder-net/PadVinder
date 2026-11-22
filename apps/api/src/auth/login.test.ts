@@ -371,6 +371,20 @@ test("signing out ends the session", async () => {
   expect(cookieHeader(res)).toBe("");
 });
 
+test("signing out as the browser client does (JSON content type, body {}) works", async () => {
+  // The Better Auth browser client's signOut() sends POST with `content-type: application/json`
+  // and the body `{}`; Fastify must not refuse that before Better Auth sees it.
+  const { headers } = await loginAs(ctx, "noor@example.test");
+  const res = await ctx.app.inject({
+    method: "POST",
+    url: "/api/auth/sign-out",
+    headers: { ...headers, origin: testEnv.PUBLIC_ORIGIN, "content-type": "application/json" },
+    payload: "{}",
+  });
+  expect(res.statusCode).toBe(200);
+  expect(await ctx.t.db.select().from(sessions)).toHaveLength(0);
+});
+
 test("a session cookie gives access to the session", async () => {
   const { userId, headers } = await loginAs(ctx, "noor@example.test", { name: "Noor" });
   const session = await ctx.app.auth.api.getSession({ headers: new Headers(headers) });
