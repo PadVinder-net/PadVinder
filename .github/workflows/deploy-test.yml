@@ -112,8 +112,12 @@ jobs:
             echo "::error::The agent's environment holds the private key."
             exit 1
           fi
+          # _runner_file_commands holds this job's own step output that carries the throwaway
+          # key into the action. Real deploys have no such file: their key comes from a secret,
+          # which the runner does not write to a file-command file.
           status=0
-          found="$(grep -rl -D skip "PRIVATE[ ]KEY" "$RUNNER_TEMP")" || status=$?
+          found="$(grep -rl -D skip --exclude-dir=_runner_file_commands "PRIVATE[ ]KEY" "$RUNNER_TEMP")" ||
+            status=$?
           if [[ -n "$found" ]]; then
             echo "::error::A private key is on disk: $found"
             exit 1
