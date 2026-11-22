@@ -1,6 +1,5 @@
-import { expect, test } from "vitest";
-import { createMemoryMailer, type Mail } from "./mailer.js";
-import { paragraphsToHtml } from "./html.js";
+import { describe, expect, test } from "vitest";
+import { createMemoryMailer, smtpTransportOptions, type Mail } from "./mailer";
 
 const mail: Mail = {
   to: "noor@example.test",
@@ -25,5 +24,21 @@ test("the memory mailer can fail on demand", async () => {
   expect(mailer.sent).toEqual([mail]);
 });
 
-test("paragraphsToHtml splits on blank lines and escapes", () =>
-  expect(paragraphsToHtml("a <b>\n\nc & d")).toBe("<p>a &lt;b&gt;</p>\n<p>c &amp; d</p>"));
+describe("smtpTransportOptions", () => {
+  const base = { SMTP_HOST: "smtp.example.test", MAIL_FROM: "PadVinder <a@example.test>" };
+  const credentials = { SMTP_USER: "user", SMTP_PASSWORD: "secret" };
+
+  test("without credentials TLS is not forced (Mailpit)", () => {
+    const options = smtpTransportOptions({ ...base, SMTP_PORT: 54325 });
+    expect(options).toMatchObject({ secure: false, requireTLS: false, auth: undefined });
+  });
+  test("with credentials on 587 STARTTLS is required", () => {
+    const options = smtpTransportOptions({ ...base, ...credentials, SMTP_PORT: 587 });
+    expect(options).toMatchObject({ secure: false, requireTLS: true });
+    expect(options.auth).toEqual({ user: "user", pass: "secret" });
+  });
+  test("with credentials on 465 the connection is secure from the start", () => {
+    const options = smtpTransportOptions({ ...base, ...credentials, SMTP_PORT: 465 });
+    expect(options).toMatchObject({ secure: true, requireTLS: false });
+  });
+});

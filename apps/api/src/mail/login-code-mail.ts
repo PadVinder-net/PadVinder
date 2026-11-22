@@ -1,5 +1,5 @@
-import { paragraphsToHtml } from "./html.js";
-import type { Mail } from "./mailer.js";
+import { paragraphsToHtml } from "./html";
+import type { Mail } from "./mailer";
 
 // The mail holds no digit besides the code, in text or HTML, so that phones find the code.
 export function buildLoginCodeMail({ to, code }: { to: string; code: string }): Mail {

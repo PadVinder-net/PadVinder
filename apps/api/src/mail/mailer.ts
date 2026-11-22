@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import type { ApiEnv } from "../env.js";
+import type { ApiEnv } from "../env";
 
 export type Mail = { to: string; subject: string; text: string; html: string };
 
@@ -7,20 +7,28 @@ export interface Mailer {
   send(mail: Mail): Promise<void>;
 }
 
-export function createSmtpMailer(
-  env: Pick<ApiEnv, "SMTP_HOST" | "SMTP_PORT" | "SMTP_USER" | "SMTP_PASSWORD" | "MAIL_FROM">,
-): Mailer & { close(): void } {
-  const transport = nodemailer.createTransport({
+type SmtpEnv = Pick<
+  ApiEnv,
+  "SMTP_HOST" | "SMTP_PORT" | "SMTP_USER" | "SMTP_PASSWORD" | "MAIL_FROM"
+>;
+
+// With credentials, TLS is required so they never travel in plaintext.
+export function smtpTransportOptions(env: SmtpEnv) {
+  const hasCredentials = env.SMTP_USER !== undefined && env.SMTP_PASSWORD !== undefined;
+  return {
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
-    auth:
-      env.SMTP_USER !== undefined && env.SMTP_PASSWORD !== undefined
-        ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD }
-        : undefined,
+    secure: hasCredentials && env.SMTP_PORT === 465,
+    requireTLS: hasCredentials && env.SMTP_PORT !== 465,
+    auth: hasCredentials ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD } : undefined,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 20_000,
-  });
+  };
+}
+
+export function createSmtpMailer(env: SmtpEnv): Mailer & { close(): void } {
+  const transport = nodemailer.createTransport(smtpTransportOptions(env));
   return {
     async send(mail) {
       await transport.sendMail({

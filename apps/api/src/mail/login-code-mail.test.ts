@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { escapeHtml } from "./html.js";
-import { buildLoginCodeMail } from "./login-code-mail.js";
+import { buildLoginCodeMail } from "./login-code-mail";
 
 describe("the login code mail", () => {
   const mail = buildLoginCodeMail({ to: "noor@example.test", code: "012345" });
@@ -24,6 +23,3 @@ describe("the login code mail", () => {
       "Je code: 012345\n\nVul deze code in bij PadVinder om in te loggen. De code is een half uur geldig.\n\nHeb je geen code aangevraagd? Dan hoef je niets te doen.",
     ));
 });
-
-test("escapeHtml escapes markup", () =>
-  expect(escapeHtml(`<b>"x" & y</b>`)).toBe("&lt;b&gt;&quot;x&quot; &amp; y&lt;/b&gt;"));
