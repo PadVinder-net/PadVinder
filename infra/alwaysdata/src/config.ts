@@ -1,4 +1,5 @@
 import { sshHost, sshUserName, type EnvironmentName } from "./environments.ts";
+import type { SshIdentity } from "./remote.ts";
 
 export type InfraConfig = {
   environment: EnvironmentName;
@@ -7,7 +8,7 @@ export type InfraConfig = {
   /** Only when requested: provisioning needs it, deploys do not. */
   databasePassword?: string;
   /** Only when requested. */
-  ssh?: { host: string; user: string; keyFile: string; knownHostsFile: string };
+  ssh?: { host: string; user: string; identity: SshIdentity; knownHostsFile: string };
 };
 
 const accountPattern = /^[a-z0-9][a-z0-9_-]*$/;
@@ -27,13 +28,20 @@ export function loadInfraConfig(
     "ALWAYSDATA_ACCOUNT",
     "ALWAYSDATA_API_KEY",
     ...(wantPassword ? ["DATABASE_PASSWORD"] : []),
-    ...(wantSsh ? ["DEPLOY_SSH_KEY_FILE", "SSH_KNOWN_HOSTS_FILE"] : []),
+    ...(wantSsh ? ["SSH_KNOWN_HOSTS_FILE"] : []),
   ];
-  const missing = required.filter((name) => (source[name] ?? "") === "");
+  const value = (name: string) => source[name] ?? "";
+  const missing = required.filter((name) => value(name) === "");
+  // The key comes from DEPLOY_SSH_KEY_FILE when it is set (local runs), otherwise from the
+  // ssh-agent in SSH_AUTH_SOCK (CI loads the key into a dedicated agent).
+  const keyFile = value("DEPLOY_SSH_KEY_FILE");
+  const agentSocket = value("SSH_AUTH_SOCK");
+  if (wantSsh && keyFile === "" && agentSocket === "") {
+    missing.push("SSH_AUTH_SOCK or DEPLOY_SSH_KEY_FILE");
+  }
   if (missing.length > 0) {
     throw new Error(`Set these environment variables: ${missing.join(", ")}`);
   }
-  const value = (name: string) => source[name] ?? "";
 
   const account = value("ALWAYSDATA_ACCOUNT");
   if (!accountPattern.test(account)) {
@@ -48,7 +56,7 @@ export function loadInfraConfig(
     config.ssh = {
       host: sshHost(account),
       user: sshUserName(account),
-      keyFile: value("DEPLOY_SSH_KEY_FILE"),
+      identity: keyFile === "" ? { agent: agentSocket } : { keyFile },
       knownHostsFile: value("SSH_KNOWN_HOSTS_FILE"),
     };
   }

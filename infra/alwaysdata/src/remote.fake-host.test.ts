@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createSshRemote } from "./remote.ts";
 import { startFakeHost, type FakeHost } from "./testing/fake-host.ts";
+import { startSshAgent } from "./testing/ssh-agent.ts";
 
 const run = promisify(execFile);
 
@@ -148,4 +149,31 @@ test("an unknown host key is refused", async () => {
   await writeFile(emptyKnownHosts, "");
   const stranger = createSshRemote({ ...host.connection, knownHostsFile: emptyKnownHosts });
   await expect(stranger.exec("echo hi")).rejects.toThrow(/Host key verification failed/);
+});
+
+describe("identity", () => {
+  test("the agent alone holds the key: the fake host connects through it", () => {
+    expect(host.connection.identity).toEqual({ agent: expect.stringMatching(/^\//) });
+  });
+
+  test("a key file works too", async () => {
+    const withFile = createSshRemote({ ...host.connection, identity: { keyFile: host.keyFile } });
+    expect((await withFile.exec("echo hi")).stdout).toBe("hi\n");
+  });
+
+  test("only the given agent counts, not the one in SSH_AUTH_SOCK", async () => {
+    const emptyAgent = await startSshAgent(localDir);
+    const previous = process.env.SSH_AUTH_SOCK;
+    // The agent with the key, where ssh would look without IdentityAgent.
+    process.env.SSH_AUTH_SOCK = (host.connection.identity as { agent: string }).agent;
+    try {
+      const empty = createSshRemote({ ...host.connection, identity: { agent: emptyAgent.socket } });
+      await expect(empty.exec("echo hi")).rejects.toThrow(/Permission denied/);
+    } finally {
+      if (previous === undefined) delete process.env.SSH_AUTH_SOCK;
+      else process.env.SSH_AUTH_SOCK = previous;
+      await emptyAgent.stop();
+    }
+    expect(() => process.kill(emptyAgent.pid, 0)).toThrow();
+  });
 });

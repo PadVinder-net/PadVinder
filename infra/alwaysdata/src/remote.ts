@@ -34,12 +34,20 @@ export interface Remote {
   upload(localDir: string, remoteDir: string, options?: { linkDest?: string }): Promise<void>;
 }
 
+/**
+ * Where the private key comes from. `agent` is the socket of an ssh-agent (absolute path):
+ * every key that agent holds is offered, and nothing from ~/.ssh or from the agent in
+ * `SSH_AUTH_SOCK`; CI starts a dedicated agent with only the deploy key, so the key never
+ * touches the disk. `keyFile` is a private key file, the only identity offered; for local
+ * runs.
+ */
+export type SshIdentity = { agent: string } | { keyFile: string };
+
 export type SshRemoteOptions = {
   host: string;
   port?: number;
   user: string;
-  /** Private key file; the only identity offered. */
-  keyFile: string;
+  identity: SshIdentity;
   /** The only accepted host keys; an unknown or changed host key is refused. */
   knownHostsFile: string;
   /** Extra values to hide in error messages, besides the `env` values of each call. */
@@ -79,18 +87,45 @@ function runProcess(file: string, args: string[], stdin: string): Promise<Proces
   });
 }
 
-export function createSshRemote(options: SshRemoteOptions): Remote {
+/**
+ * The ssh command-line options for `options`, also used as rsync's `-e`. Throws on a value
+ * that rsync's `-e` string would split or ssh would read as an option.
+ */
+export function sshOptions(options: SshRemoteOptions): string[] {
   const port = options.port ?? 22;
-  for (const value of [options.host, options.user, options.keyFile, options.knownHostsFile]) {
+  const { identity } = options;
+  const identityPath = "agent" in identity ? identity.agent : identity.keyFile;
+  for (const value of [options.host, options.user, identityPath, options.knownHostsFile]) {
     if (!safeLocalArgPattern.test(value) || value.startsWith("-")) {
       throw new Error(`SSH option ${JSON.stringify(value)} may not hold spaces or quotes`);
     }
+  }
+  // IdentityAgent also takes the words `none` and `SSH_AUTH_SOCK`: a path rules those out.
+  if ("agent" in identity && !identity.agent.startsWith("/")) {
+    throw new Error(
+      `The ssh-agent socket ${JSON.stringify(identity.agent)} is not an absolute path`,
+    );
   }
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`SSH port ${port} is not a valid port`);
   }
 
-  const sshOptions = [
+  // With IdentitiesOnly=yes, ssh offers only agent keys that match an IdentityFile, so it
+  // would offer no agent key at all here. IdentityFile=none instead keeps the default
+  // ~/.ssh/id_* files out, and the agent offers what it holds.
+  const identityOptions =
+    "agent" in identity
+      ? [
+          "-o",
+          `IdentityAgent=${identity.agent}`,
+          "-o",
+          "IdentityFile=none",
+          "-o",
+          "IdentitiesOnly=no",
+        ]
+      : ["-i", identity.keyFile, "-o", "IdentitiesOnly=yes"];
+
+  return [
     "-T",
     // Only the options below count, not ~/.ssh/config or /etc/ssh/ssh_config.
     "-F",
@@ -99,10 +134,7 @@ export function createSshRemote(options: SshRemoteOptions): Remote {
     String(port),
     "-l",
     options.user,
-    "-i",
-    options.keyFile,
-    "-o",
-    "IdentitiesOnly=yes",
+    ...identityOptions,
     "-o",
     `UserKnownHostsFile=${options.knownHostsFile}`,
     "-o",
@@ -120,6 +152,10 @@ export function createSshRemote(options: SshRemoteOptions): Remote {
     "-o",
     "ServerAliveCountMax=4",
   ];
+}
+
+export function createSshRemote(options: SshRemoteOptions): Remote {
+  const sshArgs = sshOptions(options);
 
   function fail(description: string, result: ProcessResult, secrets: readonly string[]): never {
     const all = [...(options.secrets ?? []), ...secrets];
@@ -154,7 +190,7 @@ export function createSshRemote(options: SshRemoteOptions): Remote {
     ].join("\n");
     const result = await runProcess(
       "ssh",
-      [...sshOptions, "--", options.host, `bash -c ${shellQuote(script)}`],
+      [...sshArgs, "--", options.host, `bash -c ${shellQuote(script)}`],
       `${exports.join("")}\0${execOptions.stdin ?? ""}`,
     );
     if (result.code !== 0) fail(`Remote command \`${command}\``, result, Object.values(env));
@@ -204,7 +240,7 @@ export function createSshRemote(options: SshRemoteOptions): Remote {
     }
     args.push(
       "-e",
-      ["ssh", ...sshOptions].join(" "),
+      ["ssh", ...sshArgs].join(" "),
       `${resolve(localDir)}/`,
       `${options.host}:${remoteDir}/`,
     );

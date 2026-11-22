@@ -24,7 +24,7 @@ const config: InfraConfig = {
   ssh: {
     host: "ssh-acmecorp.alwaysdata.net",
     user: "acmecorp_deploy",
-    keyFile: "/nonexistent/key",
+    identity: { agent: "/nonexistent/agent.sock" },
     knownHostsFile: "/nonexistent/known_hosts",
   },
 };

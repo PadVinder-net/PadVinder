@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { createSshRemote, type Remote, type SshRemoteOptions } from "../remote.ts";
+import { startSshAgent, type SshAgent } from "./ssh-agent.ts";
 
 const run = promisify(execFile);
 
@@ -15,15 +16,20 @@ const contextDir = join(import.meta.dirname, "../../test/fake-host");
 export type FakeHost = {
   /** The fake host over SSH, as the deploy reaches Alwaysdata. */
   remote: Remote;
-  /** The SSH options behind `remote`, to make a variant (such as other known hosts). */
+  /**
+   * The SSH options behind `remote`, to make a variant (such as other known hosts). The key
+   * comes from a dedicated ssh-agent, as in CI.
+   */
   connection: SshRemoteOptions;
+  /** The same private key as a file, for the `{ keyFile }` identity. */
+  keyFile: string;
   /** Home directory of the SSH user; relative remote paths start here. */
   homeDir: string;
   /** `databaseUrlFromHost` with the host rewritten so the container reaches it. */
   databaseUrl: string;
   /** Runs a bash command in the container as the SSH user, in its home; returns stdout. */
   exec(command: string): Promise<string>;
-  /** Removes the container and the key files. */
+  /** Stops the ssh-agent, and removes the container and the key files. */
   stop(): Promise<void>;
 };
 
@@ -53,15 +59,18 @@ function rewriteDatabaseUrl(url: string): string {
 /**
  * Starts a Docker container that stands in for the Alwaysdata SSH host: OpenSSH on a random
  * port on 127.0.0.1, user `padvinder`, Node.js 24, rsync and psql. It logs in with a fresh
- * ed25519 key pair and trusts only the host key scanned from this container.
+ * ed25519 key pair, loaded into a dedicated ssh-agent as in CI, and trusts only the host key
+ * scanned from this container.
  */
 export async function startFakeHost(options: { databaseUrlFromHost: string }): Promise<FakeHost> {
   const databaseUrl = rewriteDatabaseUrl(options.databaseUrlFromHost);
   const keyDir = await mkdtemp(join(tmpdir(), "padvinder-fake-host-"));
   let containerId: string | undefined;
+  let agent: SshAgent | undefined;
 
   const stop = async () => {
     try {
+      await agent?.stop();
       if (containerId !== undefined) {
         await run("docker", ["rm", "--force", "--volumes", containerId]);
         containerId = undefined;
@@ -75,6 +84,8 @@ export async function startFakeHost(options: { databaseUrlFromHost: string }): P
     const keyFile = join(keyDir, "id_ed25519");
     await run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-C", fakeHostLabel, "-f", keyFile]);
     const publicKey = (await readFile(`${keyFile}.pub`, "utf8")).trim();
+    agent = await startSshAgent(keyDir);
+    await agent.add(await readFile(keyFile, "utf8"));
 
     await buildImage();
     const { stdout: id } = await run("docker", [
@@ -134,12 +145,13 @@ export async function startFakeHost(options: { databaseUrlFromHost: string }): P
       host: "127.0.0.1",
       port,
       user: "padvinder",
-      keyFile,
+      identity: { agent: agent.socket },
       knownHostsFile,
     };
     return {
       remote: createSshRemote(connection),
       connection,
+      keyFile,
       homeDir: "/home/padvinder",
       databaseUrl,
       exec: async (command) => {

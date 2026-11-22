@@ -109,5 +109,7 @@ test("the CLI exits 2 on a usage error and 1 on missing variables", () => {
   });
   expect(missing.status).toBe(1);
   expect(missing.stderr).toMatch(/ALWAYSDATA_API_KEY/);
-  expect(missing.stderr).not.toMatch(/DEPLOY_SSH_KEY_FILE|DATABASE_PASSWORD/);
+  expect(missing.stderr).not.toMatch(
+    /DEPLOY_SSH_KEY_FILE|SSH_AUTH_SOCK|SSH_KNOWN_HOSTS_FILE|DATABASE_PASSWORD/,
+  );
 });

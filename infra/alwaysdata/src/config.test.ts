@@ -5,7 +5,7 @@ const complete = {
   ALWAYSDATA_ACCOUNT: "acme",
   ALWAYSDATA_API_KEY: "api-key-value",
   DATABASE_PASSWORD: "database-password-value",
-  DEPLOY_SSH_KEY_FILE: "/tmp/deploy_key",
+  SSH_AUTH_SOCK: "/tmp/ssh-agent.sock",
   SSH_KNOWN_HOSTS_FILE: "/tmp/known_hosts",
 };
 
@@ -18,7 +18,7 @@ test("loadInfraConfig reads every variable and derives the SSH host and user", (
     ssh: {
       host: "ssh-acme.alwaysdata.net",
       user: "acme_deploy",
-      keyFile: "/tmp/deploy_key",
+      identity: { agent: "/tmp/ssh-agent.sock" },
       knownHostsFile: "/tmp/known_hosts",
     },
   });
@@ -35,13 +35,33 @@ test("loadInfraConfig names every missing variable without values", () => {
   for (const name of [
     "ALWAYSDATA_ACCOUNT",
     "DATABASE_PASSWORD",
-    "DEPLOY_SSH_KEY_FILE",
+    "SSH_AUTH_SOCK or DEPLOY_SSH_KEY_FILE",
     "SSH_KNOWN_HOSTS_FILE",
   ]) {
     expect(message).toContain(name);
   }
   expect(message).not.toContain("ALWAYSDATA_API_KEY");
   expect(message).not.toContain("api-key-value");
+});
+
+test("loadInfraConfig takes the key from DEPLOY_SSH_KEY_FILE over the agent when both are set", () => {
+  expect(
+    loadInfraConfig({ ...complete, DEPLOY_SSH_KEY_FILE: "/tmp/deploy_key" }, "staging").ssh
+      ?.identity,
+  ).toEqual({ keyFile: "/tmp/deploy_key" });
+  expect(
+    loadInfraConfig(
+      { ...complete, SSH_AUTH_SOCK: "", DEPLOY_SSH_KEY_FILE: "/tmp/deploy_key" },
+      "staging",
+    ).ssh?.identity,
+  ).toEqual({ keyFile: "/tmp/deploy_key" });
+});
+
+test("loadInfraConfig needs the known hosts file with an agent too", () => {
+  const { SSH_KNOWN_HOSTS_FILE: _, ...withoutKnownHosts } = complete;
+  expect(() => loadInfraConfig(withoutKnownHosts, "staging")).toThrow(
+    "Set these environment variables: SSH_KNOWN_HOSTS_FILE",
+  );
 });
 
 test("loadInfraConfig can skip the database password and the SSH files", () => {
