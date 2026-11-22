@@ -42,6 +42,7 @@ export function NameForm({ onSubmit, pending, error }: NameFormProps) {
             name="name"
             type="text"
             autoComplete="name"
+            maxLength={100}
             value={name}
             onChange={(event) => setName(event.target.value)}
             aria-invalid={nameMessage ? true : undefined}
@@ -60,6 +61,7 @@ export function NameForm({ onSubmit, pending, error }: NameFormProps) {
             type="tel"
             autoComplete="tel"
             inputMode="tel"
+            maxLength={30}
             aria-describedby={error ? "profile-error" : undefined}
             value={phone}
             onChange={(event) => setPhone(event.target.value)}

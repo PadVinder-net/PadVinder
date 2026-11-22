@@ -44,3 +44,12 @@ test("a server error is linked to the phone field", () => {
     "Het lukt nu niet.",
   );
 });
+test("the fields cut off input at the limits the server accepts", async () => {
+  render(<NameForm onSubmit={vi.fn()} pending={false} />);
+  const name = screen.getByLabelText("Naam");
+  const phone = screen.getByLabelText("Telefoonnummer (mag leeg)");
+  expect(name).toHaveAttribute("maxlength", "100");
+  expect(phone).toHaveAttribute("maxlength", "30");
+  await userEvent.type(phone, "1".repeat(40));
+  expect(phone).toHaveValue("1".repeat(30));
+});

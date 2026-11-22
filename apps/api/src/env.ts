@@ -70,10 +70,13 @@ const apiEnvSchema = z
         input: env.PUBLIC_ORIGIN,
       });
     }
-    if (env.LOGIN_RATE_LIMITS === "off" && new URL(env.PUBLIC_ORIGIN).protocol === "https:") {
+    const usesHttps = [env.PUBLIC_ORIGIN, ...env.ALLOWED_ORIGINS].some(
+      (origin) => new URL(origin).protocol === "https:",
+    );
+    if (env.LOGIN_RATE_LIMITS === "off" && usesHttps) {
       ctx.issues.push({
         code: "custom",
-        message: "cannot be off when PUBLIC_ORIGIN uses https",
+        message: "cannot be off when PUBLIC_ORIGIN or any of ALLOWED_ORIGINS uses https",
         path: ["LOGIN_RATE_LIMITS"],
         input: env.LOGIN_RATE_LIMITS,
       });

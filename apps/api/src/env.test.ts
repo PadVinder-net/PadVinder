@@ -87,6 +87,14 @@ test("refuses LOGIN_RATE_LIMITS=off on an HTTPS origin", () =>
       LOGIN_RATE_LIMITS: "off",
     }),
   ).toThrow(/LOGIN_RATE_LIMITS/));
+test("refuses LOGIN_RATE_LIMITS=off when any allowed origin is https", () =>
+  expect(() =>
+    loadApiEnv({
+      ...valid,
+      ALLOWED_ORIGINS: `${valid.PUBLIC_ORIGIN},https://padvinder.net`,
+      LOGIN_RATE_LIMITS: "off",
+    }),
+  ).toThrow(/LOGIN_RATE_LIMITS/));
 test("allows LOGIN_RATE_LIMITS=off on http://localhost", () =>
   expect(loadApiEnv({ ...valid, LOGIN_RATE_LIMITS: "off" }).LOGIN_RATE_LIMITS).toBe("off"));
 test("reads optional SMTP credentials", () =>
