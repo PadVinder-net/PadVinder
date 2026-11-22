@@ -141,7 +141,7 @@ No table for the mail queue: pg-boss holds the jobs (see "The mail queue").
 A species record holds a Dutch name, a scientific name, whether it needs the check for rare species (the "betrouwbaarheidscheck" of slice 8; nothing reads it yet), and whether it is active.
 
 - **Both names are unique,** ignoring capital letters and surrounding spaces. The scientific name is what an export matches on; the Dutch name is what a volunteer sees on a button. An entry for a group, such as an unidentified frog, uses the group's scientific name.
-- **Names are stored as an ecologist writes them in a sentence:** the Dutch name in lower case ("gewone pad"), the scientific name with a capital on the genus only. Screens show the Dutch name with a capital where it stands alone.
+- **Names are stored as typed,** apart from surrounding and doubled spaces. The form asks to write a name as in a sentence ("gewone pad"), but it does not lower the capitals itself: a name such as "Italiaanse kamsalamander" needs one. Screens show the Dutch name with a capital where it stands alone. Two names that differ only in capitals or spacing are the same name. _(Changed on 22 November 2026 while planning; the first version stored Dutch names in lower case.)_
 - **Lists sort by Dutch name,** in Dutch order. There is no position field.
 - **A species is never deleted.** Counts will point at it. It is switched off, which hides it from input and keeps everything recorded.
 - **A name may be changed to fix a mistake,** and the audit entry keeps the old and the new value. The form says: "Wijzig een naam alleen om een fout te herstellen. Voeg voor een andere soort een nieuwe soort toe."
