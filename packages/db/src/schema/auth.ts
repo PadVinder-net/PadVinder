@@ -12,13 +12,15 @@ import {
 
 // The tables of Better Auth 1.7.27 (user, session, account, verification, rate limit), with
 // plural snake_case names and `timestamptz`. Better Auth is configured with
-// `advanced.database.generateId: "uuid"`; the id default below is the one it expects.
+// `advanced.database.generateId: "uuid"`: on PostgreSQL it then leaves the id to the database,
+// so the default below makes every id (a UUIDv7, PostgreSQL 18).
 // Keep the columns in line with Better Auth: do not rename or drop one without checking it.
+// Better Auth checks this schema against its own when it is first used.
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const id = () =>
   uuid("id")
-    .default(sql`gen_random_uuid()`)
+    .default(sql`uuidv7()`)
     .primaryKey();
 
 export const users = pgTable("users", {

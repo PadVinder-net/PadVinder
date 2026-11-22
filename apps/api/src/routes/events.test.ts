@@ -3,6 +3,7 @@ import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
+import { createMemoryMailer } from "../mail/mailer";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { openEvents } from "../test-open-events";
@@ -20,7 +21,12 @@ beforeAll(async () => {
     channels: [liveEventsChannel],
     logger,
   });
-  app = await buildApp({ env: testEnv, db: t.db, notifications: hub });
+  app = await buildApp({
+    env: testEnv,
+    db: t.db,
+    notifications: hub,
+    mailer: createMemoryMailer(),
+  });
   baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
 });
 afterAll(async () => {
@@ -80,7 +86,12 @@ test("app.close() ends open streams promptly", async () => {
     channels: [liveEventsChannel],
     logger: app!.log,
   });
-  const app2 = await buildApp({ env: testEnv, db: t2.db, notifications: hub2 });
+  const app2 = await buildApp({
+    env: testEnv,
+    db: t2.db,
+    notifications: hub2,
+    mailer: createMemoryMailer(),
+  });
   const url = await app2.listen({ port: 0, host: "127.0.0.1" });
   const stream = await openEvents(url);
   await expect.poll(() => hub2.listenerCount(liveEventsChannel)).toBe(1);

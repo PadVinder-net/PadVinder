@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createDb } from "@padvinder/db";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
+import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 
 // Written explicitly, never read from the environment: the file must not depend on who runs this.
@@ -31,7 +32,12 @@ const outputPath = resolve(
 
 // The pool never connects: building the app and describing its routes runs no query.
 const { db, pool } = createDb(env.DATABASE_URL);
-const app = await buildApp({ env, db, notifications: createNoopNotificationHub() });
+const app = await buildApp({
+  env,
+  db,
+  notifications: createNoopNotificationHub(),
+  mailer: createMemoryMailer(),
+});
 try {
   await app.ready();
   await mkdir(dirname(outputPath), { recursive: true });

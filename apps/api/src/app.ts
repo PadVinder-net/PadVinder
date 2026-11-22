@@ -7,8 +7,11 @@ import {
   serializerCompiler,
   validatorCompiler,
 } from "fastify-type-provider-zod";
+import { createAuth, type Auth } from "./auth/auth";
+import { authRoutes } from "./auth/auth-routes";
 import type { ApiEnv } from "./env";
 import { addErrorHandling } from "./errors";
+import type { Mailer } from "./mail/mailer";
 import { addOriginCheck } from "./plugins/origin-check";
 import { registerStaticApps } from "./plugins/static-apps";
 import type { NotificationHub } from "./realtime/notification-hub";
@@ -20,9 +23,19 @@ export type AppDeps = {
   env: ApiEnv;
   db: Db;
   notifications: NotificationHub;
+  /** Sends the login code mails. Tests pass the memory mailer. */
+  mailer: Mailer;
   /** Turns on Fastify's request logging at `env.LOG_LEVEL`. Off by default (tests). */
   logger?: boolean;
+  /** Where the log goes instead of stdout, when `logger` is on (tests that read the log). */
+  logStream?: { write(line: string): void };
 };
+
+declare module "fastify" {
+  interface FastifyInstance {
+    auth: Auth;
+  }
+}
 
 /**
  * Builds the Fastify app without starting it and without connecting to the database:
@@ -31,7 +44,11 @@ export type AppDeps = {
  */
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { env } = deps;
-  const app = Fastify({ logger: deps.logger ? { level: env.LOG_LEVEL } : false });
+  const app = Fastify({
+    logger: deps.logger
+      ? { level: env.LOG_LEVEL, ...(deps.logStream && { stream: deps.logStream }) }
+      : false,
+  });
 
   // Zod schemas validate requests and serialize responses (also for 503).
   app.setValidatorCompiler(validatorCompiler);
@@ -48,8 +65,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   addErrorHandling(app);
   addOriginCheck(app, env.ALLOWED_ORIGINS);
 
+  const auth = createAuth({ env, db: deps.db, mailer: deps.mailer, log: app.log });
+  app.decorate("auth", auth);
+
   await app.register(
     async (api) => {
+      await api.register(authRoutes, { auth, origin: env.PUBLIC_ORIGIN });
       await api.register(healthRoutes, { env, db: deps.db });
       await api.register(versionRoutes, { env });
       await api.register(eventsRoutes, { notifications: deps.notifications });

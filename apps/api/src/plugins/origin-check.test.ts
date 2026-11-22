@@ -2,6 +2,7 @@ import { createDb } from "@padvinder/db";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
+import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
@@ -9,7 +10,12 @@ const { db, pool } = createDb("postgres://padvinder:padvinder@127.0.0.1:1/none")
 let app: FastifyInstance;
 
 beforeAll(async () => {
-  app = await buildApp({ env: testEnv, db, notifications: createNoopNotificationHub() });
+  app = await buildApp({
+    env: testEnv,
+    db,
+    notifications: createNoopNotificationHub(),
+    mailer: createMemoryMailer(),
+  });
   // Test-only route: the app has no state-changing route yet.
   app.post("/api/test-echo", async () => ({ ok: true }));
   await app.ready();

@@ -2,6 +2,7 @@ import { createDb, liveEventsChannel } from "@padvinder/db";
 import Fastify, { type FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import type { ApiEnv } from "./env";
+import { createSmtpMailer } from "./mail/mailer";
 import { startNotificationHub, type NotificationHub } from "./realtime/notification-hub";
 
 export type RunningApi = { app: FastifyInstance; stop(): Promise<void> };
@@ -21,10 +22,12 @@ export async function startApi(env: ApiEnv): Promise<RunningApi> {
       app ? app.log.error({ err: error }, "Database pool error") : console.error(error),
   });
   let notifications: NotificationHub | undefined;
+  const mailer = createSmtpMailer(env);
 
   const stop = async () => {
     await app?.close();
     await notifications?.close();
+    mailer.close();
     await pool.end();
   };
 
@@ -35,7 +38,7 @@ export async function startApi(env: ApiEnv): Promise<RunningApi> {
       // The hub starts before the app exists. An unused Fastify instance gives the same JSON logger.
       logger: Fastify({ logger: { level: env.LOG_LEVEL } }).log,
     });
-    app = await buildApp({ env, db, notifications, logger: true });
+    app = await buildApp({ env, db, notifications, mailer, logger: true });
     await app.listen({ host: env.API_HOST, port: env.API_PORT });
   } catch (error) {
     if (app) app.log.error({ err: error }, "API failed to start");

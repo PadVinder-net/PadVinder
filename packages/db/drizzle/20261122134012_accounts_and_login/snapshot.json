@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "10",
   "dialect": "postgres",
-  "id": "b71ca53c-91e5-45fd-aba7-c33927e4fc44",
+  "id": "db420bf9-f7b1-4310-9814-cebb298a19d5",
   "prevIds": [
     "c93ede7c-ff52-46c2-9c3d-b30b0b9f7c0f"
   ],
@@ -317,7 +317,7 @@
         "typeSchema": null,
         "notNull": true,
         "dimensions": 0,
-        "default": "gen_random_uuid()",
+        "default": "uuidv7()",
         "generated": null,
         "identity": null,
         "entityType": "columns"
@@ -525,7 +525,7 @@
         "typeSchema": null,
         "notNull": true,
         "dimensions": 0,
-        "default": "gen_random_uuid()",
+        "default": "uuidv7()",
         "generated": null,
         "identity": null,
         "entityType": "columns"
@@ -589,7 +589,7 @@
         "typeSchema": null,
         "notNull": true,
         "dimensions": 0,
-        "default": "gen_random_uuid()",
+        "default": "uuidv7()",
         "generated": null,
         "identity": null,
         "entityType": "columns"
@@ -717,7 +717,7 @@
         "typeSchema": null,
         "notNull": true,
         "dimensions": 0,
-        "default": "gen_random_uuid()",
+        "default": "uuidv7()",
         "generated": null,
         "identity": null,
         "entityType": "columns"
@@ -845,7 +845,7 @@
         "typeSchema": null,
         "notNull": true,
         "dimensions": 0,
-        "default": "gen_random_uuid()",
+        "default": "uuidv7()",
         "generated": null,
         "identity": null,
         "entityType": "columns"

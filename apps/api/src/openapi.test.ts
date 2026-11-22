@@ -1,12 +1,18 @@
 import { createDb } from "@padvinder/db";
 import { expect, test } from "vitest";
 import { buildApp } from "./app";
+import { createMemoryMailer } from "./mail/mailer";
 import { createNoopNotificationHub } from "./realtime/notification-hub";
 import { testEnv } from "./test-env";
 
 test("documents getHealth and getVersion with named components", async () => {
   const { db, pool } = createDb("postgres://padvinder:padvinder@127.0.0.1:1/none");
-  const app = await buildApp({ env: testEnv, db, notifications: createNoopNotificationHub() });
+  const app = await buildApp({
+    env: testEnv,
+    db,
+    notifications: createNoopNotificationHub(),
+    mailer: createMemoryMailer(),
+  });
   await app.ready();
   const doc = app.swagger();
   expect(doc.info.title).toBe("PadVinder API");

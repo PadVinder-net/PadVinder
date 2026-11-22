@@ -1,5 +1,5 @@
 CREATE TABLE "accounts" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
 	"account_id" text NOT NULL,
 	"provider_id" text NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -15,14 +15,14 @@ CREATE TABLE "accounts" (
 );
 --> statement-breakpoint
 CREATE TABLE "rate_limits" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
 	"key" text NOT NULL UNIQUE,
 	"count" integer NOT NULL,
 	"last_request" bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "sessions" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
 	"expires_at" timestamp with time zone NOT NULL,
 	"token" text NOT NULL UNIQUE,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE "sessions" (
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
 	"name" text NOT NULL,
 	"email" text NOT NULL UNIQUE,
 	"email_verified" boolean DEFAULT false NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE "users" (
 );
 --> statement-breakpoint
 CREATE TABLE "verifications" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
 	"identifier" text NOT NULL,
 	"value" text NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
