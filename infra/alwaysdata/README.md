@@ -21,7 +21,7 @@ Sources for Alwaysdata's behavior: the [API usage](https://help.alwaysdata.com/e
 
 Shared by both environments:
 
-- **SSH user** `<account>_deploy`, on `ssh-<account>.alwaysdata.net` port 22. Deploys log in with it, and both environments' services run as it. Password login is off; it accepts only the deploy key.
+- **SSH user:** the account's main SSH user, named like the account (`<account>`), on `ssh-<account>.alwaysdata.net` port 22. Alwaysdata creates it with the account. Provisioning and deploys log in with it, so it owns the releases, `current` and the env files, like everything else on the account, and the services run as it. Provisioning creates no SSH user and does not change this one: its keys, and whether it accepts a password, are set in the panel. Why no separate deploy user: Alwaysdata SSH users are not chrooted, so every SSH user reaches the whole account and a second one isolates nothing, and several SSH users cause file-rights problems ([SSH troubleshooting, rights](https://help.alwaysdata.com/en/docs/web-hosting/remote-access/ssh/troubleshooting/#rights)).
 - **Database server** `postgresql-<account>.alwaysdata.net`, port 5432. Never pgBouncer on 5433: it breaks `LISTEN`/`NOTIFY`. Each database has encoding `UTF8`, locale `C.UTF-8` and only the `postgis` extension. The migrations refuse a database with another encoding or locale, so a wrong one stops the first deploy before anything is written.
 - **Services** listen on `::` (Alwaysdata services are reachable over IPv6 only, at `services-<account>.alwaysdata.net`, ports 8300–8499). Each site is a reverse proxy to its API service. The API serves the mobile app under `/app/`, the portal under `/` and itself under `/api/`. Let's Encrypt certificates for the site addresses are made and renewed by Alwaysdata on its own.
 - Each service gets `NODEJS_VERSION=24` in its environment and nothing else there. Everything else comes from the env file.
@@ -32,7 +32,7 @@ A service's command, run in `padvinder/<env>/current`:
 node --env-file=release.env --env-file=../../.env api/dist/main.js   # worker: worker/dist/main.js
 ```
 
-The working directory `current` resolves to `releases/<name>`, so `../../.env` is `padvinder/<env>/.env`. The migrations run from the new release directory with the same `../../.env`, so services and migrations read one file, wherever the SSH user's home is.
+The working directory `current` resolves to `releases/<name>`, so `../../.env` is `padvinder/<env>/.env`. The migrations run from the new release directory with the same `../../.env`, so services and migrations read one file, wherever the account's home is.
 
 Alwaysdata restarts a service by sending `SIGHUP`; the API and the worker shut down cleanly on it, and Alwaysdata starts them again. Services run on servers other than the SSH server, so `ps` over SSH does not show them.
 
@@ -57,14 +57,14 @@ The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`
 
 All three read their settings from environment variables with the same names as the GitHub secrets. Errors name missing variables, never their values. Every line they print goes through `redactForLog()`: secrets show as `***`, IP addresses as `<ip>` and the account name as `<account>`.
 
-| Command                                                                                        | Needs                                                                      | What it does                                                                                                                                         |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm infra:provision --environment <env>`                                                     | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `DATABASE_PASSWORD`, SSH below | Prints the plan: which resources it would create or update. Changes nothing                                                                          |
-| `pnpm infra:provision --environment <env> --apply [--rotate-password]`                         | same                                                                       | Carries out the plan, then writes the env file over SSH and creates `releases/`. Never restarts anything; it says when a restart is needed           |
-| `pnpm infra:provision --environment <env> --inspect`                                           | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Read-only. Prints field names and value types of the account's resources, and the managed values of ours, to confirm the names in `src/resources.ts` |
-| `pnpm infra:deploy --environment <env> --tarball padvinder-release.tar.gz --commit <full sha>` | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, SSH below                      | Deploys one release (steps below)                                                                                                                    |
-| `pnpm infra:services --environment <env> (--enable \| --disable \| --restart)`                 | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Turns the two services of an environment on or off, or restarts them                                                                                 |
-| `pnpm test:fake-host`                                                                          | Docker, a release tarball for the deploy test                              | Tests SSH, upload and deploy against a fake host container. In CI as the job `deploy-test`                                                           |
+| Command                                                                                        | Needs                                                                      | What it does                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm infra:provision --environment <env>`                                                     | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `DATABASE_PASSWORD`, SSH below | Prints the plan: which resources it would create or update. Changes nothing                                                                                    |
+| `pnpm infra:provision --environment <env> --apply [--rotate-password]`                         | same                                                                       | Reads the env file over SSH, carries out the plan, then writes the env file and creates `releases/`. Never restarts anything; it says when a restart is needed |
+| `pnpm infra:provision --environment <env> --inspect`                                           | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Read-only. Prints field names and value types of the account's resources, and the managed values of ours, to confirm the names in `src/resources.ts`           |
+| `pnpm infra:deploy --environment <env> --tarball padvinder-release.tar.gz --commit <full sha>` | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, SSH below                      | Deploys one release (steps below)                                                                                                                              |
+| `pnpm infra:services --environment <env> (--enable \| --disable \| --restart)`                 | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Turns the two services of an environment on or off, or restarts them                                                                                           |
+| `pnpm test:fake-host`                                                                          | Docker, a release tarball for the deploy test                              | Tests SSH, upload and deploy against a fake host container. In CI as the job `deploy-test`                                                                     |
 
 SSH needs `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file) and the private key, from one of two places:
 
@@ -75,7 +75,7 @@ The scripts never read `SSH_AUTH_SOCK`, so a local run does not use your persona
 
 ssh offers only that key file, or only the keys of that agent (`IdentityAgent=<socket>` with `IdentityFile=none`), never the default keys in `~/.ssh`, and reads no `~/.ssh/config`. With an agent it offers every key the agent holds: the one in CI holds only the deploy key, but a personal agent may hold many, and a server stops after a few wrong ones.
 
-With `--apply`, once the SSH user exists, provisioning first reads the env file over SSH and compares its password, and only then changes anything through the API: a failing SSH login or a password that differs without `--rotate-password` stops the run with nothing changed. On the first run the SSH user is new and has no key yet, so the env file is written after the apply (and the run asks you to add the key).
+With `--apply`, provisioning first reads the env file over SSH and compares its password, and only then changes anything through the API: a failing SSH login or a password that differs without `--rotate-password` stops the run with nothing changed. This holds on the first run too, when there is no env file yet: the main SSH user exists from the start, so the deploy key only has to be on it before the first apply.
 
 Provisioning is idempotent: a second run plans `ok` for everything and writes nothing through the API. It never deletes a resource and never recreates a database. A field that can only be set at creation (database locale, encoding, extensions) and differs is reported as a `conflict`; nothing is changed then, and a human resolves it in the panel.
 
@@ -112,7 +112,7 @@ The staging deploy, Provision and Staging services of one environment share the 
 | Account                            | Who                              | Used for                                                                                            |
 | ---------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Alwaysdata profile                 | The maintainer, 2FA on           | The panel, and the API tokens (a token has the profile's rights)                                    |
-| Alwaysdata account `<account>`     | (under that profile)             | Sites, services, databases, SSH users of both environments                                          |
+| Alwaysdata account `<account>`     | (under that profile)             | Sites, services, databases of both environments; its main SSH user for provisioning and deploys     |
 | GitHub organization and repository | The maintainer                   | Workflows, the environments `staging` and `production`, their secrets, approving production deploys |
 | DNS of `padvinder.net`             | The maintainer, at the registrar | The DNS records below (not hosted at Alwaysdata)                                                    |
 
@@ -132,7 +132,7 @@ Settings, Environments in the repository. The step by step for the environments,
 | `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                        |
 | `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                                |
 
-**Why `main` only, also for staging.** Both environments live on one Alwaysdata account, and there every SSH user and every API token reaches everything: the staging token can read and change production, and the deploy key logs in as the user that runs both. Whoever can run code in the `staging` environment can therefore read production's secrets and data. So the account is the security boundary, not the environment, and staging is treated as production-sensitive: only reviewed code on `main` may hold the deploy credentials. A branch cannot be tried on staging from GitHub; merge it, or the maintainer deploys it locally with the CLI (see "Running locally").
+**Why `main` only, also for staging.** Both environments live on one Alwaysdata account, and there every SSH user and every API token reaches everything: the staging token can read and change production, and the deploy key logs in as the account's main user, which runs and owns both. Whoever can run code in the `staging` environment can therefore read production's secrets and data. So the account is the security boundary, not the environment, and staging is treated as production-sensitive: only reviewed code on `main` may hold the deploy credentials. A branch cannot be tried on staging from GitHub; merge it, or the maintainer deploys it locally with the CLI (see "Running locally").
 
 The account name and the known-hosts line are secrets too, not variables: GitHub prints the `env:` values of a non-secret in a step's log, and this repository's logs are public. A secret is masked there. The known-hosts line holds `ssh-<account>.alwaysdata.net`, so it would reveal the account name. The scripts also mask the account name in their own output.
 
@@ -147,7 +147,7 @@ gh secret set ALWAYSDATA_API_KEY --env staging --repo OWNER/REPO      # paste at
 gh secret set ALWAYSDATA_API_KEY --env production --repo OWNER/REPO
 ```
 
-**Deploy key.** One key pair for the SSH user `<account>_deploy`; both environments use the same SSH user, so the same private key serves both.
+**Deploy key.** One key pair for the account's main SSH user `<account>`; both environments log in as that user, so the same private key serves both.
 
 ```sh
 ssh-keygen -t ed25519 -N "" -C padvinder-deploy -f padvinder-deploy
@@ -155,7 +155,7 @@ gh secret set DEPLOY_SSH_KEY --env staging --repo OWNER/REPO < padvinder-deploy
 gh secret set DEPLOY_SSH_KEY --env production --repo OWNER/REPO < padvinder-deploy
 ```
 
-The public key `padvinder-deploy.pub` goes into the Alwaysdata panel (Remote access, SSH, the user `<account>_deploy`, keys) once provisioning has created that user. The API has no field for SSH keys, so this is a manual step. Then delete `padvinder-deploy`, or keep it in a password manager. For running the scripts locally, you can make your own key pair the same way and add its public key to the same user.
+The public key `padvinder-deploy.pub` goes into the Alwaysdata panel (Remote access, SSH, the user `<account>`, keys), before the first apply. That user exists since the account was made; provisioning creates no SSH user. The API has no field for SSH keys, so this is a manual step. Then delete `padvinder-deploy`, or keep it in a password manager. For running the scripts locally, you can make your own key pair the same way and add its public key to the same user.
 
 **Database passwords.** A different one per environment, sent straight to GitHub:
 
@@ -185,14 +185,13 @@ Only store the known hosts after the fingerprint matches; with a wrong one the d
 The workflows reach the environments only from `main`, so the first runs happen after pull request 8 is merged.
 
 1. **Secrets** in both environments, as above.
-2. **Merge pull request 8.** Its Deploy run fails safely, because nothing is provisioned yet: the staging job loads the key, unpacks the release and asks the API for the services, then stops with `Deploy failed: Found no service "padvinder-api (staging)". Found no service "padvinder-worker (staging)". Run pnpm infra:provision --environment staging to see what differs.` It has not used SSH or changed anything, and production does not start, because it needs the staging job.
-3. **Plan staging, read-only.** Actions, Provision, Run workflow (from `main`), environment `staging`, `apply` off, `inspect` on. Nothing changes. Check the plan, and compare the inspect output with the `UNVERIFIED` fields in `src/resources.ts`. If the names differ, fix them there in a pull request, merge it (its Deploy run fails as in step 2) and plan again.
-4. **Apply staging.** The same with `apply` on. It creates the SSH user, the database, the database user, the site and the two services. The first apply then fails at writing the env file, because the SSH user has no key yet; the output says so.
-5. **Add the deploy public key** `padvinder-deploy.pub` to the SSH user `<account>_deploy` in the panel.
-6. **Apply staging again.** It finds everything `ok`, writes `padvinder/staging/.env` and creates `releases/`.
-7. **Deploy to staging.** Actions, Deploy, Run workflow (from `main`); or re-run the failed run of step 2. The services start failing as soon as they are created (no release yet), and Alwaysdata may turn them off; the first deploy turns them on. The production job then waits for approval: reject it for now (Review deployments): production is not provisioned yet, and a deploy waiting in the group `deploy-production` gets in the way of provisioning it (see "Operating notes").
-8. **Verify** staging: the "Verification" section below.
-9. **Production:** steps 3, 4 and 6 with `production`. Each run waits for your approval, also a plan. The SSH user and its key already exist, so the first apply writes the env file. Then run Deploy again from `main`, check staging, and approve the production job.
+2. **Add the deploy public key** `padvinder-deploy.pub` to the main SSH user `<account>` in the panel (see "Deploy key"). That user came with the account; no SSH user is created.
+3. **Merge pull request 8.** Its Deploy run fails safely, because nothing is provisioned yet: the staging job loads the key, unpacks the release and asks the API for the services, then stops with `Deploy failed: Found no service "padvinder-api (staging)". Found no service "padvinder-worker (staging)". Run pnpm infra:provision --environment staging to see what differs.` It has not used SSH or changed anything, and production does not start, because it needs the staging job.
+4. **Plan staging, read-only.** Actions, Provision, Run workflow (from `main`), environment `staging`, `apply` off, `inspect` on. Nothing changes, and SSH is not used. Check the plan, and compare the inspect output with the `UNVERIFIED` fields in `src/resources.ts`. If the names differ, fix them there in a pull request, merge it (its Deploy run fails as in step 3) and plan again.
+5. **Apply staging.** The same with `apply` on. It first reads `padvinder/staging/.env` over SSH (there is none yet); if the key from step 2 is missing, it stops there with nothing changed and says so. Then it creates the database, the database user, the site and the two services, writes `padvinder/staging/.env` and creates `releases/`.
+6. **Deploy to staging.** Actions, Deploy, Run workflow (from `main`); or re-run the failed run of step 3. The services start failing as soon as they are created (no release yet), and Alwaysdata may turn them off; the first deploy turns them on. The production job then waits for approval: reject it for now (Review deployments): production is not provisioned yet, and a deploy waiting in the group `deploy-production` gets in the way of provisioning it (see "Operating notes").
+7. **Verify** staging: the "Verification" section below.
+8. **Production:** steps 4 and 5 with `production`. Each run waits for your approval, also a plan. The key is already on the main SSH user. Then run Deploy again from `main`, check staging, and approve the production job.
 
 ## Running locally
 
@@ -242,7 +241,7 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 
 - **Database password:** set a new `DATABASE_PASSWORD` in the environment (`openssl rand -hex 32 | gh secret set ...`), then run Provision with `apply` and `rotate-password` on. Without `rotate-password` the run refuses, because the env file would then disagree with the database user. Then restart the services straight away: new database connections fail until they run with the new file.
 - **API token:** make a new token in the panel, set `ALWAYSDATA_API_KEY`, delete the old token in the panel.
-- **Deploy key:** make a new key pair, add the new public key to `<account>_deploy` in the panel, set `DEPLOY_SSH_KEY` in both environments, check that a deploy or a Provision apply works, then remove the old public key in the panel. The key must have no passphrase: the action loads it into ssh-agent without a prompt, and fails with "Could not load DEPLOY_SSH_KEY into ssh-agent" otherwise.
+- **Deploy key:** make a new key pair, add the new public key to the main SSH user `<account>` in the panel, set `DEPLOY_SSH_KEY` in both environments, check that a deploy or a Provision apply works, then remove the old public key in the panel. The key must have no passphrase: the action loads it into ssh-agent without a prompt, and fails with "Could not load DEPLOY_SSH_KEY into ssh-agent" otherwise.
 - **SSH host key** (only if Alwaysdata changes it): make `SSH_KNOWN_HOSTS` again, after checking the fingerprint.
 
 ### Turning staging off and on
@@ -273,7 +272,7 @@ Let's Encrypt only issues a certificate when the address already points at Alway
 ### On a new Alwaysdata account
 
 1. Make the account, its API token and the GitHub secrets for it (`ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `SSH_KNOWN_HOSTS` change; keep or remake the others).
-2. Follow "First run" up to and including the second apply, for each environment.
+2. Follow "First run" up to and including the apply, for each environment.
 3. Restore the database before the first deploy (below). The deploy's migrations then find nothing to do.
 4. Copy files: today there are none besides the env file and the releases, which provisioning and the deploy make again. Once photos exist, copy their storage directory too.
 5. Deploy, then point DNS at the new account and wait for the certificates.
@@ -328,17 +327,14 @@ The first deploy to staging is also the test the project plan asks for. Record e
 | The database accepts TLS connections from outside                                                                                                 | `psql "sslmode=require host=postgresql-<account>.alwaysdata.net ..."` from your machine                                          | not yet verified |
 | Time zones: the server's, the database's, and that of scheduled jobs                                                                              | `date` and `echo "$TZ"` over SSH, `show timezone` in `psql`; pg-boss schedules use Europe/Amsterdam explicitly                   | not yet verified |
 | Memory use of the four processes (API and worker, production and staging) fits in 1 GB                                                            | Panel, Advanced, Processes, after a day of use                                                                                   | not yet verified |
-| The non-interactive shell of `<account>_deploy` prints nothing (rsync and the deploy's output depend on it)                                       | `ssh <account>_deploy@ssh-<account>.alwaysdata.net true` prints nothing; the first deploy's upload works                         | not yet verified |
+| The non-interactive shell of the main SSH user `<account>` prints nothing (rsync and the deploy's output depend on it)                            | `ssh <account>@ssh-<account>.alwaysdata.net true` prints nothing; the first deploy's upload works                                | not yet verified |
 | `NODEJS_VERSION=24` gives Node.js 24 in the services and over SSH                                                                                 | `NODEJS_VERSION=24 node --version` over SSH; the health check passing                                                            | not yet verified |
-| The services, running as `<account>_deploy`, can read the env file (the directories are mode 700)                                                 | The first deploy's health check                                                                                                  | not yet verified |
-| UNVERIFIED: `ssh.home_directory: ""` means the account root (it may come back as `"/"`, which would plan an update on every run)                  | `--inspect`, and a second plan shows `ok`                                                                                        | not yet verified |
-| UNVERIFIED: `ssh.shell` value `BASH`                                                                                                              | `--inspect`                                                                                                                      | not yet verified |
+| UNVERIFIED: a service without `ssh_user` runs as the main user `<account>`, so it can read the env file (the directories are mode 700)            | `--inspect` shows which `ssh_user` our services report; the first deploy's health check                                          | not yet verified |
 | UNVERIFIED: database fields `encoding`, `locale`, `extensions` (names and formats; create-only)                                                   | `--inspect`, and the SQL check above                                                                                             | not yet verified |
 | UNVERIFIED: `database/user.permissions` keys are database names, not ids                                                                          | `--inspect`                                                                                                                      | not yet verified |
 | UNVERIFIED: the reverse proxy's target field `remote_url`, and that the proxy reaches `http://services-<account>.alwaysdata.net:<port>` over IPv6 | `--inspect`; `https://staging.padvinder.net/api/health` answers                                                                  | not yet verified |
 | UNVERIFIED: site `addresses` order                                                                                                                | A second plan shows `ok`                                                                                                         | not yet verified |
 | UNVERIFIED: service `environment` format (`NAME=value`, space-separated)                                                                          | `--inspect`                                                                                                                      | not yet verified |
-| UNVERIFIED: a listed service reports `ssh_user` as an id                                                                                          | `--inspect`                                                                                                                      | not yet verified |
 | UNVERIFIED: the service on/off field `is_disabled`                                                                                                | Staging services off and on; the panel shows the change                                                                          | not yet verified |
 | The ssh-agent of the credentials step outlives that step on GitHub's runner, and the job's last step stops it                                     | The deploy's upload works; the step "Stop the SSH agent" prints nothing (not "had already stopped")                              | not yet verified |
 | The status codes of the API's `PATCH` and `restart` (the fake answers 204)                                                                        | The first apply and deploy succeed                                                                                               | not yet verified |
