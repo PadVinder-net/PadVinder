@@ -2,6 +2,7 @@ import {
   getMeQueryKey,
   healthQueryOptions,
   logOut,
+  meQueryOptions,
   useHealthLiveUpdates,
 } from "@padvinder/api-client";
 import { Button, HealthStatus } from "@padvinder/ui";
@@ -19,8 +20,14 @@ export function MoreScreen() {
     // If signing out fails the cookie stays valid: keep the user logged in and say so.
     const result = await logOut();
     if (!result.ok) {
-      setLogOutFailed(true);
-      return;
+      // The session may already be over (ended on another device): ask the server who we are.
+      const me = await queryClient
+        .fetchQuery({ ...meQueryOptions(), staleTime: 0 })
+        .catch(() => undefined);
+      if (me !== null) {
+        setLogOutFailed(true);
+        return;
+      }
     }
     // "Not logged in" is the answer for me; the gate watches that query, so it is kept (cleared
     // observers would never hear of a new one). Nothing else of the previous user stays in memory.

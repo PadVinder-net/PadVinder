@@ -85,3 +85,27 @@ test("Log uit that fails keeps the user logged in and says so", async () => {
   expect(screen.getByRole("heading", { level: 1, name: "Meer" })).toBeVisible();
   expect(client.getQueryData(getMeQueryKey())).toEqual(meFixture);
 });
+
+test("Log uit when the session had already ended goes to the login screen without a message", async () => {
+  const routes: Record<string, unknown> = {
+    "/api/health": healthyFixture,
+    "/api/me": meFixture,
+    "/api/auth/sign-out": Response.json({ code: "FAILED_TO_GET_SESSION" }, { status: 400 }),
+  };
+  mockFetch(routes);
+  render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <AuthGate>
+        <MoreScreen />
+      </AuthGate>
+    </QueryClientProvider>,
+  );
+  const button = await screen.findByRole("button", { name: "Log uit" });
+  routes["/api/me"] = Response.json(
+    { statusCode: 401, error: "Unauthorized", message: "x", code: "not_logged_in" },
+    { status: 401 },
+  );
+  await userEvent.click(button);
+  expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
+  expect(screen.queryByText(/Uitloggen lukt nu niet/)).toBeNull();
+});
