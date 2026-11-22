@@ -1,6 +1,7 @@
 import {
   auditLogEntries,
   grantPlatformAdmin,
+  verifications,
   liveEventsChannel,
   membershipRequests,
   organizationAdmins,
@@ -19,7 +20,7 @@ import { startNotificationHub, type NotificationHub } from "../realtime/notifica
 import { testEnv } from "../test-env";
 import { openEvents } from "../test-open-events";
 import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
-import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { createTestApp, loginAs, requestCode, type TestApp } from "../testing/login";
 
 // Every test deletes accounts of the cast, so every test gets its own database, hub and cast.
 let t: TestDatabase | undefined;
@@ -140,6 +141,17 @@ test("on an HTTPS origin the cleared cookie is Secure, with the __Secure- name",
   } finally {
     await secure.close();
   }
+});
+
+test("a login code that was asked for but not used is gone with the account", async () => {
+  // Through Better Auth's real route, so a change of how it names its rows fails this test.
+  const volunteer = cast.members.volunteer;
+  expect((await requestCode(ctx, volunteer.email)).statusCode).toBe(200);
+  const before = await ctx.t.db.select().from(verifications);
+  expect(before.some((row) => row.identifier.includes(volunteer.email))).toBe(true);
+  expect((await del(volunteer)).statusCode).toBe(204);
+  const after = await ctx.t.db.select().from(verifications);
+  expect(after.filter((row) => row.identifier.includes(volunteer.email))).toEqual([]);
 });
 
 test("the old session no longer works", async () => {
@@ -308,11 +320,11 @@ test("a request the deleted user sent still exists and shows Verwijderd account 
     headers: cast.members.coordinator.headers,
   });
   expect(res.statusCode).toBe(200);
-  expect(res.json()).toMatchObject({
-    id,
-    status: "rejected",
-    applicant: { id: applicant.userId, name: "Verwijderd account", email: "", phone: null },
-  });
+  expect(res.json()).toMatchObject({ id, status: "rejected" });
+  // No contact keys at all in the raw answer: not an empty string, not null.
+  expect(res.json().applicant).toStrictEqual({ id: applicant.userId, name: "Verwijderd account" });
+  expect(res.body).not.toContain('"email"');
+  expect(res.body).not.toContain('"phone"');
   // Neither the old address nor the replaced one reaches the reviewer.
   expect(res.body).not.toContain(applicant.email);
   expect(res.body).not.toContain("deleted.invalid");

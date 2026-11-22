@@ -37,6 +37,8 @@ export type MembershipRequest = z.infer<typeof membershipRequestSchema>;
 /**
  * A request as a reviewer sees it: a coordinator of the group, an admin of its organization or a
  * platform admin. Only they may see the applicant's contact details; nobody else gets this shape.
+ * An applicant who deleted their account has no `email` and `phone` keys, and the name
+ * "Verwijderd account".
  */
 export const membershipRequestForReviewSchema = membershipRequestSchema
   .extend({
@@ -44,8 +46,8 @@ export const membershipRequestForReviewSchema = membershipRequestSchema
       id: z.string(),
       /** Empty when the person has not given it yet. */
       name: z.string(),
-      email: z.string(),
-      phone: z.string().nullable(),
+      email: z.string().optional(),
+      phone: z.string().nullable().optional(),
     }),
   })
   .meta({ id: "MembershipRequestForReview" });

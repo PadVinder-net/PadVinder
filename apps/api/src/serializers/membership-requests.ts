@@ -15,7 +15,10 @@ export function toMembershipRequest(record: MembershipRequestRecord): Membership
   };
 }
 
-/** The answer for a reviewer: the request plus the applicant's name, email address and phone. */
+/**
+ * The answer for a reviewer: the request plus the applicant's name, email address and phone. A
+ * deleted account's record has no contact keys, and neither has the answer.
+ */
 export function toMembershipRequestForReview(
   record: MembershipRequestReviewRecord,
 ): MembershipRequestForReview {
@@ -24,8 +27,8 @@ export function toMembershipRequestForReview(
     applicant: {
       id: record.applicant.id,
       name: record.applicant.name,
-      email: record.applicant.email,
-      phone: record.applicant.phone,
+      ...(record.applicant.email !== undefined && { email: record.applicant.email }),
+      ...(record.applicant.phone !== undefined && { phone: record.applicant.phone }),
     },
   };
 }

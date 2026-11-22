@@ -56,7 +56,8 @@ export type WithdrawMembershipRequestResult =
  * the group, an admin of its organization or a platform admin: the route decides that.
  */
 export type MembershipRequestReviewRecord = MembershipRequestRecord & {
-  applicant: { id: string; name: string; email: string; phone: string | null };
+  /** A deleted account has no `email` and `phone` keys at all; its name is "Verwijderd account". */
+  applicant: { id: string; name: string; email?: string; phone?: string | null };
   organizationId: string;
 };
 
@@ -125,12 +126,14 @@ async function selectRequestsForReview(
       organization: { id: row.organizationId, name: row.organizationName },
     },
     // A deleted account has no contact details: its replaced address is never shown.
-    applicant: {
-      id: row.userId,
-      name: row.applicantName,
-      email: row.applicantDeletedAt ? "" : row.applicantEmail,
-      phone: row.applicantDeletedAt ? null : row.applicantPhone,
-    },
+    applicant: row.applicantDeletedAt
+      ? { id: row.userId, name: row.applicantName }
+      : {
+          id: row.userId,
+          name: row.applicantName,
+          email: row.applicantEmail,
+          phone: row.applicantPhone,
+        },
   }));
 }
 

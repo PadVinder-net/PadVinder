@@ -63,6 +63,15 @@ test("with contact, the email address and phone come along", async () => {
   expect(members.find((m) => m.name === "Anna")!.phone).toBe("06 11112222");
 });
 
+test("a deleted account is never listed, also when a membership was left", async () => {
+  const gone = await addMember("Weggegaan");
+  await t!.db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, gone.userId));
+  for (const contact of [false, true]) {
+    const members = await listMembers(t!.db, groupId, { contact });
+    expect(members.map((m) => m.userId)).not.toContain(gone.userId);
+  }
+});
+
 test("getMembership returns the target, or null", async () => {
   const m = await addMember("Get");
   expect(await getMembership(t!.db, m.membershipId)).toEqual({

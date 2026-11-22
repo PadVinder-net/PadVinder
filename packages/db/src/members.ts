@@ -1,14 +1,15 @@
 import type { Member } from "@padvinder/contracts";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "./audit-log";
 import type { Db } from "./client";
 import { notifyAccessChanged } from "./notifications";
 import { users, workingGroupMemberships, workingGroups } from "./schema";
 
 /**
- * The members of a working group, sorted by name in Dutch order. With `contact: false` the query
- * does not select the email address and phone, and the objects have no such keys at all (not
- * `undefined`, not `null`). Whether the caller may see contact details is decided by the route.
+ * The members of a working group, sorted by name in Dutch order, without deleted accounts. With
+ * `contact: false` the query does not select the email address and phone, and the objects have no
+ * such keys at all (not `undefined`, not `null`). Whether the caller may see contact details is
+ * decided by the route.
  */
 export async function listMembers(
   db: Db,
@@ -16,7 +17,12 @@ export async function listMembers(
   options: { contact: boolean },
 ): Promise<Member[]> {
   const order = [sql`${users.name} COLLATE "nl-NL-x-icu"`, workingGroupMemberships.id];
-  const where = eq(workingGroupMemberships.workingGroupId, workingGroupId);
+  // A deleted account has no memberships (`deleteAccount` removes them); the filter is a guard
+  // against one made at the same moment, for example by the admin tool.
+  const where = and(
+    eq(workingGroupMemberships.workingGroupId, workingGroupId),
+    isNull(users.deletedAt),
+  );
   if (!options.contact) {
     return db
       .select({

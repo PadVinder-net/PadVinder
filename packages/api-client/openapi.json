@@ -291,9 +291,7 @@
             },
             "required": [
               "id",
-              "name",
-              "email",
-              "phone"
+              "name"
             ]
           }
         },
@@ -779,9 +777,7 @@
             },
             "required": [
               "id",
-              "name",
-              "email",
-              "phone"
+              "name"
             ],
             "additionalProperties": false
           }

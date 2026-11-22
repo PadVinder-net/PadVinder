@@ -1,5 +1,5 @@
 import type { LiveEvent } from "@padvinder/contracts";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { getAccess } from "./access";
@@ -275,10 +275,9 @@ test("a decided request of the deleted user stays and shows the fixed name, with
   await decideMembershipRequest(db(), { id, decision: "rejected", decidedBy: decider.id, now });
   await deleteAccount(db(), { userId: user.id, now });
   const stored = await getMembershipRequestForReview(db(), id);
-  expect(stored).toMatchObject({
-    status: "rejected",
-    applicant: { id: user.id, name: "Verwijderd account", email: "", phone: null },
-  });
+  expect(stored?.status).toBe("rejected");
+  // No contact keys at all: not an empty string, not null.
+  expect(stored?.applicant).toStrictEqual({ id: user.id, name: "Verwijderd account" });
 });
 
 test("writes one audit entry: the user deleted themselves, without details", async () => {
@@ -428,4 +427,120 @@ test("two deletions at the same moment: one deleted, one not_found, one audit en
       and(eq(auditLogEntries.subjectId, user.id), eq(auditLogEntries.action, "account.deleted")),
     );
   expect(entries).toHaveLength(1);
+});
+
+test("the only two platform admins deleting themselves at the same moment: exactly one may", async () => {
+  const fresh = await createTestDatabase();
+  try {
+    const ids: string[] = [];
+    for (const email of ["een@example.test", "twee@example.test"]) {
+      await grantPlatformAdmin(fresh.db, { email }, system);
+      const [row] = await fresh.db.select().from(users).where(eq(users.email, email));
+      ids.push(row!.id);
+    }
+    const results = await Promise.all(
+      ids.map((userId) => deleteAccount(fresh.db, { userId, now })),
+    );
+    expect(results.map((r) => r.outcome).sort()).toEqual(["deleted", "last_platform_admin"]);
+    const admins = await fresh.db.select().from(users).where(eq(users.isPlatformAdmin, true));
+    expect(admins).toHaveLength(1);
+    expect(admins[0]!.deletedAt).toBeNull();
+  } finally {
+    await fresh.drop();
+  }
+});
+
+/** Waits until some connection of this database waits on a lock; fails after two seconds. */
+async function waitUntilBlocked(): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    const [blocked] = await db()
+      .execute<{ n: number }>(
+        sql`select count(*)::int as n from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'`,
+      )
+      .then((r) => r.rows);
+    if (blocked!.n > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("No connection waited on a lock");
+}
+
+test("an approval that holds the request while the account is deleted: no deadlock", async () => {
+  // The approval's own order (decideMembershipRequest): lock the request row, update it, then
+  // insert the membership, whose foreign key check takes a share lock on the users row.
+  const user = await newUser();
+  const decider = await newUser();
+  const id = await request(user.id, groups[0]!);
+  let continueApproval!: () => void;
+  const resume = new Promise<void>((resolve) => (continueApproval = resolve));
+  let locked!: () => void;
+  const ready = new Promise<void>((resolve) => (locked = resolve));
+  const approval = db().transaction(async (tx) => {
+    await tx.execute(sql`select id from membership_requests where id = ${id} for update`);
+    await tx
+      .update(membershipRequests)
+      .set({ status: "approved", decidedAt: now, decidedByUserId: decider.id })
+      .where(eq(membershipRequests.id, id));
+    locked();
+    await resume;
+    await tx
+      .insert(workingGroupMemberships)
+      .values({ userId: user.id, workingGroupId: groups[0]! });
+  });
+  await ready;
+  const deletion = deleteAccount(db(), { userId: user.id, now });
+  await waitUntilBlocked();
+  continueApproval();
+  // Both finish: before the fix, PostgreSQL ended one of them with "deadlock detected".
+  await approval;
+  expect(await deletion).toEqual({ outcome: "deleted" });
+  // The approval came first; the deletion then removed the membership it made.
+  const [stored] = await db()
+    .select()
+    .from(membershipRequests)
+    .where(eq(membershipRequests.id, id));
+  expect(stored!.status).toBe("approved");
+  expect(
+    await db()
+      .select()
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.userId, user.id)),
+  ).toEqual([]);
+});
+
+test("a deletion and an approval waiting for the same request: no deadlock, no membership", async () => {
+  const user = await newUser();
+  const decider = await newUser();
+  const id = await request(user.id, groups[0]!);
+  // Hold the user's request lock, as a deletion in progress does, then let the deletion run.
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let locked!: () => void;
+  const ready = new Promise<void>((resolve) => (locked = resolve));
+  const holder = db().transaction(async (tx) => {
+    await tx.execute(sql`select id from membership_requests where id = ${id} for update`);
+    locked();
+    await released;
+  });
+  await ready;
+  const deletion = deleteAccount(db(), { userId: user.id, now });
+  const decision = decideMembershipRequest(db(), {
+    id,
+    decision: "approved",
+    decidedBy: decider.id,
+    now,
+  });
+  await waitUntilBlocked();
+  release();
+  await holder;
+  const [deleted, decided] = await Promise.all([deletion, decision]);
+  expect(deleted).toEqual({ outcome: "deleted" });
+  // Whichever got the row first: never a membership of the deleted account.
+  expect(["already_decided", "decided"]).toContain(decided.outcome);
+  expect(
+    await db()
+      .select()
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.userId, user.id)),
+  ).toEqual([]);
 });

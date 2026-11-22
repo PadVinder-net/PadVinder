@@ -61,11 +61,23 @@ export async function deleteAccount(
   input: { userId: string; now: Date },
 ): Promise<DeleteAccountResult> {
   return db.transaction(async (tx): Promise<DeleteAccountResult> => {
-    // Lock order: the platform admin lock, the user's request lock, then the user row. Every
-    // writer of the admin flag takes the first; `createMembershipRequest` takes the second, so no
-    // request of this user can slip in after the withdrawal below.
+    // Lock order: the platform admin lock, the user's request lock, the user's pending request
+    // rows, then the user row. Every writer of the admin flag takes the first;
+    // `createMembershipRequest` takes the second, so no request of this user can slip in after the
+    // withdrawal below. The request rows come before the user row because a decision locks its
+    // request row first and then, inserting the membership, takes a share lock on the user row
+    // (the foreign key): the other order deadlocks. Here a decision that holds a request row
+    // finishes first (the row then no longer matches `pending`); a decision that comes later waits
+    // for this transaction and then finds the request withdrawn.
     await lockPlatformAdmins(tx);
     await lockMembershipRequestsOfUser(tx, input.userId);
+    await tx
+      .select({ id: membershipRequests.id })
+      .from(membershipRequests)
+      .where(
+        and(eq(membershipRequests.userId, input.userId), eq(membershipRequests.status, "pending")),
+      )
+      .for("update");
     const [user] = await tx
       .select({ email: users.email, isPlatformAdmin: users.isPlatformAdmin })
       .from(users)
@@ -100,8 +112,8 @@ export async function deleteAccount(
     );
     await tx.delete(loginCodeRequests).where(eq(loginCodeRequests.email, user.email));
 
-    // Before the memberships: a decision that approved one of these requests first has committed
-    // its membership by the time this update gets the row, so the delete below removes it.
+    // The pending rows are locked since the start; a decision that approved one of them before
+    // that has committed its membership, so the delete below removes it.
     const withdrawn = await tx
       .update(membershipRequests)
       .set({ status: "withdrawn", decidedAt: input.now })

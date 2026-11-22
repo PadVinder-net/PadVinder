@@ -90,6 +90,8 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
    * for the same decision again. Mails the applicant. Not awaited by the request.
    */
   function afterMembershipRequestDecided(request: MembershipRequestReviewRecord): void {
+    // A deleted account has no address; its pending requests are withdrawn, so this is only a guard.
+    if (request.applicant.email === undefined) return;
     const input = {
       to: request.applicant.email,
       workingGroupName: request.workingGroup.name,
