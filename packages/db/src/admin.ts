@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 import { recordAudit, type AuditAction, type AuditActor } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
 import {
@@ -13,6 +13,7 @@ import {
 export type AdminErrorCode =
   | "organization_not_found"
   | "working_group_not_found"
+  | "working_group_inactive"
   | "user_not_found"
   | "invalid_email"
   | "name_taken"
@@ -64,12 +65,19 @@ async function requireOrganization(tx: DbTransaction, organizationId: string): P
   if (!row) throw new AdminError("organization_not_found");
 }
 
-async function requireWorkingGroup(tx: DbTransaction, workingGroupId: string): Promise<string> {
+/** The working group's organization. With `active`, an inactive group is `working_group_inactive`. */
+async function requireWorkingGroup(
+  tx: DbTransaction,
+  workingGroupId: string,
+  { active = false }: { active?: boolean } = {},
+): Promise<string> {
   const [row] = await tx
-    .select({ organizationId: workingGroups.organizationId })
+    .select({ organizationId: workingGroups.organizationId, active: workingGroups.active })
     .from(workingGroups)
     .where(eq(workingGroups.id, workingGroupId));
   if (!row) throw new AdminError("working_group_not_found");
+  // Memberships of an inactive group give no rights (`getAccess`), so a grant would do nothing.
+  if (active && !row.active) throw new AdminError("working_group_inactive");
   return row.organizationId;
 }
 
@@ -89,6 +97,17 @@ async function findOrCreateUser(
   // A concurrent transaction that inserted the row has committed by now (the insert waited for it).
   if (!existing) throw new AdminError("user_not_found");
   return { id: existing.id, created: false };
+}
+
+/**
+ * The account for the address, made empty when there is none. For the seed and other setup that
+ * needs a person without a role. Throws `invalid_email` for an address that is not valid.
+ */
+export async function findOrCreateAccount(
+  db: Db,
+  email: string,
+): Promise<{ id: string; created: boolean }> {
+  return db.transaction((tx) => findOrCreateUser(tx, email));
 }
 
 async function requireUser(tx: DbTransaction, email: string): Promise<string> {
@@ -222,11 +241,16 @@ export async function revokePlatformAdmin(
       .from(users)
       .where(eq(users.id, userId));
     if (!target?.isPlatformAdmin) return { userId, changed: false };
-    const [{ admins } = { admins: 0 }] = await tx
-      .select({ admins: count() })
+    // Another platform admin must remain who has logged in at least once (the first login
+    // verifies the address). An account this tool made for a mistyped address never logs in,
+    // so it does not count. Account deletion must apply the same rule.
+    const [{ others } = { others: 0 }] = await tx
+      .select({ others: count() })
       .from(users)
-      .where(eq(users.isPlatformAdmin, true));
-    if (admins <= 1) throw new AdminError("last_platform_admin");
+      .where(
+        and(eq(users.isPlatformAdmin, true), eq(users.emailVerified, true), ne(users.id, userId)),
+      );
+    if (others === 0) throw new AdminError("last_platform_admin");
     await tx.update(users).set({ isPlatformAdmin: false }).where(eq(users.id, userId));
     await audit(tx, actor, null, "role.platform_admin_revoked", userId);
     return { userId, changed: true };
@@ -281,7 +305,7 @@ export async function grantCoordinator(
   actor: AuditActor,
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
-    const organizationId = await requireWorkingGroup(tx, input.workingGroupId);
+    const organizationId = await requireWorkingGroup(tx, input.workingGroupId, { active: true });
     const { id: userId, created } = await findOrCreateUser(tx, input.email);
     // One statement: insert, or raise a volunteer; a coordinator row is left alone (no row returned).
     const changed = await tx

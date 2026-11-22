@@ -1,8 +1,9 @@
+import type { MembershipRole } from "@padvinder/contracts";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "./client";
 import { organizationAdmins, users, workingGroupMemberships, workingGroups } from "./schema";
 
-export type MembershipRole = "volunteer" | "coordinator";
+export type { MembershipRole };
 
 export type Access = {
   isPlatformAdmin: boolean;

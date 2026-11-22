@@ -1,3 +1,4 @@
+import { membershipRoleSchema } from "@padvinder/contracts";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -44,7 +45,8 @@ export const workingGroups = pgTable(
   ],
 );
 
-export const membershipRole = pgEnum("membership_role", ["volunteer", "coordinator"]);
+// The roles come from the API contract, so the database, the API and the apps share one list.
+export const membershipRole = pgEnum("membership_role", membershipRoleSchema.enum);
 
 export const workingGroupMemberships = pgTable(
   "working_group_memberships",

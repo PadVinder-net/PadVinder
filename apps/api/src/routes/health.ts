@@ -54,15 +54,15 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
       const now = new Date();
       let database: HealthResponse["database"];
       let lastHeartbeat: Date | null;
+      // Outside the database check's own timeout: a slow actor load means "no actor", it must
+      // not make the database look unreachable. It never rejects.
+      const actorLoad = loadActorOrNull(request);
       try {
-        const [diagnostics, heartbeat, actor] = await withTimeout(
-          Promise.all([
-            getDatabaseDiagnostics(db),
-            getLatestHeartbeat(db),
-            loadActorOrNull(request),
-          ]),
+        const [diagnostics, heartbeat] = await withTimeout(
+          Promise.all([getDatabaseDiagnostics(db), getLatestHeartbeat(db)]),
           DATABASE_CHECK_TIMEOUT_MS,
         );
+        const actor = await actorLoad;
         const showDetails =
           actor !== null && decide(actor, { action: "system.viewDatabaseDetails" }) === "allowed";
         database = showDetails

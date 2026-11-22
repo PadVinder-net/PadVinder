@@ -2,11 +2,11 @@ import { eq } from "drizzle-orm";
 import {
   createOrganization,
   createWorkingGroup,
+  findOrCreateAccount,
   grantCoordinator,
   grantOrganizationAdmin,
   grantPlatformAdmin,
   listOrganizations,
-  normalizeEmail,
 } from "./admin";
 import type { AuditActor } from "./audit-log";
 import type { Db } from "./client";
@@ -44,14 +44,9 @@ async function setName(db: Db, userId: string, name: string): Promise<void> {
 }
 
 async function ensureAccount(db: Db, email: string, name: string): Promise<string> {
-  const address = normalizeEmail(email);
-  await db
-    .insert(users)
-    .values({ name: "", email: address, emailVerified: false })
-    .onConflictDoNothing({ target: users.email });
-  const [row] = await db.select({ id: users.id }).from(users).where(eq(users.email, address));
-  await setName(db, row!.id, name);
-  return row!.id;
+  const { id } = await findOrCreateAccount(db, email);
+  await setName(db, id, name);
+  return id;
 }
 
 async function ensureVolunteer(

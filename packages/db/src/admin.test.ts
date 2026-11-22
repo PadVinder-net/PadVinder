@@ -15,7 +15,7 @@ import {
 } from "./admin";
 import { getAccess } from "./access";
 import type { AuditActor } from "./audit-log";
-import { auditLogEntries, users, workingGroupMemberships } from "./schema";
+import { auditLogEntries, users, workingGroupMemberships, workingGroups } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 const system: AuditActor = { kind: "system" };
@@ -124,6 +124,11 @@ async function entries() {
   }));
 }
 
+/** What the first login does to an account the tool made: Better Auth verifies the address. */
+async function logIn(email: string) {
+  await db().update(users).set({ emailVerified: true }).where(eq(users.email, email));
+}
+
 test("the last platform admin cannot be revoked, and nothing is written", async () => {
   await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
   const before = await entries();
@@ -136,6 +141,7 @@ test("the last platform admin cannot be revoked, and nothing is written", async 
 test("with two platform admins one can be revoked, with one entry", async () => {
   const a = await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
   await grantPlatformAdmin(db(), { email: "b@example.test" }, system);
+  await logIn("b@example.test");
   const result = await revokePlatformAdmin(db(), { email: "a@example.test" }, system);
   expect(result).toEqual({ userId: a.userId, changed: true });
   expect((await getAccess(db(), result.userId))?.isPlatformAdmin).toBe(false);
@@ -170,6 +176,8 @@ test("a platform admin grant writes an entry without an organization", async () 
 test("two revokes at once cannot remove the last two platform admins", async () => {
   await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
   await grantPlatformAdmin(db(), { email: "b@example.test" }, system);
+  await logIn("a@example.test");
+  await logIn("b@example.test");
   const results = await Promise.allSettled([
     revokePlatformAdmin(db(), { email: "a@example.test" }, system),
     revokePlatformAdmin(db(), { email: "b@example.test" }, system),
@@ -177,6 +185,30 @@ test("two revokes at once cannot remove the last two platform admins", async () 
   expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
   expect(await db().select().from(users).where(eq(users.isPlatformAdmin, true))).toHaveLength(1);
+});
+
+test("a platform admin who never logged in (a mistyped address) does not count", async () => {
+  await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
+  await logIn("a@example.test");
+  await grantPlatformAdmin(db(), { email: "admn@example.test" }, system);
+  await expect(
+    revokePlatformAdmin(db(), { email: "a@example.test" }, system),
+  ).rejects.toMatchObject({ code: "last_platform_admin" });
+  // The account nobody uses can go, because a platform admin who logged in stays.
+  expect((await revokePlatformAdmin(db(), { email: "admn@example.test" }, system)).changed).toBe(
+    true,
+  );
+});
+
+test("grantCoordinator refuses an inactive working group, and writes nothing", async () => {
+  const { groupId } = await setup();
+  await db().update(workingGroups).set({ active: false }).where(eq(workingGroups.id, groupId));
+  const before = await entries();
+  await expect(
+    grantCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system),
+  ).rejects.toMatchObject({ code: "working_group_inactive" });
+  expect(await entries()).toEqual(before);
+  expect(await db().select().from(workingGroupMemberships)).toHaveLength(0);
 });
 
 test("revoking for an unknown address is user_not_found", async () => {

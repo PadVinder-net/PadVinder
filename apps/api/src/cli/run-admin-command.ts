@@ -29,10 +29,12 @@ const system: AuditActor = { kind: "system" };
 const adminErrorText: Record<AdminErrorCode, string> = {
   organization_not_found: "There is no organization with that ID.",
   working_group_not_found: "There is no working group with that ID.",
+  working_group_inactive: "That working group is inactive; a role there gives no rights.",
   user_not_found: "There is no user with that email address.",
   invalid_email: "That is not a valid email address.",
   name_taken: "That name is already taken.",
-  last_platform_admin: "That is the last platform admin. Make another one first.",
+  last_platform_admin:
+    "That is the last platform admin who has logged in. Make another one, and let them log in first.",
 };
 
 const helpLines = [

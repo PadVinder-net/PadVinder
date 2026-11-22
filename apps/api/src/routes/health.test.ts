@@ -7,7 +7,7 @@ import { buildApp } from "../app";
 import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { createCast, type Cast } from "../testing/cast";
-import { createTestApp, type TestApp } from "../testing/login";
+import { createTestApp, loginAs, type TestApp } from "../testing/login";
 import { testEnv } from "../test-env";
 
 let ctx: TestApp | undefined;
@@ -105,6 +105,53 @@ test("an invalid session cookie counts as nobody", async () => {
   const res = await app!.inject({ url: "/api/health", headers: { cookie: "x=y" } });
   expect(res.statusCode).toBe(200);
   expect(res.json().database.detailsHidden).toBe(true);
+});
+
+test("a slow session lookup counts as nobody, and the database is still reachable", async () => {
+  await recordHeartbeat(t!.db);
+  // Block reads of the sessions table, so loading the actor hangs while the database is fine.
+  const locker = await t!.pool.connect();
+  try {
+    await locker.query("begin");
+    await locker.query("lock table sessions in access exclusive mode");
+    const started = Date.now();
+    const res = await app!.inject({
+      url: "/api/health",
+      headers: cast.members.platformAdmin.headers,
+    });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().database).toMatchObject({ reachable: true, detailsHidden: true });
+  } finally {
+    await locker.query("rollback");
+    locker.release();
+  }
+});
+
+test("the health check does not renew a session; the next request that needs a login does", async () => {
+  await recordHeartbeat(t!.db);
+  const login = await loginAs(ctx!, "health-renew@example.test");
+  // Older than Better Auth's `updateAge` (one day), so the session is due for renewal.
+  const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const oldExpiry = new Date(old.getTime() + 180 * 24 * 60 * 60 * 1000);
+  await t!.pool.query("update sessions set updated_at = $1, expires_at = $2 where user_id = $3", [
+    old,
+    oldExpiry,
+    login.userId,
+  ]);
+  const expiry = async () =>
+    (
+      await t!.pool.query("select expires_at from sessions where user_id = $1", [login.userId])
+    ).rows[0].expires_at.getTime();
+
+  // Renewing here would extend the session in the database without a fresh cookie in the browser.
+  const health = await app!.inject({ url: "/api/health", headers: login.headers });
+  expect(health.headers["set-cookie"]).toBeUndefined();
+  expect(await expiry()).toBe(oldExpiry.getTime());
+
+  const me = await app!.inject({ url: "/api/me", headers: login.headers });
+  expect(String(me.headers["set-cookie"])).toContain("padvinder.session_token=");
+  expect(await expiry()).toBeGreaterThan(oldExpiry.getTime());
 });
 
 test("503 with reachable:false when the database is down, also with a session cookie", async () => {
