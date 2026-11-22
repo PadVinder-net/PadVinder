@@ -237,6 +237,21 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 - **Processes and memory:** the panel, Advanced, Processes. Services run on servers separate from SSH.
 - **Backups:** Alwaysdata makes a daily dump in `/home/<account>/admin/backup/<date>/postgresql/<database>.sql.zst`. A second, hourly copy elsewhere during the season is planned, not built.
 
+### Rotation schedule
+
+| Secret                                  | Why                                                                                                 | When                                                                                                                                                      |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALWAYSDATA_API_KEY`                    | Full rights of the profile over the whole account; the public docs do not say whether tokens expire | Every January (before the feature freeze around 1 February, so nothing changes during the season), and at once when a log or a runner may have exposed it |
+| `DEPLOY_SSH_KEY`                        | Full SSH access to the account                                                                      | Every January, together with the API token                                                                                                                |
+| `DATABASE_PASSWORD` (per environment)   | Readable on the server in `padvinder/<env>/.env` by anything on the account                         | Every January; at once when someone with access leaves, or on suspicion                                                                                   |
+| `ALWAYSDATA_ACCOUNT`, `SSH_KNOWN_HOSTS` | Not real secrets; secrets only to stay out of public logs                                           | Only when the account moves or Alwaysdata changes its host key                                                                                            |
+
+"At once" also covers a lost or compromised laptop that held a key or token, and anyone losing access.
+
+Secrets that later slices add get a row here when they are added. Examples: the Better Auth secret (rotating it logs every user out), the SMTP credentials, and the VAPID key pair (rotating it invalidates every push subscription, so devices must subscribe again). This is guidance for whoever adds them, not a list of existing rows.
+
+The workflow `rotation-reminder.yml` opens an issue every 1 January with a checklist. How to rotate each secret is in the next section.
+
 ### Rotating a secret
 
 - **Database password:** set a new `DATABASE_PASSWORD` in the environment (`openssl rand -hex 32 | gh secret set ...`), then run Provision with `apply` and `rotate-password` on. Without `rotate-password` the run refuses, because the env file would then disagree with the database user. Then restart the services straight away: new database connections fail until they run with the new file.
