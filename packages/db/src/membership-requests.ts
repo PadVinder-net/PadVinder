@@ -1,10 +1,11 @@
 import type { MembershipRequestStatus, WorkingGroupSummary } from "@padvinder/contracts";
-import { and, asc, count, desc, eq, gte, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNull, sql, type SQL } from "drizzle-orm";
 import type { Db, DbTransaction } from "./client";
 import { recordAudit } from "./audit-log";
 import { notifyAccessChanged, notifyMembershipRequestsChanged } from "./notifications";
 import {
   membershipRequests,
+  organizationAdmins,
   organizations,
   users,
   workingGroupMemberships,
@@ -401,4 +402,39 @@ export async function decideMembershipRequest(
       request: { ...stored, status: input.decision, decidedAt: input.now },
     };
   });
+}
+
+/**
+ * The email addresses to mail about a new request: the group's coordinators; when it has none, the
+ * admins of its organization. Accounts that were deleted (`deleted_at`) never count, so a group
+ * whose only coordinator is gone falls back to the admins. An unknown group has no recipients.
+ */
+export async function listRequestNotificationRecipients(
+  db: Db,
+  workingGroupId: string,
+): Promise<string[]> {
+  const coordinators = await db
+    .select({ email: users.email })
+    .from(workingGroupMemberships)
+    .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
+    .where(
+      and(
+        eq(workingGroupMemberships.workingGroupId, workingGroupId),
+        eq(workingGroupMemberships.isCoordinator, true),
+        isNull(users.deletedAt),
+      ),
+    )
+    .orderBy(asc(users.email));
+  if (coordinators.length > 0) return coordinators.map((row) => row.email);
+  const admins = await db
+    .select({ email: users.email })
+    .from(workingGroups)
+    .innerJoin(
+      organizationAdmins,
+      eq(organizationAdmins.organizationId, workingGroups.organizationId),
+    )
+    .innerJoin(users, eq(users.id, organizationAdmins.userId))
+    .where(and(eq(workingGroups.id, workingGroupId), isNull(users.deletedAt)))
+    .orderBy(asc(users.email));
+  return admins.map((row) => row.email);
 }

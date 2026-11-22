@@ -27,7 +27,7 @@ export type AppDeps = {
   env: ApiEnv;
   db: Db;
   notifications: NotificationHub;
-  /** Sends the login code mails. Tests pass the memory mailer. */
+  /** Sends the login code mails and the mails about requests. Tests pass the memory mailer. */
   mailer: Mailer;
   /** Turns on Fastify's request logging at `env.LOG_LEVEL`. Off by default (tests). */
   logger?: boolean;
@@ -82,7 +82,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(versionRoutes, { env });
       await api.register(meRoutes, { db: deps.db });
       await api.register(workingGroupRoutes, { db: deps.db });
-      await api.register(membershipRequestRoutes, { db: deps.db });
+      await api.register(membershipRequestRoutes, {
+        db: deps.db,
+        mailer: deps.mailer,
+        publicOrigin: env.PUBLIC_ORIGIN,
+      });
       await api.register(eventsRoutes, {
         db: deps.db,
         notifications: deps.notifications,

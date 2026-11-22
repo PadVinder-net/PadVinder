@@ -10,37 +10,28 @@ import {
   createMembershipRequest,
   decideMembershipRequest,
   getMembershipRequestForReview,
+  listRequestNotificationRecipients,
   withdrawMembershipRequest,
   type Db,
   type MembershipRequestRecord,
   type MembershipRequestReviewRecord,
 } from "@padvinder/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
+import type { FastifyBaseLogger } from "fastify";
 import { z } from "zod";
 import { apiError, errorResponses } from "../errors";
+import {
+  buildApprovedMail,
+  buildNewRequestMail,
+  buildRejectedMail,
+} from "../mail/membership-mails";
+import type { Mailer } from "../mail/mailer";
+import { describeMailError, sendInBackground } from "../mail/send-in-background";
 import { authorize } from "../permissions/rules";
 import {
   toMembershipRequest,
   toMembershipRequestForReview,
 } from "../serializers/membership-requests";
-
-/**
- * Called once for each request that was really created, after the commit; never for a resend.
- * The mail to the group's coordinators goes out from here (Task 5). It must not be awaited by
- * the request, and a failure is only logged.
- */
-function afterMembershipRequestCreated(_request: MembershipRequestRecord): void {
-  // Nothing yet.
-}
-
-/**
- * Called once for each request that was really approved or rejected, after the commit; never for
- * the same decision again. The mail to the applicant goes out from here (Task 5). It must not be
- * awaited by the request, and a failure is only logged.
- */
-function afterMembershipRequestDecided(_request: MembershipRequestReviewRecord): void {
-  // Nothing yet.
-}
 
 /** The reviewer's target: the request's working group and its organization. */
 const reviewTarget = (record: MembershipRequestReviewRecord) => ({
@@ -50,7 +41,64 @@ const reviewTarget = (record: MembershipRequestReviewRecord) => ({
 
 const requestParamsSchema = z.object({ id: z.uuid() });
 
-export const membershipRequestRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
+export const membershipRequestRoutes: FastifyPluginAsyncZod<{
+  db: Db;
+  mailer: Mailer;
+  /** The origin of the links in mails (`PUBLIC_ORIGIN`). */
+  publicOrigin: string;
+}> = async (app, { db, mailer, publicOrigin }) => {
+  const log: FastifyBaseLogger = app.log;
+
+  /**
+   * Called once for each request that was really created, after the commit; never for a resend.
+   * Mails every recipient. Not awaited by the request; a failure is only logged, with the kind.
+   */
+  function afterMembershipRequestCreated(created: MembershipRequestRecord): void {
+    // Part 2 (the portal) changes this to the portal's page for the request.
+    const requestUrl = `${publicOrigin}/app/more/membership-requests/${created.id}`;
+    // The applicant's name is not in the record the user may see: read it with the recipients.
+    Promise.all([
+      getMembershipRequestForReview(db, created.id),
+      listRequestNotificationRecipients(db, created.workingGroup.id),
+    ])
+      .then(([request, recipients]) => {
+        if (!request) return; // The applicant deleted their account in the meantime.
+        sendInBackground(
+          mailer,
+          log,
+          recipients.map((to) =>
+            buildNewRequestMail({
+              to,
+              applicantName: request.applicant.name,
+              workingGroupName: request.workingGroup.name,
+              requestUrl,
+            }),
+          ),
+        );
+      })
+      .catch((error: unknown) => {
+        log.error(
+          { mailKind: "new-request", mailError: describeMailError(error) },
+          "Finding the recipients of a mail failed",
+        );
+      });
+  }
+
+  /**
+   * Called once for each request that was really approved or rejected, after the commit; never
+   * for the same decision again. Mails the applicant. Not awaited by the request.
+   */
+  function afterMembershipRequestDecided(request: MembershipRequestReviewRecord): void {
+    const input = {
+      to: request.applicant.email,
+      workingGroupName: request.workingGroup.name,
+      appUrl: `${publicOrigin}/app/`,
+    };
+    sendInBackground(mailer, log, [
+      request.status === "approved" ? buildApprovedMail(input) : buildRejectedMail(input),
+    ]);
+  }
+
   // Every logged-in user may ask to join a group and withdraw their own request, so these two
   // have no `authorize` call: a request is only ever found for its own user.
   app.post(

@@ -1,8 +1,13 @@
 import type { LiveEvent } from "@padvinder/contracts";
 import { eq, sql } from "drizzle-orm";
 import pg from "pg";
-import { afterAll, beforeAll, expect, test } from "vitest";
-import { createOrganization, createWorkingGroup } from "./admin";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import {
+  createOrganization,
+  createWorkingGroup,
+  grantCoordinator,
+  grantOrganizationAdmin,
+} from "./admin";
 import { getMeRoles } from "./me";
 import {
   createMembershipRequest,
@@ -10,6 +15,7 @@ import {
   getCurrentMembershipRequest,
   getMembershipRequestForReview,
   listPendingMembershipRequests,
+  listRequestNotificationRecipients,
   MEMBERSHIP_REQUESTS_PER_DAY,
   withdrawMembershipRequest,
   type CreateMembershipRequestResult,
@@ -824,4 +830,94 @@ test("a withdrawal waits for a decision that holds the row, then sees it", async
   await held.commitWhenBlocked();
   expect(await answer).toEqual({ outcome: "already_decided" });
   expect((await rowsOf(applicant.id))[0]!.status).toBe("approved");
+});
+
+describe("listRequestNotificationRecipients", () => {
+  const fresh = async (name: string) =>
+    (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system)).id;
+  const person = async (email: string, deleted = false) => {
+    await db()
+      .insert(users)
+      .values({
+        name: "Persoon",
+        email,
+        emailVerified: true,
+        deletedAt: deleted ? new Date() : null,
+      });
+    return email;
+  };
+
+  test("returns the coordinators of the group, not those of another group", async () => {
+    const group = await fresh("Rec A");
+    const other = await fresh("Rec B");
+    await grantCoordinator(
+      db(),
+      { email: await person("rec-a1@example.test"), workingGroupId: group },
+      system,
+    );
+    await grantCoordinator(
+      db(),
+      { email: await person("rec-a2@example.test"), workingGroupId: group },
+      system,
+    );
+    await grantCoordinator(
+      db(),
+      { email: await person("rec-b1@example.test"), workingGroupId: other },
+      system,
+    );
+    expect((await listRequestNotificationRecipients(db(), group)).sort()).toEqual([
+      "rec-a1@example.test",
+      "rec-a2@example.test",
+    ]);
+  });
+
+  test("without a coordinator it returns the admins of the organization", async () => {
+    const group = await fresh("Rec C");
+    await grantOrganizationAdmin(
+      db(),
+      { email: await person("rec-admin@example.test"), organizationId },
+      system,
+    );
+    const recipients = await listRequestNotificationRecipients(db(), group);
+    expect(recipients).toContain("rec-admin@example.test");
+  });
+
+  test("with a coordinator it does not return the admins", async () => {
+    const group = await fresh("Rec D");
+    await grantCoordinator(
+      db(),
+      { email: await person("rec-d@example.test"), workingGroupId: group },
+      system,
+    );
+    expect(await listRequestNotificationRecipients(db(), group)).toEqual(["rec-d@example.test"]);
+  });
+
+  test("never returns a deleted account; a group with only deleted coordinators falls back to the admins", async () => {
+    const group = await fresh("Rec E");
+    await grantCoordinator(
+      db(),
+      { email: await person("rec-e-gone@example.test", true), workingGroupId: group },
+      system,
+    );
+    const recipients = await listRequestNotificationRecipients(db(), group);
+    expect(recipients).not.toContain("rec-e-gone@example.test");
+    expect(recipients).toContain("rec-admin@example.test");
+
+    const group2 = await fresh("Rec F");
+    await grantCoordinator(
+      db(),
+      { email: await person("rec-f@example.test"), workingGroupId: group2 },
+      system,
+    );
+    await grantCoordinator(
+      db(),
+      { email: await person("rec-f-gone@example.test", true), workingGroupId: group2 },
+      system,
+    );
+    expect(await listRequestNotificationRecipients(db(), group2)).toEqual(["rec-f@example.test"]);
+  });
+
+  test("an unknown group has no recipients", async () => {
+    expect(await listRequestNotificationRecipients(db(), uuidv7())).toEqual([]);
+  });
 });

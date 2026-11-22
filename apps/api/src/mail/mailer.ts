@@ -1,7 +1,14 @@
 import nodemailer from "nodemailer";
 import type { ApiEnv } from "../env";
 
-export type Mail = { to: string; subject: string; text: string; html: string };
+export type Mail = {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  /** What the mail is about ("approved"), for the log of a failure; never an address or a name. */
+  kind?: string;
+};
 
 export interface Mailer {
   send(mail: Mail): Promise<void>;
