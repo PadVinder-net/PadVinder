@@ -4,6 +4,17 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type ApiErrorInput = {
+    statusCode: number;
+    error: string;
+    message: string;
+    code: string;
+    issues?: Array<{
+        path: string;
+        message: string;
+    }>;
+};
+
 export type HealthResponseInput = {
     status: 'ok' | 'degraded';
     commit: string;
@@ -25,6 +36,17 @@ export type HealthResponseInput = {
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
+};
+
+export type ApiError = {
+    statusCode: number;
+    error: string;
+    message: string;
+    code: string;
+    issues?: Array<{
+        path: string;
+        message: string;
+    }>;
 };
 
 export type HealthResponse = {

@@ -6,6 +6,49 @@
   },
   "components": {
     "schemas": {
+      "ApiErrorInput": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ]
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "code"
+        ]
+      },
       "HealthResponseInput": {
         "type": "object",
         "properties": {
@@ -102,6 +145,51 @@
           "minimumAppVersion",
           "commit"
         ]
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "code"
+        ],
+        "additionalProperties": false
       },
       "HealthResponse": {
         "type": "object",

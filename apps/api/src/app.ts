@@ -8,6 +8,7 @@ import {
   validatorCompiler,
 } from "fastify-type-provider-zod";
 import type { ApiEnv } from "./env";
+import { addErrorHandling } from "./errors";
 import { addOriginCheck } from "./plugins/origin-check";
 import { registerStaticApps } from "./plugins/static-apps";
 import type { NotificationHub } from "./realtime/notification-hub";
@@ -44,6 +45,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     transformObject: jsonSchemaTransformObject,
   });
 
+  addErrorHandling(app);
   addOriginCheck(app, env.ALLOWED_ORIGINS);
 
   await app.register(

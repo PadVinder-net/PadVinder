@@ -1,4 +1,6 @@
+import { apiErrorCodes } from "@padvinder/contracts";
 import type { FastifyInstance } from "fastify";
+import { apiErrorBody } from "../errors";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -15,10 +17,9 @@ export function addOriginCheck(app: FastifyInstance, allowedOrigins: readonly st
     if (SAFE_METHODS.has(request.method)) return;
     const origin = request.headers.origin;
     if (origin !== undefined && !allowed.has(origin)) {
-      // The same shape as Fastify's own errors.
       return reply
         .code(403)
-        .send({ statusCode: 403, error: "Forbidden", message: "Origin not allowed" });
+        .send(apiErrorBody(403, apiErrorCodes.originNotAllowed, "Origin not allowed"));
     }
   });
 }

@@ -22,13 +22,14 @@ afterAll(async () => {
 const post = (headers: Record<string, string>) =>
   app.inject({ method: "POST", url: "/api/test-echo", headers });
 
-test("403 for a foreign Origin, with the shape of Fastify's errors", async () => {
+test("403 for a foreign Origin, with code origin_not_allowed", async () => {
   const res = await post({ origin: "https://evil.example" });
   expect(res.statusCode).toBe(403);
   expect(res.json()).toEqual({
     statusCode: 403,
     error: "Forbidden",
     message: "Origin not allowed",
+    code: "origin_not_allowed",
   });
 });
 
