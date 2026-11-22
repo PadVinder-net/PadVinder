@@ -367,7 +367,8 @@
             "maxLength": 100
           },
           "phone": {
-            "nullable": true
+            "nullable": true,
+            "type": "string"
           }
         },
         "additionalProperties": false

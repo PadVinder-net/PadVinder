@@ -13,6 +13,7 @@ let t: TestDatabase | undefined;
 let hub: NotificationHub | undefined;
 let app: FastifyInstance | undefined;
 let baseUrl = "";
+let mailer: ReturnType<typeof createMemoryMailer>;
 let cookie: Record<string, string> = {};
 
 beforeAll(async () => {
@@ -23,7 +24,7 @@ beforeAll(async () => {
     channels: [liveEventsChannel],
     logger,
   });
-  const mailer = createMemoryMailer();
+  mailer = createMemoryMailer();
   app = await buildApp({ env: testEnv, db: t.db, notifications: hub, mailer });
   const ctx: TestApp = { app, mailer, t, close: async () => {} };
   cookie = (await loginAs(ctx, "events@example.test")).headers;
@@ -41,6 +42,20 @@ test("401 without a login, before the stream opens", async () => {
   expect(stream.headers.get("content-type")).not.toContain("text/event-stream");
   expect(JSON.parse(stream.received())).toMatchObject({ statusCode: 401, code: "not_logged_in" });
   await expect.poll(() => hub!.listenerCount(liveEventsChannel)).toBe(0);
+});
+
+test("an old session is renewed and the stream response sets a fresh cookie", async () => {
+  const login = await loginAs({ app: app!, mailer, t: t! } as TestApp, "renew@example.test");
+  const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  await t!.pool.query("update sessions set updated_at = $1, expires_at = $2 where user_id = $3", [
+    old,
+    new Date(old.getTime() + 180 * 24 * 60 * 60 * 1000),
+    login.userId,
+  ]);
+  const stream = await openEvents(baseUrl, login.headers);
+  expect(stream.status).toBe(200);
+  expect(stream.headers.get("set-cookie")).toContain("padvinder.session_token=");
+  stream.close();
 });
 
 test("401 with a cookie that is not a session", async () => {

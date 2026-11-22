@@ -92,7 +92,7 @@ export type MeResponse = {
 
 export type UpdateMeRequest = {
     name?: string;
-    phone?: unknown;
+    phone?: string | null;
 };
 
 export type VersionResponse = {

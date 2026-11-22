@@ -22,6 +22,8 @@ export const updateMeRequestSchema = z
       .trim()
       .max(30)
       .transform((phone) => (phone === "" ? null : phone))
+      // Gives the output side of the OpenAPI component a type; a transform alone has none.
+      .pipe(z.string().nullable())
       .nullable()
       .optional(),
   })

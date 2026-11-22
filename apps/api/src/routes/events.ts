@@ -26,9 +26,12 @@ export const eventsRoutes: FastifyPluginAsyncZod<{ notifications: NotificationHu
     "/events",
     { preHandler: app.requireActor, schema: { hide: true } },
     async (request, reply) => {
+      // A renewed session's cookie, set by `requireActor`; hijacking skips Fastify's own headers.
+      const sessionCookie = reply.getHeader("set-cookie");
       reply.hijack();
       const raw = reply.raw;
       raw.writeHead(200, {
+        ...(sessionCookie !== undefined && { "Set-Cookie": sessionCookie as string | string[] }),
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",

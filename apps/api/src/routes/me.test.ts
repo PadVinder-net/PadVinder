@@ -85,3 +85,26 @@ test("a session does not set a cookie on GET", async () => {
   const res = await ctx.app.inject({ url: "/api/me", headers: user.headers });
   expect(res.headers["set-cookie"]).toBeUndefined();
 });
+
+/** Moves the user's session into Better Auth's renewal window (older than `updateAge`). */
+async function ageSession(userId: string) {
+  const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(old.getTime() + 180 * 24 * 60 * 60 * 1000);
+  await ctx.t.pool.query(
+    "update sessions set updated_at = $1, expires_at = $2 where user_id = $3",
+    [old, expiresAt, userId],
+  );
+  return expiresAt;
+}
+
+test("an old session is renewed and GET /api/me sets a fresh cookie", async () => {
+  const user = await loginAs(ctx, "renew@example.test");
+  const oldExpiry = await ageSession(user.userId);
+  const res = await ctx.app.inject({ url: "/api/me", headers: user.headers });
+  expect(res.statusCode).toBe(200);
+  expect(String(res.headers["set-cookie"])).toContain("padvinder.session_token=");
+  const { rows } = await ctx.t.pool.query("select expires_at from sessions where user_id = $1", [
+    user.userId,
+  ]);
+  expect(rows[0].expires_at.getTime()).toBeGreaterThan(oldExpiry.getTime());
+});
