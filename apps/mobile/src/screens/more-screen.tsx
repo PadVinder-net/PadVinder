@@ -5,15 +5,23 @@ import {
   useHealthLiveUpdates,
 } from "@padvinder/api-client";
 import { Button, HealthStatus } from "@padvinder/ui";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export function MoreScreen() {
   const { data, isError } = useQuery(healthQueryOptions());
   useHealthLiveUpdates();
   const queryClient = useQueryClient();
+  const [logOutFailed, setLogOutFailed] = useState(false);
 
   async function handleLogOut() {
-    await logOut();
+    setLogOutFailed(false);
+    // If signing out fails the cookie stays valid: keep the user logged in and say so.
+    const result = await logOut();
+    if (!result.ok) {
+      setLogOutFailed(true);
+      return;
+    }
     // "Not logged in" is the answer for me; the gate watches that query, so it is kept (cleared
     // observers would never hear of a new one). Nothing else of the previous user stays in memory.
     const meKey = getMeQueryKey();
@@ -28,6 +36,11 @@ export function MoreScreen() {
     <section className="p-4">
       <h1 className="mb-4 text-2xl font-bold">Meer</h1>
       <HealthStatus health={data} loadFailed={isError} />
+      {logOutFailed ? (
+        <p role="alert" className="mt-6 text-base text-destructive">
+          Uitloggen lukt nu niet. Controleer je verbinding en probeer het opnieuw.
+        </p>
+      ) : null}
       <Button
         size="lg"
         variant="outline"

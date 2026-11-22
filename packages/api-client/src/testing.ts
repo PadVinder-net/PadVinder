@@ -27,13 +27,14 @@ export function installFetchProxy() {
   });
 }
 
-/** Answers `fetch` by URL path. A `Response` is returned as is; anything else becomes a 200 JSON body. */
+/** Answers `fetch` by URL path, or by "METHOD /path". A `Response` is returned as is; anything else becomes a 200 JSON body. */
 export function mockFetch(routes: Record<string, unknown>) {
   const calls: string[] = [];
   handler = async (request) => {
     const path = new URL(request.url).pathname;
     calls.push(path);
-    const answer = routes[path];
+    // A key like "PATCH /api/me" answers only that method and wins over the plain path.
+    const answer = routes[`${request.method} ${path}`] ?? routes[path];
     if (answer === undefined) throw new TypeError(`No mock for ${request.url}`);
     return answer instanceof Response ? answer.clone() : Response.json(answer);
   };

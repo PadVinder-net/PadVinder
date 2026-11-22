@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { getMeQueryKey } from "@padvinder/api-client";
 import { createTestQueryClient, mockFetch } from "@padvinder/api-client/testing";
 import { AuthGate } from "../auth/auth-gate";
 import { MoreScreen } from "./more-screen";
@@ -59,4 +60,28 @@ test("Log uit logs out, clears the cache and shows the login screen", async () =
   await userEvent.click(button);
   expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
   expect(client.getQueryCache().findAll({ queryKey: [{ _id: "getHealth" }] })).toHaveLength(0);
+});
+
+test("Log uit that fails keeps the user logged in and says so", async () => {
+  mockFetch({
+    "/api/health": healthyFixture,
+    "/api/me": meFixture,
+    "/api/auth/sign-out": new Response("boom", { status: 500 }),
+  });
+  const client = createTestQueryClient();
+  render(
+    <QueryClientProvider client={client}>
+      <AuthGate>
+        <MoreScreen />
+      </AuthGate>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "Log uit" }));
+  expect(
+    await screen.findByText(
+      "Uitloggen lukt nu niet. Controleer je verbinding en probeer het opnieuw.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByRole("heading", { level: 1, name: "Meer" })).toBeVisible();
+  expect(client.getQueryData(getMeQueryKey())).toEqual(meFixture);
 });

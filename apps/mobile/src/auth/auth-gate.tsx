@@ -1,6 +1,7 @@
 import {
   gateState,
   logInWithCode,
+  meLoadFailed,
   loginErrorMessage,
   requestLoginCode,
   useMe,
@@ -31,7 +32,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  if (me.isError) {
+  if (meLoadFailed(me)) {
     return (
       <main className={fullScreen}>
         <p className="text-lg">{connectionMessage}</p>
@@ -42,7 +43,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  switch (gateState(me.data)) {
+  switch (gateState(me.data ?? null)) {
     case "login":
       return (
         <LoginFlow

@@ -8,3 +8,12 @@ export function gateState(me: GetMeResponse | null): GateState {
   if (me.user.name === "") return "name";
   return "app";
 }
+
+/**
+ * True when the me query has failed and there is nothing to show instead. A failed background
+ * refetch with a known state (a user, or `null`) keeps that state: a brief loss of signal must not
+ * replace the app.
+ */
+export function meLoadFailed(me: { isError: boolean; data: unknown }): boolean {
+  return me.isError && me.data === undefined;
+}

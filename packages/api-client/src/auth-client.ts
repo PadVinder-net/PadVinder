@@ -90,11 +90,10 @@ export function logInWithCode(email: string, code: string): Promise<LoginResult>
   return attempt(() => getAuthClient().signIn.emailOtp({ email, otp: code }), "too_many_attempts");
 }
 
-/** Ends the session. Never throws; a failure leaves the cookie, and the next `/api/me` tells. */
-export async function logOut(): Promise<void> {
-  try {
-    await getAuthClient().signOut();
-  } catch {
-    // Nothing to do: the caller refetches `/api/me`.
-  }
+/**
+ * Ends the session. Never throws. On `{ ok: false }` the session cookie is probably still valid,
+ * so the caller must not act as if the user is logged out.
+ */
+export function logOut(): Promise<LoginResult> {
+  return attempt(() => getAuthClient().signOut(), "failed");
 }

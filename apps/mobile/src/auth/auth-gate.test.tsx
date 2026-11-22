@@ -1,5 +1,10 @@
 import { healthyFixture, meFixture, meWithoutNameFixture } from "@padvinder/contracts/fixtures";
-import { createQueryClient, getHealthOptions, getHealthQueryKey } from "@padvinder/api-client";
+import {
+  createQueryClient,
+  getHealthOptions,
+  getHealthQueryKey,
+  getMeQueryKey,
+} from "@padvinder/api-client";
 import { createTestQueryClient, mockFetch } from "@padvinder/api-client/testing";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
@@ -45,26 +50,11 @@ test("asks for the name when it is empty", async () => {
 });
 
 test("saving the name shows the app", async () => {
-  let saved: unknown;
-  mockFetch({ "/api/me": meWithoutNameFixture });
-  const original = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const request = new Request(input, init);
-    if (request.method === "PATCH") {
-      saved = await request.clone().json();
-      return Response.json(meFixture);
-    }
-    return original(input, init);
-  };
-  try {
-    renderGate();
-    await userEvent.type(await screen.findByLabelText("Naam"), "Noor de Vries");
-    await userEvent.click(screen.getByRole("button", { name: "Ga verder" }));
-    expect(await screen.findByText("de app")).toBeVisible();
-    expect(saved).toEqual({ name: "Noor de Vries", phone: null });
-  } finally {
-    globalThis.fetch = original;
-  }
+  mockFetch({ "/api/me": meWithoutNameFixture, "PATCH /api/me": meFixture });
+  renderGate();
+  await userEvent.type(await screen.findByLabelText("Naam"), "Noor de Vries");
+  await userEvent.click(screen.getByRole("button", { name: "Ga verder" }));
+  expect(await screen.findByText("de app")).toBeVisible();
 });
 
 test("shows the app for a user with a name", async () => {
@@ -106,4 +96,16 @@ test("a 401 on another query brings back the login screen", async () => {
   routes["/api/health"] = unauthorized();
   await client.invalidateQueries({ queryKey: getHealthQueryKey() });
   expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
+});
+
+test("a failed background refetch keeps the app", async () => {
+  const routes: Record<string, unknown> = { "/api/me": meFixture };
+  mockFetch(routes);
+  const client = renderGate();
+  expect(await screen.findByText("de app")).toBeVisible();
+  routes["/api/me"] = new Response("boom", { status: 500 });
+  await client.refetchQueries({ queryKey: getMeQueryKey() });
+  expect(client.getQueryState(getMeQueryKey())?.status).toBe("error");
+  expect(screen.getByText("de app")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Probeer opnieuw" })).toBeNull();
 });

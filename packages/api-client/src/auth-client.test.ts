@@ -62,7 +62,12 @@ test("a network failure maps to failed and does not throw", async () => {
   });
   expect(await requestLoginCode("a@example.test")).toEqual({ ok: false, error: "failed" });
   expect(await logInWithCode("a@example.test", "000000")).toEqual({ ok: false, error: "failed" });
-  await expect(logOut()).resolves.toBeUndefined();
+  expect(await logOut()).toEqual({ ok: false, error: "failed" });
+});
+
+test("a failing sign-out is reported", async () => {
+  stubFetch(() => Response.json({ code: "X" }, { status: 500 }));
+  expect(await logOut()).toEqual({ ok: false, error: "failed" });
 });
 
 test("an unknown error maps to failed", async () => {
@@ -74,7 +79,7 @@ test("success is ok, and sends what the API expects", async () => {
   const requests = stubFetch(() => Response.json({ success: true }));
   expect(await requestLoginCode("a@example.test")).toEqual({ ok: true });
   expect(await logInWithCode("a@example.test", "123456")).toEqual({ ok: true });
-  await logOut();
+  expect(await logOut()).toEqual({ ok: true });
   expect(requests.map((r) => [r.method, new URL(r.url).pathname])).toEqual([
     ["POST", "/api/auth/email-otp/send-verification-otp"],
     ["POST", "/api/auth/sign-in/email-otp"],
