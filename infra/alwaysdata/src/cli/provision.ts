@@ -319,9 +319,24 @@ export async function runProvision(input: {
       (change) => change.action === "update" && change.fields?.includes("password"),
     );
     if (envFileChanged || passwordRotated) {
-      print(
-        `The services must be restarted to use the new ${passwordRotated ? "database password" : "env file"}: pnpm infra:services --environment ${env} --restart`,
-      );
+      // On the first run there is no release yet, and a restart would only make Alwaysdata
+      // fail on the missing working directory. If the check fails, suggest the restart.
+      let released = true;
+      try {
+        const { stdout } = await remote.exec(`if [ -e ${directory}/current ]; then echo yes; fi`);
+        released = stdout.trim() === "yes";
+      } catch {
+        released = true;
+      }
+      if (released) {
+        print(
+          `The services must be restarted to use the new ${passwordRotated ? "database password" : "env file"}: pnpm infra:services --environment ${env} --restart`,
+        );
+      } else {
+        print(
+          "No release is live yet, so there is nothing to restart: the first deploy starts the services (pnpm infra:deploy, or the Deploy workflow).",
+        );
+      }
     }
     return 0;
   } catch (error) {

@@ -56,6 +56,10 @@ const fakeRemote: Remote = {
         content === undefined ? "" : `${createHash("sha256").update(content).digest("hex")}  -\n`;
       return { stdout, stderr: "" };
     }
+    const currentPath = /\[ -e (\S+) \]; then echo yes; fi$/.exec(callArgs[0])?.[1];
+    if (currentPath !== undefined) {
+      return { stdout: remoteFiles.has(currentPath) ? "yes\n" : "", stderr: "" };
+    }
     const grepFile = /'\^DATABASE_URL=' (\S+) \|\| true; fi$/.exec(callArgs[0])?.[1];
     if (grepFile !== undefined) {
       const line = /^DATABASE_URL=.*$/m.exec(remoteFiles.get(grepFile) ?? "")?.[0];
@@ -71,6 +75,7 @@ const fakeRemote: Remote = {
 };
 /** The account's main SSH user, which Alwaysdata creates with the account. */
 const mainSshUserId = 500;
+const noReleaseNotice = /No release is live yet, so there is nothing to restart.*first deploy/;
 const restartNotice =
   /services must be restarted.*pnpm infra:services --environment staging --restart/;
 
@@ -149,12 +154,15 @@ test("with --apply it creates the resources, then writes the env file and the re
       ],
     },
     { method: "exec", args: ["mkdir -p -- padvinder/staging/releases"] },
+    { method: "exec", args: ["if [ -e padvinder/staging/current ]; then echo yes; fi"] },
   ]);
-  expect(output.join("\n")).toMatch(restartNotice);
+  expect(output.join("\n")).toMatch(noReleaseNotice);
+  expect(output.join("\n")).not.toMatch(/must be restarted/);
   expectNoSecrets(output.join("\n"));
 });
 
 test("a restart is asked for only when the env file changed or the password was rotated", async () => {
+  remoteFiles.set("padvinder/staging/current", "release");
   await run(args({ apply: true }));
   output = [];
   expect(await run(args({ apply: true }))).toBe(0);
@@ -175,6 +183,32 @@ test("a restart is asked for only when the env file changed or the password was 
   expect(await run(args({ apply: true }))).toBe(0);
   expect(output.join("\n")).toMatch(restartNotice);
   expect(remoteFiles.get("padvinder/staging/.env")).toBe(envFile);
+});
+
+test("with a live release, a changed env file asks for a restart; if the check fails, it does too", async () => {
+  remoteFiles.set("padvinder/staging/current", "release");
+  expect(await run(args({ apply: true }))).toBe(0);
+  expect(output.join("\n")).toMatch(restartNotice);
+
+  remoteFiles.set("padvinder/staging/.env", "LOG_LEVEL=debug\n");
+  const failingCheck: Remote = {
+    ...fakeRemote,
+    exec: (...callArgs) =>
+      callArgs[0].includes("-e padvinder")
+        ? Promise.reject(new Error("connection lost"))
+        : fakeRemote.exec(...callArgs),
+  };
+  remoteFiles.delete("padvinder/staging/current");
+  output = [];
+  const code = await runProvision({
+    args: args({ apply: true, rotatePassword: true }),
+    config,
+    api,
+    remote: () => failingCheck,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(0);
+  expect(output.join("\n")).toMatch(restartNotice);
 });
 
 test("--apply refuses a password that differs from the env file's, unless --rotate-password", async () => {
@@ -202,6 +236,7 @@ test("--apply refuses a password that differs from the env file's, unless --rota
   expect(remoteFiles.get("padvinder/staging/.env")).toBe(oldEnvFile);
 
   output = [];
+  remoteFiles.set("padvinder/staging/current", "release");
   expect(await run(args({ apply: true, rotatePassword: true }))).toBe(0);
   expect(writes().some((r) => r.method === "PATCH")).toBe(true);
   expect(remoteFiles.get("padvinder/staging/.env")).toBe(
@@ -286,14 +321,14 @@ test("the first run, without an env file, reads it before the apply and writes i
   });
   expect(code).toBe(0);
   // Both reads before the first create, the releases directory after the last.
-  expect(createdAtExec).toEqual([0, 0, 5]);
+  expect(createdAtExec).toEqual([0, 0, 5, 5]);
   expect(calls.slice(0, 2)).toEqual([
     { method: "exec", args: [databaseUrlCommand] },
     { method: "exec", args: [checksumCommand] },
   ]);
   expect(calls[2]?.method).toBe("writeFile");
   expect(output.join("\n")).toMatch(/Applied the plan\.\nWrote padvinder\/staging\/\.env/);
-  expect(output.join("\n")).toMatch(restartNotice);
+  expect(output.join("\n")).toMatch(noReleaseNotice);
 });
 
 for (const [situation, sshUsers] of [
@@ -360,7 +395,8 @@ test("a second --apply writes nothing to the API and rewrites the same env file"
   calls = [];
   expect(await run(args({ apply: true }))).toBe(0);
   expect(writes().length).toBe(count);
-  expect(calls).toEqual(first);
+  // The first run also checked for a release, to decide what to tell about restarting.
+  expect(calls).toEqual(first.slice(0, -1));
 });
 
 test("a conflict exits 1 and changes nothing", async () => {
