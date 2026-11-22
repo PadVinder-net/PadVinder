@@ -116,6 +116,15 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 30
+      # Catches the login mails; the tests read the codes through its API. Same image as
+      # the `mail` service in docker-compose.yml.
+      mail:
+        image: axllent/mailpit:v1.34.0
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
     env:
       DATABASE_URL: postgres://padvinder:padvinder@postgres:5432/padvinder
       TEST_DATABASE_URL: postgres://padvinder:padvinder@postgres:5432/padvinder_test
@@ -124,6 +133,14 @@ jobs:
       PORTAL_PORT: 4102
       STORYBOOK_PORT: 4103
       ALLOWED_ORIGINS: http://localhost:4101,http://localhost:4102
+      # A made-up value for this job only; it signs sessions of a throwaway database.
+      AUTH_SECRET: ci-e2e-secret-ci-e2e-secret-ci-e2e-0000
+      PUBLIC_ORIGIN: http://localhost:4101
+      SMTP_HOST: mail
+      SMTP_PORT: 1025
+      MAIL_FROM: PadVinder <noreply@padvinder.test>
+      LOGIN_RATE_LIMITS: "off"
+      MAILPIT_URL: http://mail:8025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

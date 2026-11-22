@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
+import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
@@ -17,7 +18,12 @@ const portalDir = join(root, "portal");
 async function makeApp(env: ApiEnv) {
   // These routes never touch the database, so a never-connected pool is enough.
   const { db, pool } = createDb("postgres://padvinder:padvinder@127.0.0.1:1/none");
-  const app = await buildApp({ env, db, notifications: createNoopNotificationHub() });
+  const app = await buildApp({
+    env,
+    db,
+    notifications: createNoopNotificationHub(),
+    mailer: createMemoryMailer(),
+  });
   return { app, close: async () => (await app.close(), await pool.end()) };
 }
 

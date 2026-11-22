@@ -3,19 +3,33 @@ import {
   databaseName,
   databasePort,
   environments,
+  mailFrom,
+  smtpHost,
+  smtpPort,
   type EnvironmentName,
 } from "./environments.ts";
 
+/** The secrets login needs on the server: Better Auth's secret and the SMTP mailbox. */
+export type LoginSecrets = {
+  authSecret: string;
+  smtpUser: string;
+  smtpPassword: string;
+};
+
 /**
  * The server's env file `padvinder/<env>/.env`, read by the API and the worker after the
- * release's own `release.env`. Holds the database password: write it with mode 600.
+ * release's own `release.env`. Holds the database password and the login secrets: write it
+ * with mode 600. The secrets are written unquoted, so loadInfraConfig() only lets through
+ * values that Node's --env-file reads back unchanged. `LOGIN_RATE_LIMITS` stays unset: the
+ * API's default (on) is the only setting allowed on a public origin.
  */
 export function renderEnvFile(input: {
   account: string;
   env: EnvironmentName;
   databasePassword: string;
+  login: LoginSecrets;
 }): string {
-  const { account, env, databasePassword } = input;
+  const { account, env, databasePassword, login } = input;
   const environment = environments[env];
   const name = databaseName(account, env);
   const databaseUrl = `postgres://${name}:${encodeURIComponent(databasePassword)}@${databaseHost(account)}:${databasePort}/${name}`;
@@ -27,6 +41,13 @@ export function renderEnvFile(input: {
     `API_PORT=${environment.apiPort}`,
     `ALLOWED_ORIGINS=${environment.allowedOrigins.join(",")}`,
     "LOG_LEVEL=info",
+    `PUBLIC_ORIGIN=${environment.publicOrigin}`,
+    `AUTH_SECRET=${login.authSecret}`,
+    `SMTP_HOST=${smtpHost(account)}`,
+    `SMTP_PORT=${smtpPort}`,
+    `SMTP_USER=${login.smtpUser}`,
+    `SMTP_PASSWORD=${login.smtpPassword}`,
+    `MAIL_FROM=${mailFrom}`,
   ];
   return `${lines.join("\n")}\n`;
 }

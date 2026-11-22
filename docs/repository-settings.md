@@ -115,7 +115,17 @@ Settings, Environments. The workflows in `.github/workflows/` (`deploy.yml`, `pr
 
 - [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, with the one branch rule `main`. No required reviewers.
 - [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off, or one maintainer blocks himself. Deployment branches and tags: the one branch rule `main`.
-- [ ] In both environments, the five secrets: `ALWAYSDATA_API_KEY`, `DEPLOY_SSH_KEY`, `DATABASE_PASSWORD` (a different one per environment), `ALWAYSDATA_ACCOUNT` and `SSH_KNOWN_HOSTS`. There are no variables: GitHub prints the `env:` values of a non-secret in the step log, and the logs are public (the account name and the known-hosts line, which holds the account name, would show). One deploy key may serve both environments: both log in as the account's main SSH user.
+- [ ] In both environments, the secrets:
+  - `ALWAYSDATA_API_KEY`
+  - `DEPLOY_SSH_KEY`
+  - `DATABASE_PASSWORD` (a different one per environment)
+  - `ALWAYSDATA_ACCOUNT`
+  - `SSH_KNOWN_HOSTS`
+  - `AUTH_SECRET` (a different one per environment)
+  - `SMTP_USER`
+  - `SMTP_PASSWORD`
+
+  There are no variables: GitHub prints the `env:` values of a non-secret in the step log, and the logs are public (the account name and the known-hosts line, which holds the account name, would show). One deploy key may serve both environments: both log in as the account's main SSH user.
 
 Through the API (the environment names are created on the first call; add the secrets with `gh secret set`, see the README):
 

@@ -30,5 +30,17 @@ services:
       timeout: 3s
       retries: 30
 
+  # Catches all outgoing mail in development. Inbox and API: http://localhost:54326
+  mail:
+    image: axllent/mailpit:v1.34.0
+    ports:
+      - "54325:1025"
+      - "54326:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   db-data:

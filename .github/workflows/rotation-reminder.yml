@@ -40,6 +40,7 @@ jobs:
           - [ ] `DEPLOY_SSH_KEY`: new key pair, in both environments, remove the old public key
           - [ ] `DATABASE_PASSWORD` of staging (Provision with `rotate-password`, then restart the services)
           - [ ] `DATABASE_PASSWORD` of production (the same)
+          - [ ] `SMTP_PASSWORD`: new mailbox password in the panel and in both environments, Provision both, restart both
           - [ ] A deploy or a Provision plan works with the new secrets
           - [ ] Check whether later slices added secrets that need a row in the schedule
 

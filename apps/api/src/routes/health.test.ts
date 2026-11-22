@@ -9,6 +9,7 @@ import {
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../app";
+import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
@@ -17,7 +18,12 @@ let app: FastifyInstance | undefined;
 
 beforeAll(async () => {
   t = await createTestDatabase();
-  app = await buildApp({ env: testEnv, db: t.db, notifications: createNoopNotificationHub() });
+  app = await buildApp({
+    env: testEnv,
+    db: t.db,
+    notifications: createNoopNotificationHub(),
+    mailer: createMemoryMailer(),
+  });
 });
 // Tests in this file share one clone and each needs an empty table.
 beforeEach(async () => {
@@ -57,7 +63,7 @@ test("200 ok with a fresh heartbeat", async () => {
   });
   expect(body.database.postgresVersion).toMatch(/^\d+\.\d+$/);
   expect(body.database.postgisVersion).toMatch(/^3\./);
-  expect(body.database.latestMigration?.name).toContain("worker_heartbeats");
+  expect(body.database.latestMigration?.name).toMatch(/^\d{14}_\w+$/);
 });
 
 test("503 with reachable:false when the database is down, within 5 s", async () => {
@@ -67,6 +73,7 @@ test("503 with reachable:false when the database is down, within 5 s", async () 
       env: testEnv,
       db: down.db,
       notifications: createNoopNotificationHub(),
+      mailer: createMemoryMailer(),
     });
     try {
       const started = Date.now();
@@ -93,6 +100,7 @@ test("503 with reachable:false when the database hangs, within 5 s", async () =>
       env: testEnv,
       db: hung.db,
       notifications: createNoopNotificationHub(),
+      mailer: createMemoryMailer(),
     });
     try {
       // Open a pooled connection while the proxy still forwards, then let the server go silent.

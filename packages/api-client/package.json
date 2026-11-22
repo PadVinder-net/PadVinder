@@ -13,6 +13,7 @@
   "dependencies": {
     "@padvinder/contracts": "workspace:*",
     "@tanstack/react-query": "^5.108.2",
+    "better-auth": "1.7.27",
     "react": "^19.3.1"
   },
   "devDependencies": {

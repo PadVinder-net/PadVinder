@@ -27,13 +27,14 @@ export function installFetchProxy() {
   });
 }
 
-/** Answers `fetch` by URL path. A `Response` is returned as is; anything else becomes a 200 JSON body. */
+/** Answers `fetch` by URL path, or by "METHOD /path". A `Response` is returned as is; anything else becomes a 200 JSON body. */
 export function mockFetch(routes: Record<string, unknown>) {
   const calls: string[] = [];
   handler = async (request) => {
     const path = new URL(request.url).pathname;
     calls.push(path);
-    const answer = routes[path];
+    // A key like "PATCH /api/me" answers only that method and wins over the plain path.
+    const answer = routes[`${request.method} ${path}`] ?? routes[path];
     if (answer === undefined) throw new TypeError(`No mock for ${request.url}`);
     return answer instanceof Response ? answer.clone() : Response.json(answer);
   };
@@ -48,4 +49,39 @@ export function mockPendingFetch() {
 /** A client that does not retry, so failures show up at once. */
 export function createTestQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+/**
+ * A stand-in for the browser's `EventSource`. Every instance is kept in `instances`; `emit` sends
+ * an event, `fail` an error.
+ */
+export class FakeEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  static instances: FakeEventSource[] = [];
+  listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readyState = FakeEventSource.CONNECTING;
+  closed = false;
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  close() {
+    this.closed = true;
+    this.readyState = FakeEventSource.CLOSED;
+  }
+  emit(type: string, data: string) {
+    for (const listener of this.listeners.get(type) ?? [])
+      listener(new MessageEvent(type, { data }));
+  }
+  /** A dropped connection the browser retries (CONNECTING), or an error answer it gives up on. */
+  fail(givenUp: boolean) {
+    this.readyState = givenUp ? FakeEventSource.CLOSED : FakeEventSource.CONNECTING;
+    this.onerror?.();
+  }
 }

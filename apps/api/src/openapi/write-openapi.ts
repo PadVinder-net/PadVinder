@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createDb } from "@padvinder/db";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
+import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 
 // Written explicitly, never read from the environment: the file must not depend on who runs this.
@@ -16,6 +17,12 @@ const env: ApiEnv = {
   GIT_COMMIT: "openapi",
   MIN_APP_VERSION: "2027.0.0",
   LOG_LEVEL: "error",
+  AUTH_SECRET: "test-secret-test-secret-test-secret-1234",
+  PUBLIC_ORIGIN: "http://localhost",
+  SMTP_HOST: "localhost",
+  SMTP_PORT: 54325,
+  MAIL_FROM: "PadVinder <noreply@padvinder.test>",
+  LOGIN_RATE_LIMITS: "off",
 };
 
 const outputPath = resolve(
@@ -25,7 +32,12 @@ const outputPath = resolve(
 
 // The pool never connects: building the app and describing its routes runs no query.
 const { db, pool } = createDb(env.DATABASE_URL);
-const app = await buildApp({ env, db, notifications: createNoopNotificationHub() });
+const app = await buildApp({
+  env,
+  db,
+  notifications: createNoopNotificationHub(),
+  mailer: createMemoryMailer(),
+});
 try {
   await app.ready();
   await mkdir(dirname(outputPath), { recursive: true });

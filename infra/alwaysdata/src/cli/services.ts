@@ -100,7 +100,7 @@ async function main(): Promise<number> {
   let config: InfraConfig;
   try {
     config = loadInfraConfig(process.env, args.environment, {
-      databasePassword: false,
+      envFileSecrets: false,
       ssh: false,
     });
   } catch (error) {

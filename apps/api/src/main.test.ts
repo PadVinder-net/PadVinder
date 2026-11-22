@@ -49,6 +49,11 @@ test("SIGHUP shuts down cleanly with exit 0", async () => {
       API_PORT: String(await freePort()),
       API_HOST: "127.0.0.1",
       ALLOWED_ORIGINS: "http://localhost:4100",
+      AUTH_SECRET: "test-secret-test-secret-test-secret-0123456789",
+      PUBLIC_ORIGIN: "http://localhost:4100",
+      SMTP_HOST: "127.0.0.1",
+      SMTP_PORT: "1",
+      MAIL_FROM: "PadVinder <noreply@padvinder.test>",
     },
   });
   let stdout = "";

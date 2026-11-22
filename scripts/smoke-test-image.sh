@@ -61,6 +61,9 @@ containers+=("$api")
 # The allowed origin must name the published port, so pick a free port up front.
 port="$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
 docker run -d --name "$api" "${common[@]}" -e "ALLOWED_ORIGINS=http://localhost:$port" \
+  -e "PUBLIC_ORIGIN=http://localhost:$port" \
+  -e "AUTH_SECRET=smoke-test-secret-smoke-test-secret-0000" \
+  -e "SMTP_HOST=localhost" -e "SMTP_PORT=54325" -e "MAIL_FROM=PadVinder <noreply@padvinder.test>" \
   -p "127.0.0.1:$port:8080" "$image" >/dev/null
 base="http://127.0.0.1:$port"
 

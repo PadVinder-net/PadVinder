@@ -5,7 +5,7 @@ import {
 } from "@padvinder/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { getHealthQueryKey } from "./generated/@tanstack/react-query.gen";
+import { getHealthQueryKey, getMeQueryKey } from "./generated/@tanstack/react-query.gen";
 import { subscribeToServerEvents } from "./server-events";
 
 /**
@@ -33,7 +33,8 @@ export function applyWorkerHeartbeat(
 
 /**
  * Keeps the cached health up to date from the event stream. Events sent while the connection
- * was down are lost, so every (re)open also refetches the health.
+ * was down are lost, so every (re)open also refetches the health. When the server refuses the
+ * stream, the session may have ended: asking `/api/me` again then leads to the login screen.
  */
 export function useHealthLiveUpdates(): void {
   const queryClient = useQueryClient();
@@ -42,6 +43,9 @@ export function useHealthLiveUpdates(): void {
       subscribeToServerEvents({
         onOpen: () => {
           void queryClient.invalidateQueries({ queryKey: getHealthQueryKey() });
+        },
+        onClosed: () => {
+          void queryClient.invalidateQueries({ queryKey: getMeQueryKey() });
         },
         events: {
           "worker-heartbeat": (event) => {
