@@ -69,7 +69,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   const auth = createAuth({ env, db: deps.db, mailer: deps.mailer, log: app.log });
   app.decorate("auth", auth);
-  addActorLoading(app);
+  addActorLoading(app, deps.db);
 
   await app.register(
     async (api) => {
