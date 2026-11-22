@@ -79,7 +79,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      # After the dependencies are installed, so no install script sees the key.
+      # After the dependencies are installed, so no install script can use the key.
       - uses: ./.github/actions/alwaysdata-credentials
         with:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -111,6 +111,10 @@ jobs:
           ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
           ENVIRONMENT: ${{ needs.target.outputs.environment }}
         run: pnpm infra:provision --environment "$ENVIRONMENT" --inspect
-      - name: Remove the deploy key
+      - name: Stop the SSH agent
         if: always()
-        run: rm -f "$RUNNER_TEMP/deploy_key"
+        run: |
+          if [[ -n "${SSH_AGENT_PID:-}" ]]; then
+            ssh-agent -k >/dev/null 2>&1 || echo "The SSH agent had already stopped."
+          fi
+          rm -f "$RUNNER_TEMP/ssh-agent.sock"

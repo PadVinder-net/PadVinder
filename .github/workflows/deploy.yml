@@ -45,7 +45,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.release.outputs.artifact-name }}
-      # After the dependencies are installed, so no install script sees the key.
+      # After the dependencies are installed, so no install script can use the key.
       - uses: ./.github/actions/alwaysdata-credentials
         with:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -58,9 +58,13 @@ jobs:
         run: >-
           pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz
           --commit "$COMMIT"
-      - name: Remove the deploy key
+      - name: Stop the SSH agent
         if: always()
-        run: rm -f "$RUNNER_TEMP/deploy_key"
+        run: |
+          if [[ -n "${SSH_AGENT_PID:-}" ]]; then
+            ssh-agent -k >/dev/null 2>&1 || echo "The SSH agent had already stopped."
+          fi
+          rm -f "$RUNNER_TEMP/ssh-agent.sock"
 
   production:
     needs: [release, staging]
@@ -104,7 +108,7 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.release.outputs.artifact-name }}
-      # After the dependencies are installed, so no install script sees the key.
+      # After the dependencies are installed, so no install script can use the key.
       - if: steps.head.outputs.current == 'true'
         uses: ./.github/actions/alwaysdata-credentials
         with:
@@ -119,6 +123,10 @@ jobs:
         run: >-
           pnpm infra:deploy --environment production --tarball padvinder-release.tar.gz
           --commit "$COMMIT"
-      - name: Remove the deploy key
+      - name: Stop the SSH agent
         if: always()
-        run: rm -f "$RUNNER_TEMP/deploy_key"
+        run: |
+          if [[ -n "${SSH_AGENT_PID:-}" ]]; then
+            ssh-agent -k >/dev/null 2>&1 || echo "The SSH agent had already stopped."
+          fi
+          rm -f "$RUNNER_TEMP/ssh-agent.sock"
