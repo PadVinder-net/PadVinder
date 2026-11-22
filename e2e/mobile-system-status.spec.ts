@@ -1,4 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { newAddress } from "./helpers/mailpit.ts";
+import { createSession } from "./helpers/session.ts";
+
+test.beforeEach(async ({ context }) => {
+  await createSession(context, newAddress("system"));
+});
 
 test("the Meer tab shows a working system", async ({ page }) => {
   await page.goto("/app/");
