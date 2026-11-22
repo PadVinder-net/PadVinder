@@ -35,13 +35,14 @@ test("a cookie that is not a signed session is 401", async () => {
   }
 });
 
-test("the actor carries memberships, admin rows and the platform flag", async () => {
+test("the actor carries the profile, memberships, admin rows and the platform flag", async () => {
   const ctx = await createTestApp();
   try {
     const noor = await loginAs(ctx, "noor@example.test");
     const actor = await loadActor(ctx.app, ctx.t.db, { headers: noor.headers } as FastifyRequest);
     expect(actor).toEqual({
       userId: noor.userId,
+      user: { id: noor.userId, name: "Test Persoon", email: "noor@example.test", phone: null },
       isPlatformAdmin: false,
       memberships: [],
       adminOfOrganizationIds: [],

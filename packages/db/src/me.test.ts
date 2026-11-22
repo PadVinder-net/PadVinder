@@ -6,7 +6,7 @@ import {
   grantCoordinator,
   grantOrganizationAdmin,
 } from "./admin";
-import { getMe } from "./me";
+import { getMeRoles } from "./me";
 import { users, workingGroupMemberships, workingGroups } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
@@ -27,14 +27,16 @@ async function insertUser(email: string): Promise<string> {
   return row!.id;
 }
 
-test("null for an unknown user", async () => {
-  expect(await getMe(t!.db, "0193a5e0-0000-7000-8000-000000000000")).toBeNull();
+test("empty lists for an unknown user", async () => {
+  expect(await getMeRoles(t!.db, "0193a5e0-0000-7000-8000-000000000000")).toEqual({
+    memberships: [],
+    organizationAdminOf: [],
+  });
 });
 
 test("a new user has no memberships and no admin rights", async () => {
   const id = await insertUser("empty-me@example.test");
-  expect(await getMe(t!.db, id)).toEqual({
-    user: { id, name: "Test", email: "empty-me@example.test", phone: null, isPlatformAdmin: false },
+  expect(await getMeRoles(t!.db, id)).toEqual({
     memberships: [],
     organizationAdminOf: [],
   });
@@ -74,7 +76,7 @@ test("sorts in Dutch order and leaves out inactive groups", async () => {
     system,
   );
 
-  const me = await getMe(t!.db, id);
+  const me = await getMeRoles(t!.db, id);
   expect(
     me!.memberships.map((m) => `${m.workingGroup.organization.name}/${m.workingGroup.name}`),
   ).toEqual(["Éend/Ëast", "Éend/Zuid", "Zeta/Een"]);

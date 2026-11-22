@@ -15,11 +15,31 @@ import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail } from "../mail/login-code-mail";
 import type { Mailer } from "../mail/mailer";
-import { checkLoginCodeRequest, IP_LIMITS, isValidLoginAddress } from "./login-rate-limit";
+import {
+  checkLoginCodeRequest,
+  IP_LIMITS,
+  isValidLoginAddress,
+  type LoginCodeLimit,
+} from "./login-rate-limit";
 
 export type AuthDeps = { env: ApiEnv; db: Db; mailer: Mailer; log: FastifyBaseLogger };
 
 const DAY_SECONDS = 24 * 60 * 60;
+
+/**
+ * The answer (429) when an address asked for too many login codes. The browser client tells the
+ * two apart by `code`; a 429 without one of these codes is Better Auth's limit per IP address.
+ */
+export const LOGIN_CODE_LIMIT_ERRORS: Record<LoginCodeLimit, { code: string; message: string }> = {
+  quarterHour: {
+    code: "TOO_MANY_LOGIN_CODES",
+    message: "Too many login codes requested for this address in 15 minutes",
+  },
+  day: {
+    code: "TOO_MANY_LOGIN_CODES_TODAY",
+    message: "Too many login codes requested for this address in 24 hours",
+  },
+};
 
 // Anything that looks like an email address, to keep addresses out of Better Auth's log lines.
 const EMAIL_LIKE = /[^\s@<>"'(),;:]+@[^\s@<>"'(),;:]+/g;
@@ -141,11 +161,10 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
           }
           // Per address, which Better Auth does not offer. Here and not in `sendVerificationOTP`:
           // Better Auth swallows what that throws and answers 200. Refused before a code is made.
-          if (limitsOn && (await checkLoginCodeRequest(db, email, new Date())) === "limited") {
-            throw APIError.from("TOO_MANY_REQUESTS", {
-              code: "TOO_MANY_REQUESTS",
-              message: "Too many login codes requested for this address",
-            });
+          // The codes tell the app how long to wait (`LOGIN_CODE_LIMIT_ERRORS`).
+          const limit = limitsOn ? await checkLoginCodeRequest(db, email, new Date()) : "ok";
+          if (limit !== "ok") {
+            throw APIError.from("TOO_MANY_REQUESTS", LOGIN_CODE_LIMIT_ERRORS[limit]);
           }
         }
         return { context: { body: { ...body, email } } };
@@ -159,6 +178,16 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
           // normalized as a second guard.
           before: async (user) => ({
             data: { ...user, email: normalizeEmail(user.email), name: "", image: null },
+          }),
+        },
+      },
+      session: {
+        create: {
+          // Better Auth keeps the IP address and browser of every session for its whole life
+          // (180 days). We collect no more personal data than we need, so neither is stored. The
+          // columns stay, because Better Auth expects them.
+          before: async (session) => ({
+            data: { ...session, ipAddress: null, userAgent: null },
           }),
         },
       },

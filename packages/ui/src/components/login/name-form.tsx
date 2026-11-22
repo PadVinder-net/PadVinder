@@ -30,7 +30,7 @@ export function NameForm({ onSubmit, pending, error }: NameFormProps) {
   return (
     <Step
       title="Hoe heet je?"
-      intro="Je naam is te zien voor de mensen in je werkgroep. Je telefoonnummer alleen voor je coördinator."
+      intro="Je naam is te zien voor de mensen in je werkgroep. Je telefoonnummer alleen voor de coördinator van de werkgroep."
     >
       <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
@@ -53,7 +53,7 @@ export function NameForm({ onSubmit, pending, error }: NameFormProps) {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="profile-phone" className={labelClass}>
-            Telefoonnummer (mag leeg)
+            Telefoonnummer (optioneel)
           </Label>
           <Input
             id="profile-phone"

@@ -40,6 +40,36 @@ test("a new address gets a code and becomes an account", async () => {
   expect(rows[0]!.id).toMatch(/^[0-9a-f-]{36}$/);
 });
 
+test("signing in answers the user but not the session token", async () => {
+  await requestCode(ctx, "noor@example.test");
+  const res = await ctx.app.inject({
+    method: "POST",
+    url: "/api/auth/sign-in/email-otp",
+    headers: { "x-forwarded-for": "10.0.0.1", "user-agent": "Test/1.0" },
+    payload: { email: "noor@example.test", otp: codeFor(ctx, "noor@example.test") },
+  });
+  expect(res.statusCode).toBe(200);
+  const body = res.json();
+  expect(body).toMatchObject({ user: { email: "noor@example.test" } });
+  expect(body).not.toHaveProperty("token");
+  const [session] = await ctx.t.db.select().from(sessions);
+  expect(res.body).not.toContain(session!.token);
+  expect(Number(res.headers["content-length"])).toBe(Buffer.byteLength(res.body));
+});
+
+test("a session stores no IP address or browser", async () => {
+  await requestCode(ctx, "noor@example.test");
+  await ctx.app.inject({
+    method: "POST",
+    url: "/api/auth/sign-in/email-otp",
+    headers: { "x-forwarded-for": "10.0.0.1", "user-agent": "Test/1.0" },
+    payload: { email: "noor@example.test", otp: codeFor(ctx, "noor@example.test") },
+  });
+  expect(await ctx.t.db.select().from(sessions)).toMatchObject([
+    { ipAddress: null, userAgent: null },
+  ]);
+});
+
 test("ids of accounts and sessions are UUIDv7s made by the database", async () => {
   const { userId } = await loginAs(ctx, "noor@example.test");
   const [session] = await ctx.t.db.select().from(sessions);

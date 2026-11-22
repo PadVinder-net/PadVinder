@@ -96,6 +96,56 @@ test("a 401 on another query brings back the login screen", async () => {
   routes["/api/health"] = unauthorized();
   await client.invalidateQueries({ queryKey: getHealthQueryKey() });
   expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
+  // What the previous user saw is gone, so the next one on this phone does not see it.
+  expect(client.getQueryData(getHealthQueryKey())).toBeUndefined();
+});
+
+async function logIn() {
+  await userEvent.type(await screen.findByLabelText("E-mailadres"), "noor@example.test");
+  await userEvent.click(screen.getByRole("button", { name: "Stuur code" }));
+  await userEvent.type(await screen.findByLabelText("Code"), "123456");
+}
+
+const authRoutes = {
+  "/api/auth/email-otp/send-verification-otp": { success: true },
+  "/api/auth/sign-in/email-otp": { user: { id: "u1", email: "noor@example.test" } },
+};
+
+test("logging in shows the app", async () => {
+  const routes: Record<string, unknown> = { "/api/me": unauthorized(), ...authRoutes };
+  mockFetch(routes);
+  renderGate();
+  await screen.findByRole("heading", { name: "Log in bij PadVinder" });
+  routes["/api/me"] = meFixture;
+  await logIn();
+  expect(await screen.findByText("de app")).toBeVisible();
+});
+
+test("when /api/me fails right after logging in, the retry screen shows, not the login screen", async () => {
+  const routes: Record<string, unknown> = { "/api/me": unauthorized(), ...authRoutes };
+  mockFetch(routes);
+  renderGate();
+  await screen.findByRole("heading", { name: "Log in bij PadVinder" });
+  routes["/api/me"] = new Response("boom", { status: 500 });
+  await logIn();
+  const retry = await screen.findByRole("button", { name: "Probeer opnieuw" });
+  expect(screen.queryByRole("heading", { name: "Log in bij PadVinder" })).toBeNull();
+  routes["/api/me"] = meFixture;
+  await userEvent.click(retry);
+  expect(await screen.findByText("de app")).toBeVisible();
+});
+
+test("logging in drops data cached before it", async () => {
+  const routes: Record<string, unknown> = { "/api/me": unauthorized(), ...authRoutes };
+  mockFetch(routes);
+  const client = createTestQueryClient();
+  client.setQueryData(getHealthQueryKey(), healthyFixture);
+  renderGate(client);
+  await screen.findByRole("heading", { name: "Log in bij PadVinder" });
+  routes["/api/me"] = meFixture;
+  await logIn();
+  expect(await screen.findByText("de app")).toBeVisible();
+  expect(client.getQueryData(getHealthQueryKey())).toBeUndefined();
 });
 
 test("a failed background refetch keeps the app", async () => {

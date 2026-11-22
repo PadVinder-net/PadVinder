@@ -1,7 +1,7 @@
 import {
   countLoginCodeRequests,
   lockLoginCodeRequests,
-  pruneLoginCodeRequests,
+  pruneLoginData,
   recordLoginCodeRequest,
   type Db,
 } from "@padvinder/db";
@@ -33,29 +33,31 @@ export function isValidLoginAddress(email: string): boolean {
   return loginAddressSchema.safeParse(email).success;
 }
 
+/** Why a request for a login code was refused: the limit per quarter hour or per day. */
+export type LoginCodeLimit = "quarterHour" | "day";
+
 /**
- * Whether this address may ask for another login code. Counts first and records the request only
- * when the answer is "ok", so refused requests do not extend the wait. A lock per address makes
- * this one step: requests that arrive at once cannot all count the same total and all pass. Old
- * rows are pruned either way. Pass a normalized, valid address.
+ * Whether this address may ask for another login code: `"ok"`, or the limit it has reached (the
+ * daily one when both are). Counts first and records the request only when the answer is "ok",
+ * so refused requests do not extend the wait. A lock per address makes this one step: requests
+ * that arrive at once cannot all count the same total and all pass. Old login data is pruned
+ * either way. Pass a normalized, valid address.
  */
 export async function checkLoginCodeRequest(
   db: Db,
   email: string,
   now: Date,
-): Promise<"ok" | "limited"> {
+): Promise<"ok" | LoginCodeLimit> {
   const since = (ms: number) => new Date(now.getTime() - ms);
   return db.transaction(async (tx) => {
     await lockLoginCodeRequests(tx, email);
-    const lastQuarterHour = await countLoginCodeRequests(tx, email, since(QUARTER_HOUR_MS));
-    const lastDay = await countLoginCodeRequests(tx, email, since(DAY_MS));
-    if (
-      lastQuarterHour >= LOGIN_CODE_LIMITS.perQuarterHour ||
-      lastDay >= LOGIN_CODE_LIMITS.perDay
-    ) {
-      await pruneLoginCodeRequests(tx, now);
-      return "limited";
-    }
+    const counts = await countLoginCodeRequests(tx, email, {
+      quarterHour: since(QUARTER_HOUR_MS),
+      day: since(DAY_MS),
+    });
+    await pruneLoginData(tx, now);
+    if (counts.day >= LOGIN_CODE_LIMITS.perDay) return "day";
+    if (counts.quarterHour >= LOGIN_CODE_LIMITS.perQuarterHour) return "quarterHour";
     await recordLoginCodeRequest(tx, email, now);
     return "ok";
   });

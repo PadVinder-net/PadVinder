@@ -108,7 +108,7 @@ test("the migration applies to a database that already holds users and sessions"
     // Everything before the migration that adds the access tables (later ones depend on it).
     for (const name of names.slice(
       0,
-      names.findIndex((n) => n.endsWith("_access_tables")),
+      names.findIndex((n) => n.endsWith("_access_tables_and_audit_log")),
     ))
       await cp(join(all, name), join(folder, name), { recursive: true });
     await old.db.execute(sql`drop schema if exists drizzle cascade`);

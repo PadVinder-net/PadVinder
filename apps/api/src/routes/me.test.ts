@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { grantCoordinator } from "@padvinder/db";
+import { grantCoordinator, users } from "@padvinder/db";
+import { eq } from "drizzle-orm";
 import { createCast, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
@@ -41,6 +42,21 @@ test("returns the logged-in user", async () => {
     memberships: [],
     organizationAdminOf: [],
   });
+});
+
+test("GET shows a change made by PATCH right away, phone included", async () => {
+  const user = await loginAs(ctx, "fresh@example.test", { name: "Fem" });
+  await patch(user.headers, { name: "Femke", phone: "06 3" });
+  const res = await ctx.app.inject({ url: "/api/me", headers: user.headers });
+  expect(res.json().user).toMatchObject({ name: "Femke", phone: "06 3" });
+});
+
+test("a session whose user is gone is 401", async () => {
+  const user = await loginAs(ctx, "gone@example.test");
+  await ctx.t.db.delete(users).where(eq(users.id, user.userId));
+  const res = await ctx.app.inject({ url: "/api/me", headers: user.headers });
+  expect(res.statusCode).toBe(401);
+  expect(res.json()).toMatchObject({ code: "not_logged_in" });
 });
 
 test("PATCH changes only what is sent", async () => {

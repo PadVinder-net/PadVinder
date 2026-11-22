@@ -1,7 +1,7 @@
 import { meFixture } from "@padvinder/contracts/fixtures";
 import { expect, test, vi } from "vitest";
 import { getMeQueryKey } from "./index";
-import { createQueryClient, refetchMe } from "./query-client";
+import { createQueryClient } from "./query-client";
 
 const notLoggedIn = { statusCode: 401, error: "Unauthorized", message: "x", code: "not_logged_in" };
 
@@ -54,8 +54,23 @@ test("a failing me query itself does not invalidate itself in a loop", async () 
   expect(spy).not.toHaveBeenCalled();
 });
 
-test("refetchMe invalidates the me query", () => {
+test("when the me query finds the session gone, the data of that user is dropped", async () => {
   const client = clientWithMe();
-  refetchMe(client);
-  expect(client.getQueryState(getMeQueryKey())?.isInvalidated).toBe(true);
+  client.setQueryData(["other"], "data of the previous user");
+  client.getMutationCache().build(client, { mutationFn: async () => "x" });
+  await client.fetchQuery({ queryKey: getMeQueryKey(), queryFn: async () => null, staleTime: 0 });
+  expect(client.getQueryData(["other"])).toBeUndefined();
+  expect(client.getMutationCache().getAll()).toHaveLength(0);
+  expect(client.getQueryData(getMeQueryKey())).toBeNull();
+});
+
+test("a me query that finds a user keeps the other data", async () => {
+  const client = clientWithMe();
+  client.setQueryData(["other"], "data");
+  await client.fetchQuery({
+    queryKey: getMeQueryKey(),
+    queryFn: async () => meFixture,
+    staleTime: 0,
+  });
+  expect(client.getQueryData(["other"])).toBe("data");
 });

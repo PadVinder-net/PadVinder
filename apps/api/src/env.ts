@@ -61,17 +61,27 @@ const apiEnvSchema = z
     LOGIN_RATE_LIMITS: z.enum(["on", "off"]).default("on"),
   })
   .check((ctx) => {
+    // Zod runs this check even when a field above failed, so a value here may be missing or not
+    // an origin. Those already have their own issue; compare only what is valid.
     const env = ctx.value;
-    if (!env.ALLOWED_ORIGINS.includes(env.PUBLIC_ORIGIN)) {
+    const publicOrigin = typeof env.PUBLIC_ORIGIN === "string" ? env.PUBLIC_ORIGIN : undefined;
+    const allowedOrigins = Array.isArray(env.ALLOWED_ORIGINS) ? env.ALLOWED_ORIGINS : undefined;
+    if (
+      publicOrigin !== undefined &&
+      isOrigin(publicOrigin) &&
+      allowedOrigins !== undefined &&
+      allowedOrigins.every(isOrigin) &&
+      !allowedOrigins.includes(publicOrigin)
+    ) {
       ctx.issues.push({
         code: "custom",
         message: "must be one of ALLOWED_ORIGINS",
         path: ["PUBLIC_ORIGIN"],
-        input: env.PUBLIC_ORIGIN,
+        input: publicOrigin,
       });
     }
-    const usesHttps = [env.PUBLIC_ORIGIN, ...env.ALLOWED_ORIGINS].some(
-      (origin) => new URL(origin).protocol === "https:",
+    const usesHttps = [publicOrigin, ...(allowedOrigins ?? [])].some(
+      (origin) => origin !== undefined && isOrigin(origin) && new URL(origin).protocol === "https:",
     );
     if (env.LOGIN_RATE_LIMITS === "off" && usesHttps) {
       ctx.issues.push({

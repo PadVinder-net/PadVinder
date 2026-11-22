@@ -14,7 +14,7 @@ test("a phone number is passed on", async () => {
   const onSubmit = vi.fn();
   render(<NameForm onSubmit={onSubmit} pending={false} />);
   await userEvent.type(screen.getByLabelText("Naam"), "Noor");
-  await userEvent.type(screen.getByLabelText("Telefoonnummer (mag leeg)"), "0612345678");
+  await userEvent.type(screen.getByLabelText("Telefoonnummer (optioneel)"), "0612345678");
   await userEvent.click(screen.getByRole("button", { name: "Ga verder" }));
   expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ name: "Noor", phone: "0612345678" });
 });
@@ -30,7 +30,7 @@ test("shows the heading and the privacy text", () => {
   expect(screen.getByRole("heading", { name: "Hoe heet je?" })).toBeVisible();
   expect(
     screen.getByText(
-      "Je naam is te zien voor de mensen in je werkgroep. Je telefoonnummer alleen voor je coördinator.",
+      "Je naam is te zien voor de mensen in je werkgroep. Je telefoonnummer alleen voor de coördinator van de werkgroep.",
     ),
   ).toBeVisible();
 });
@@ -40,14 +40,14 @@ test("the button is disabled while pending", () => {
 });
 test("a server error is linked to the phone field", () => {
   render(<NameForm onSubmit={vi.fn()} pending={false} error="Het lukt nu niet." />);
-  expect(screen.getByLabelText("Telefoonnummer (mag leeg)")).toHaveAccessibleDescription(
+  expect(screen.getByLabelText("Telefoonnummer (optioneel)")).toHaveAccessibleDescription(
     "Het lukt nu niet.",
   );
 });
 test("the fields cut off input at the limits the server accepts", async () => {
   render(<NameForm onSubmit={vi.fn()} pending={false} />);
   const name = screen.getByLabelText("Naam");
-  const phone = screen.getByLabelText("Telefoonnummer (mag leeg)");
+  const phone = screen.getByLabelText("Telefoonnummer (optioneel)");
   expect(name).toHaveAttribute("maxlength", "100");
   expect(phone).toHaveAttribute("maxlength", "30");
   await userEvent.type(phone, "1".repeat(40));

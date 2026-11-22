@@ -1,5 +1,5 @@
 import { healthQueryOptions, useHealthLiveUpdates, useLogOut, useMe } from "@padvinder/api-client";
-import { Button, HealthStatus } from "@padvinder/ui";
+import { Button, HealthStatus, logOutFailedMessage } from "@padvinder/ui";
 import { useQuery } from "@tanstack/react-query";
 import { APP_BUILD, APP_VERSION } from "../app-version";
 
@@ -20,7 +20,7 @@ export function MoreScreen() {
       {me.data?.user.isPlatformAdmin ? <SystemStatus /> : null}
       {logOutFailed ? (
         <p role="alert" className="mt-6 text-base text-destructive">
-          Uitloggen lukt nu niet. Controleer je verbinding en probeer het opnieuw.
+          {logOutFailedMessage}
         </p>
       ) : null}
       <Button

@@ -7,9 +7,10 @@ function m(workingGroupId: string, organizationId: string, role: MembershipRole)
   return { membershipId: `m-${workingGroupId}`, workingGroupId, organizationId, role };
 }
 
-function actor(parts: Partial<Omit<Actor, "userId">>): Actor {
+function actor(parts: Partial<Omit<Actor, "userId" | "user">>): Actor {
   return {
     userId: "u-1",
+    user: { id: "u-1", name: "Test", email: "test@example.test", phone: null },
     isPlatformAdmin: false,
     memberships: [],
     adminOfOrganizationIds: [],

@@ -5,6 +5,8 @@ import { checkLoginCodeRequest, IP_LIMITS, LOGIN_CODE_LIMITS } from "./login-rat
 
 const HOUR_MS = 60 * 60 * 1000;
 const ip = (address: string) => ({ "x-forwarded-for": address });
+const countAll = async (email: string) =>
+  (await countLoginCodeRequests(ctx.t.db, email, { all: new Date(0) })).all;
 
 // Loops of many requests take longer than the default 5 seconds.
 const LONG = 30_000;
@@ -43,12 +45,12 @@ describe("with the limits on", () => {
     const res = await requestCode(ctx, "a@example.test", ip("10.0.0.2"));
     expect(res.statusCode).toBe(429);
     expect(res.json()).toEqual({
-      code: "TOO_MANY_REQUESTS",
-      message: "Too many login codes requested for this address",
+      code: "TOO_MANY_LOGIN_CODES",
+      message: "Too many login codes requested for this address in 15 minutes",
     });
     expect(ctx.mailer.sent).toHaveLength(3);
     // The refused request is not counted.
-    expect(await countLoginCodeRequests(ctx.t.db, "a@example.test", new Date(0))).toBe(3);
+    expect(await countAll("a@example.test")).toBe(3);
   });
 
   test("five requests at once for one address give exactly three codes", async () => {
@@ -78,15 +80,44 @@ describe("with the limits on", () => {
     expect((await requestCode(ctx, email, ip("10.0.0.1"))).statusCode).toBe(200);
   });
 
-  test("a refused request also prunes rows older than 24 hours", async () => {
+  test.each([
+    ["an accepted", 0],
+    ["a refused", 3],
+  ])("%s request prunes requests and IP counters older than 24 hours", async (_name, earlier) => {
     const now = new Date();
-    for (let i = 0; i < 3; i++) await checkLoginCodeRequest(ctx.t.db, "a@example.test", now);
-    await ctx.t.db.insert(loginCodeRequests).values({
-      email: "old@example.test",
-      requestedAt: new Date(now.getTime() - 25 * HOUR_MS),
+    for (let i = 0; i < earlier; i++) {
+      await checkLoginCodeRequest(ctx.t.db, "a@example.test", now);
+    }
+    const old = now.getTime() - 25 * HOUR_MS;
+    await ctx.t.db
+      .insert(loginCodeRequests)
+      .values({ email: "old@example.test", requestedAt: new Date(old) });
+    await ctx.t.db.insert(rateLimits).values([
+      { key: "10.0.0.1|/old", count: 1, lastRequest: old },
+      { key: "10.0.0.1|/recent", count: 1, lastRequest: now.getTime() - HOUR_MS },
+    ]);
+    const expected = earlier === 3 ? "quarterHour" : "ok";
+    expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", now)).toBe(expected);
+    expect(await countAll("old@example.test")).toBe(0);
+    const keys = (await ctx.t.db.select().from(rateLimits)).map((row) => row.key);
+    expect(keys).toEqual(["10.0.0.1|/recent"]);
+  });
+
+  test("an eleventh code within 24 hours is refused with its own code", async () => {
+    const now = Date.now();
+    await ctx.t.db.insert(loginCodeRequests).values(
+      Array.from({ length: 10 }, (_, i) => ({
+        email: "a@example.test",
+        requestedAt: new Date(now - (i + 1) * HOUR_MS),
+      })),
+    );
+    const res = await requestCode(ctx, "a@example.test", ip("10.0.0.1"));
+    expect(res.statusCode).toBe(429);
+    expect(res.json()).toEqual({
+      code: "TOO_MANY_LOGIN_CODES_TODAY",
+      message: "Too many login codes requested for this address in 24 hours",
     });
-    expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", now)).toBe("limited");
-    expect(await countLoginCodeRequests(ctx.t.db, "old@example.test", new Date(0))).toBe(0);
+    expect(ctx.mailer.sent).toHaveLength(0);
   });
 
   test("another address is not affected", async () => {
@@ -101,7 +132,7 @@ describe("with the limits on", () => {
       expect((await requestCode(ctx, email, ip("10.0.0.1"))).statusCode).toBe(200);
     }
     expect((await requestCode(ctx, "a@Example.Test", ip("10.0.0.1"))).statusCode).toBe(429);
-    expect(await countLoginCodeRequests(ctx.t.db, "a@example.test", new Date(0))).toBe(3);
+    expect(await countAll("a@example.test")).toBe(3);
   });
 
   test("checkLoginCodeRequest allows 3 per quarter of an hour", async () => {
@@ -110,7 +141,7 @@ describe("with the limits on", () => {
     for (const minute of [0, 1, 2]) {
       expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at(minute))).toBe("ok");
     }
-    expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at(14))).toBe("limited");
+    expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at(14))).toBe("quarterHour");
     expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at(15.5))).toBe("ok");
   });
 
@@ -121,9 +152,9 @@ describe("with the limits on", () => {
     for (let i = 0; i < 10; i++) {
       expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at((i * 20) / 9))).toBe("ok");
     }
-    expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at(20.5))).toBe("limited");
+    expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at(20.5))).toBe("day");
     // Counts first, records only when the answer is "ok".
-    expect(await countLoginCodeRequests(ctx.t.db, "a@example.test", new Date(0))).toBe(10);
+    expect(await countAll("a@example.test")).toBe(10);
     // 25 hours after the first, that one no longer counts.
     expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", at(25))).toBe("ok");
   });
@@ -201,7 +232,7 @@ describe("with LOGIN_RATE_LIMITS=off", () => {
       for (let i = 0; i < 31; i++) {
         expect((await requestCode(ctx, `p${i}@example.test`, ip("10.0.0.9"))).statusCode).toBe(200);
       }
-      expect(await countLoginCodeRequests(ctx.t.db, "a@example.test", new Date(0))).toBe(0);
+      expect(await countAll("a@example.test")).toBe(0);
       expect(await ctx.t.db.select().from(rateLimits)).toHaveLength(0);
     },
     LONG,

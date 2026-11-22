@@ -50,3 +50,38 @@ export function mockPendingFetch() {
 export function createTestQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
+
+/**
+ * A stand-in for the browser's `EventSource`. Every instance is kept in `instances`; `emit` sends
+ * an event, `fail` an error.
+ */
+export class FakeEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  static instances: FakeEventSource[] = [];
+  listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readyState = FakeEventSource.CONNECTING;
+  closed = false;
+  constructor(readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  close() {
+    this.closed = true;
+    this.readyState = FakeEventSource.CLOSED;
+  }
+  emit(type: string, data: string) {
+    for (const listener of this.listeners.get(type) ?? [])
+      listener(new MessageEvent(type, { data }));
+  }
+  /** A dropped connection the browser retries (CONNECTING), or an error answer it gives up on. */
+  fail(givenUp: boolean) {
+    this.readyState = givenUp ? FakeEventSource.CLOSED : FakeEventSource.CONNECTING;
+    this.onerror?.();
+  }
+}

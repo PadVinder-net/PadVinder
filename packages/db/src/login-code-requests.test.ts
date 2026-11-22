@@ -2,9 +2,10 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import {
   countLoginCodeRequests,
   lockLoginCodeRequests,
-  pruneLoginCodeRequests,
+  pruneLoginData,
   recordLoginCodeRequest,
 } from "./login-code-requests";
+import { rateLimits } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 let t: TestDatabase | undefined;
@@ -16,35 +17,39 @@ afterAll(async () => {
 });
 
 const now = new Date("2027-01-10T19:00:00Z");
+const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+const countAll = async (email: string) =>
+  (await countLoginCodeRequests(t!.db, email, { all: new Date(0) })).all;
 
-test("counts requests for one address since a moment", async () => {
-  await recordLoginCodeRequest(t!.db, "a@example.test", new Date(now.getTime() - 20 * 60_000));
-  await recordLoginCodeRequest(t!.db, "a@example.test", new Date(now.getTime() - 5 * 60_000));
+test("counts requests for one address since several moments in one call", async () => {
+  await recordLoginCodeRequest(t!.db, "a@example.test", minutesAgo(20));
+  await recordLoginCodeRequest(t!.db, "a@example.test", minutesAgo(5));
+  await recordLoginCodeRequest(t!.db, "a@example.test", minutesAgo(25 * 60));
   await recordLoginCodeRequest(t!.db, "b@example.test", now);
   expect(
-    await countLoginCodeRequests(t!.db, "a@example.test", new Date(now.getTime() - 15 * 60_000)),
-  ).toBe(1);
+    await countLoginCodeRequests(t!.db, "a@example.test", {
+      quarterHour: minutesAgo(15),
+      day: minutesAgo(24 * 60),
+    }),
+  ).toEqual({ quarterHour: 1, day: 2 });
 });
 
-test("rows older than 24 hours are pruned on the next record", async () => {
-  await recordLoginCodeRequest(t!.db, "old@example.test", new Date(now.getTime() - 25 * 3_600_000));
-  await recordLoginCodeRequest(t!.db, "new@example.test", now);
-  expect(await countLoginCodeRequests(t!.db, "old@example.test", new Date(0))).toBe(0);
+test("an address without requests counts zero", async () => {
+  expect(
+    await countLoginCodeRequests(t!.db, "none@example.test", { day: minutesAgo(24 * 60) }),
+  ).toEqual({ day: 0 });
 });
 
-test("pruning deletes only rows older than 24 hours", async () => {
-  await recordLoginCodeRequest(
-    t!.db,
-    "prune@example.test",
-    new Date(now.getTime() - 25 * 3_600_000),
-  );
-  await recordLoginCodeRequest(
-    t!.db,
-    "prune@example.test",
-    new Date(now.getTime() - 23 * 3_600_000),
-  );
-  await pruneLoginCodeRequests(t!.db, now);
-  expect(await countLoginCodeRequests(t!.db, "prune@example.test", new Date(0))).toBe(1);
+test("pruning deletes only requests and IP counters older than 24 hours", async () => {
+  await recordLoginCodeRequest(t!.db, "prune@example.test", minutesAgo(25 * 60));
+  await recordLoginCodeRequest(t!.db, "prune@example.test", minutesAgo(23 * 60));
+  await t!.db.insert(rateLimits).values([
+    { key: "old", count: 1, lastRequest: minutesAgo(25 * 60).getTime() },
+    { key: "recent", count: 1, lastRequest: minutesAgo(23 * 60).getTime() },
+  ]);
+  await pruneLoginData(t!.db, now);
+  expect(await countAll("prune@example.test")).toBe(1);
+  expect((await t!.db.select().from(rateLimits)).map((row) => row.key)).toEqual(["recent"]);
 });
 
 test("the lock for one address makes a second transaction wait", async () => {

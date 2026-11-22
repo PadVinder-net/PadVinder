@@ -35,10 +35,7 @@ test("email, then code, then onLoggedIn", async () => {
 });
 test("shows the message when the code is wrong and stays on the code step", async () => {
   const { onLoggedIn } = setup({
-    logInWithCode: async () => ({
-      ok: false,
-      message: "Deze code klopt niet. Kijk nog eens in je mail.",
-    }),
+    logInWithCode: async () => ({ ok: false, error: "wrong_code" }),
   });
   await toCodeStep();
   await userEvent.type(screen.getByLabelText("Code"), "123456");
@@ -49,7 +46,7 @@ test("shows the message when the code is wrong and stays on the code step", asyn
 test("shows the message when the code request fails and stays on the email step", async () => {
   const requestLoginCode = vi.fn(async (_email: string): Promise<LoginResult> => ({
     ok: false,
-    message: "Het lukt nu niet.",
+    error: "failed",
   }));
   render(
     <LoginFlow requestLoginCode={requestLoginCode} logInWithCode={vi.fn()} onLoggedIn={vi.fn()} />,

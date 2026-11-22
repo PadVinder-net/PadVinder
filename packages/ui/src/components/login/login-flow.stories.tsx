@@ -28,9 +28,7 @@ export const Default: Story = {
     },
     logInWithCode: async (_email, code) => {
       await later();
-      return code === "000000"
-        ? { ok: false, message: "Deze code klopt niet. Kijk nog eens in je mail." }
-        : { ok: true };
+      return code === "000000" ? { ok: false, error: "wrong_code" } : { ok: true };
     },
     onLoggedIn: () => {},
     onOpenMail: () => {},
