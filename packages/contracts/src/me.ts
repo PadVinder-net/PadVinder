@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { membershipRoleSchema, workingGroupSummarySchema } from "./working-groups";
 
 export const meResponseSchema = z
   .object({
@@ -8,7 +9,16 @@ export const meResponseSchema = z
       name: z.string(),
       email: z.string(),
       phone: z.string().nullable(),
+      isPlatformAdmin: z.boolean(),
     }),
+    memberships: z.array(
+      z.object({
+        id: z.string(),
+        role: membershipRoleSchema,
+        workingGroup: workingGroupSummarySchema,
+      }),
+    ),
+    organizationAdminOf: z.array(z.object({ id: z.string(), name: z.string() })),
   })
   .meta({ id: "MeResponse" });
 export type MeResponse = z.infer<typeof meResponseSchema>;

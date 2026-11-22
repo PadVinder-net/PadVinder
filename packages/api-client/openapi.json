@@ -130,6 +130,48 @@
           "worker"
         ]
       },
+      "MembershipRoleInput": {
+        "type": "string",
+        "enum": [
+          "volunteer",
+          "coordinator"
+        ]
+      },
+      "WorkingGroupSummaryInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "city",
+          "organization"
+        ]
+      },
       "MeResponseInput": {
         "type": "object",
         "properties": {
@@ -148,18 +190,64 @@
               "phone": {
                 "nullable": true,
                 "type": "string"
+              },
+              "isPlatformAdmin": {
+                "type": "boolean"
               }
             },
             "required": [
               "id",
               "name",
               "email",
-              "phone"
+              "phone",
+              "isPlatformAdmin"
             ]
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "role": {
+                  "$ref": "#/components/schemas/MembershipRoleInput"
+                },
+                "workingGroup": {
+                  "$ref": "#/components/schemas/WorkingGroupSummaryInput"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "workingGroup"
+              ]
+            }
+          },
+          "organizationAdminOf": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
           }
         },
         "required": [
-          "user"
+          "user",
+          "memberships",
+          "organizationAdminOf"
         ]
       },
       "UpdateMeRequestInput": {
@@ -324,6 +412,50 @@
         ],
         "additionalProperties": false
       },
+      "MembershipRole": {
+        "type": "string",
+        "enum": [
+          "volunteer",
+          "coordinator"
+        ]
+      },
+      "WorkingGroupSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "city",
+          "organization"
+        ],
+        "additionalProperties": false
+      },
       "MeResponse": {
         "type": "object",
         "properties": {
@@ -342,19 +474,67 @@
               "phone": {
                 "nullable": true,
                 "type": "string"
+              },
+              "isPlatformAdmin": {
+                "type": "boolean"
               }
             },
             "required": [
               "id",
               "name",
               "email",
-              "phone"
+              "phone",
+              "isPlatformAdmin"
             ],
             "additionalProperties": false
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "role": {
+                  "$ref": "#/components/schemas/MembershipRole"
+                },
+                "workingGroup": {
+                  "$ref": "#/components/schemas/WorkingGroupSummary"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "workingGroup"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "organizationAdminOf": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
-          "user"
+          "user",
+          "memberships",
+          "organizationAdminOf"
         ],
         "additionalProperties": false
       },

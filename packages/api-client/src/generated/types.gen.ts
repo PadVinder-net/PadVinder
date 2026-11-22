@@ -33,13 +33,35 @@ export type HealthResponseInput = {
     };
 };
 
+export type MembershipRoleInput = 'volunteer' | 'coordinator';
+
+export type WorkingGroupSummaryInput = {
+    id: string;
+    name: string;
+    city: string;
+    organization: {
+        id: string;
+        name: string;
+    };
+};
+
 export type MeResponseInput = {
     user: {
         id: string;
         name: string;
         email: string;
         phone: string | null;
+        isPlatformAdmin: boolean;
     };
+    memberships: Array<{
+        id: string;
+        role: MembershipRoleInput;
+        workingGroup: WorkingGroupSummaryInput;
+    }>;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
 };
 
 export type UpdateMeRequestInput = {
@@ -81,13 +103,35 @@ export type HealthResponse = {
     };
 };
 
+export type MembershipRole = 'volunteer' | 'coordinator';
+
+export type WorkingGroupSummary = {
+    id: string;
+    name: string;
+    city: string;
+    organization: {
+        id: string;
+        name: string;
+    };
+};
+
 export type MeResponse = {
     user: {
         id: string;
         name: string;
         email: string;
         phone: string | null;
+        isPlatformAdmin: boolean;
     };
+    memberships: Array<{
+        id: string;
+        role: MembershipRole;
+        workingGroup: WorkingGroupSummary;
+    }>;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
 };
 
 export type UpdateMeRequest = {

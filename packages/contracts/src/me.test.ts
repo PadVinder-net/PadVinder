@@ -1,6 +1,13 @@
 import { expect, test } from "vitest";
 import { meResponseSchema, updateMeRequestSchema } from "./me";
-import { meFixture, meWithoutNameFixture } from "./fixtures";
+import {
+  applicantMeFixture,
+  coordinatorMeFixture,
+  meFixture,
+  meWithoutNameFixture,
+  platformAdminMeFixture,
+  twoOrganizationsMeFixture,
+} from "./fixtures";
 
 test("accepts one key", () =>
   expect(updateMeRequestSchema.parse({ name: " Noor " })).toEqual({ name: "Noor" }));
@@ -33,3 +40,14 @@ test("the fixtures match the response schema", () => {
   });
   expect(meResponseSchema.parse(meWithoutNameFixture).user.name).toBe("");
 });
+
+test.each([
+  meFixture,
+  meWithoutNameFixture,
+  coordinatorMeFixture,
+  platformAdminMeFixture,
+  applicantMeFixture,
+  twoOrganizationsMeFixture,
+])("every me fixture parses", (fixture) =>
+  expect(meResponseSchema.parse(fixture)).toEqual(fixture),
+);

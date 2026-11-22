@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
+import { grantCoordinator } from "@padvinder/db";
+import { createCast, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
 let ctx: TestApp;
+let cast: Cast;
 beforeAll(async () => {
   ctx = await createTestApp();
+  cast = await createCast(ctx);
 });
 afterAll(() => ctx.close());
 
@@ -27,7 +31,15 @@ test("returns the logged-in user", async () => {
   const res = await ctx.app.inject({ url: "/api/me", headers: noor.headers });
   expect(res.statusCode).toBe(200);
   expect(res.json()).toEqual({
-    user: { id: noor.userId, name: "Noor de Vries", email: "noor@example.test", phone: null },
+    user: {
+      id: noor.userId,
+      name: "Noor de Vries",
+      email: "noor@example.test",
+      phone: null,
+      isPlatformAdmin: false,
+    },
+    memberships: [],
+    organizationAdminOf: [],
   });
 });
 
@@ -107,4 +119,82 @@ test("an old session is renewed and GET /api/me sets a fresh cookie", async () =
     user.userId,
   ]);
   expect(rows[0].expires_at.getTime()).toBeGreaterThan(oldExpiry.getTime());
+});
+
+const getMe = async (headers: Record<string, string>) =>
+  (await ctx.app.inject({ url: "/api/me", headers })).json();
+
+test("a volunteer sees their one membership", async () => {
+  expect(await getMe(cast.members.volunteer.headers)).toMatchObject({
+    user: { isPlatformAdmin: false },
+    memberships: [
+      {
+        role: "volunteer",
+        workingGroup: {
+          id: cast.workingGroup.workingGroupId,
+          organization: { id: cast.organization.id, name: "Cast Organisatie" },
+        },
+      },
+    ],
+    organizationAdminOf: [],
+  });
+});
+
+test("someone in two organizations sees both memberships", async () => {
+  const user = await loginAs(ctx, "two-orgs@example.test", { name: "Twee" });
+  await grantCoordinator(
+    ctx.t.db,
+    { email: "two-orgs@example.test", workingGroupId: cast.foreignGroup.workingGroupId },
+    { kind: "system" },
+  );
+  await grantCoordinator(
+    ctx.t.db,
+    { email: "two-orgs@example.test", workingGroupId: cast.workingGroup.workingGroupId },
+    { kind: "system" },
+  );
+  const me = await getMe(user.headers);
+  expect(me.memberships).toHaveLength(2);
+  expect(
+    me.memberships
+      .map(
+        (m: { workingGroup: { organization: { id: string } } }) => m.workingGroup.organization.id,
+      )
+      .sort(),
+  ).toEqual([cast.organization.id, cast.otherOrganization.id].sort());
+  expect(me.memberships.every((m: { role: string }) => m.role === "coordinator")).toBe(true);
+});
+
+test("a coordinator has the coordinator role", async () => {
+  const me = await getMe(cast.members.coordinator.headers);
+  expect(me.memberships).toMatchObject([{ role: "coordinator" }]);
+});
+
+test("an organization admin sees the organization", async () => {
+  expect(await getMe(cast.members.organizationAdmin.headers)).toMatchObject({
+    memberships: [],
+    organizationAdminOf: [{ id: cast.organization.id, name: "Cast Organisatie" }],
+  });
+});
+
+test("a platform admin has the flag", async () => {
+  expect(await getMe(cast.members.platformAdmin.headers)).toMatchObject({
+    user: { isPlatformAdmin: true },
+  });
+});
+
+test("an applicant has empty lists", async () => {
+  expect(await getMe(cast.members.applicant.headers)).toMatchObject({
+    memberships: [],
+    organizationAdminOf: [],
+  });
+});
+
+test("PATCH still returns the full shape", async () => {
+  const res = await patch(cast.members.volunteer.headers, { phone: "06 5" });
+  expect(res.statusCode).toBe(200);
+  expect(res.json()).toMatchObject({
+    user: { phone: "06 5", isPlatformAdmin: false },
+    memberships: [{ role: "volunteer" }],
+    organizationAdminOf: [],
+  });
 });

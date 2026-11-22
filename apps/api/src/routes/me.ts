@@ -4,7 +4,7 @@ import {
   updateMeRequestSchema,
   type MeResponse,
 } from "@padvinder/contracts";
-import { getUserProfile, updateUserProfile, type Db } from "@padvinder/db";
+import { getMe, updateUserProfile, type Db } from "@padvinder/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { apiError, errorResponses } from "../errors";
 
@@ -20,10 +20,10 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
       },
     },
     async (request): Promise<MeResponse> => {
-      const user = await getUserProfile(db, request.actor!.userId);
+      const me = await getMe(db, request.actor!.userId);
       // A session of a user that is gone: treat as logged out.
-      if (!user) throw apiError(401, apiErrorCodes.notLoggedIn, "Log in first");
-      return { user };
+      if (!me) throw apiError(401, apiErrorCodes.notLoggedIn, "Log in first");
+      return me;
     },
   );
 
@@ -39,8 +39,10 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
       },
     },
     async (request): Promise<MeResponse> => {
-      const user = await updateUserProfile(db, request.actor!.userId, request.body);
-      return { user };
+      await updateUserProfile(db, request.actor!.userId, request.body);
+      const me = await getMe(db, request.actor!.userId);
+      if (!me) throw apiError(401, apiErrorCodes.notLoggedIn, "Log in first");
+      return me;
     },
   );
 };
