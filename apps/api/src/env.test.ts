@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { expect, test } from "vitest";
 import { loadApiEnv } from "./env";
 
@@ -49,3 +50,9 @@ test("rejects an allowed origin that is not a URL", () =>
   expect(() => loadApiEnv({ ...valid, ALLOWED_ORIGINS: "localhost:4101" })).toThrow(
     /ALLOWED_ORIGINS/,
   ));
+
+test("resolves relative dist dirs against the working directory", () => {
+  const env = loadApiEnv({ ...valid, MOBILE_DIST_DIR: "mobile", PORTAL_DIST_DIR: "/abs/portal" });
+  expect(env.MOBILE_DIST_DIR).toBe(resolve(process.cwd(), "mobile"));
+  expect(env.PORTAL_DIST_DIR).toBe("/abs/portal");
+});

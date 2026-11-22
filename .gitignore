@@ -7,3 +7,10 @@ test-results
 playwright-report
 *.local.*
 .certs
+# Vitest output, such as the actual and diff images of failed screenshot comparisons
+.vitest
+# Reference screenshots are made in the Playwright image only (pnpm screenshots:update)
+**/__screenshots__/**/*-darwin.png
+**/__screenshots__/**/*-win32.png
+release/
+padvinder-release.tar.gz

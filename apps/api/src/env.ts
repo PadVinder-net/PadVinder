@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { calVerSchema } from "@padvinder/contracts";
 import { z } from "zod";
 
@@ -9,6 +10,11 @@ function isOrigin(value: string): boolean {
     return false;
   }
 }
+
+const distDirSchema = z
+  .string()
+  .min(1)
+  .transform((path) => resolve(path));
 
 const apiEnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -36,8 +42,9 @@ const apiEnvSchema = z.object({
     ),
   GIT_COMMIT: z.string().min(1).default("dev"),
   MIN_APP_VERSION: calVerSchema.default("2027.0.0"),
-  MOBILE_DIST_DIR: z.string().min(1).optional(),
-  PORTAL_DIST_DIR: z.string().min(1).optional(),
+  // Relative to the working directory, so a release can say `mobile` and `portal`.
+  MOBILE_DIST_DIR: distDirSchema.optional(),
+  PORTAL_DIST_DIR: distDirSchema.optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 

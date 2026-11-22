@@ -6,7 +6,11 @@ loadRootEnv();
 
 export default defineConfig({
   test: {
-    projects: ["packages/*", "apps/*"],
+    projects: [
+      "packages/*",
+      "apps/*",
+      { test: { name: "scripts", include: ["scripts/**/*.test.ts"] } },
+    ],
     // Root-level, so it runs once per run, not once per project.
     globalSetup: ["./scripts/vitest-global-setup.ts"],
   },

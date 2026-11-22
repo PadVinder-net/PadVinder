@@ -1,6 +1,6 @@
 // @vitest-environment node
 import type { ConfigEnv, UserConfig } from "vite";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { manifest } from "./pwa-manifest";
 import pwaAssetsConfig from "./pwa-assets.config";
 import viteConfig from "./vite.config";
@@ -8,6 +8,9 @@ import viteConfig from "./vite.config";
 const buildEnv: ConfigEnv = { command: "build", mode: "production" };
 const resolve = () => (viteConfig as (env: ConfigEnv) => UserConfig)(buildEnv);
 
+// The dev server requires MOBILE_PORT. Set it here so no test depends on .env, which CI lacks;
+// tests about MOBILE_PORT itself override it.
+beforeEach(() => vi.stubEnv("MOBILE_PORT", "4101"));
 afterEach(() => vi.unstubAllEnvs());
 
 const devEnv: ConfigEnv = { command: "serve", mode: "development" };
@@ -45,9 +48,24 @@ test("fails the dev server on a PADVINDER_APP_VERSION that is not CalVer", () =>
   expect(resolveDev).toThrow(remedy);
 });
 
-test("fails on a MOBILE_PORT that is not a number", () => {
+test("the dev server uses MOBILE_PORT", () => {
+  vi.stubEnv("MOBILE_PORT", "4111");
+  expect(resolveDev().server).toMatchObject({ port: 4111, strictPort: true });
+});
+
+test("fails the dev server on a MOBILE_PORT that is not a number", () => {
   vi.stubEnv("MOBILE_PORT", "abc");
-  expect(resolve).toThrow(/MOBILE_PORT/);
+  expect(resolveDev).toThrow(/MOBILE_PORT/);
+});
+
+test("a build needs no MOBILE_PORT", () => {
+  vi.stubEnv("MOBILE_PORT", "");
+  expect(resolve().base).toBe("/app/");
+});
+
+test("the dev server still requires MOBILE_PORT", () => {
+  vi.stubEnv("MOBILE_PORT", "");
+  expect(resolveDev).toThrow(/MOBILE_PORT is missing/);
 });
 
 test("the manifest uses the brand theme color", () => {

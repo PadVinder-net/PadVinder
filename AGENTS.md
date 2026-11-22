@@ -8,7 +8,7 @@ This file summarizes the technical chapter (section 16) of the project plan of 2
 
 ## Current state
 
-The repository holds the monorepo skeleton (21 November 2026): one vertical slice through every layer (the health endpoint, see "Reference example"), local development, tests and the generated API client. There is no CI workflow, deployment, `infra/` script or authentication yet, and no write endpoints. Update this file in the same pull request when you change a command or a path below.
+The repository holds the monorepo skeleton (21 November 2026): one vertical slice through every layer (the health endpoint, see "Reference example"), local development, tests and the generated API client. CI runs on every pull request (see "CI"), and a release can be built as a directory, a tarball and a container image. Deployment (pull request 3), the `infra/` deploy scripts and authentication do not exist yet, and there are no write endpoints. Update this file in the same pull request when you change a command or a path below.
 
 Milestones:
 
@@ -101,11 +101,15 @@ packages/
   db/               Drizzle schema, client, migrations, seed, test database helper (@padvinder/db/testing)
   api-client/       openapi.json and the generated client (committed)
   ui/               Shared React components (Tailwind, shadcn/ui), Storybook; the map will live here too
+infra/
+  container/        Dockerfile of the release image
 e2e/                Playwright tests
 scripts/            Workspace setup and teardown, env loading, Vitest global setup
+docs/               Repository settings on GitHub, design specs and plans
+.github/            CI workflows, the shared setup action, Dependabot
 ```
 
-Shared packages export TypeScript source, with no build step. Apps bundle: api and worker with tsdown (to `dist/main.js`), mobile and portal with Vite. A runtime dependency used by a bundled app must be a direct dependency of that app, with the same version as in the packages that use it. Each app is meant to be built separately; CI will bundle all four into one deployment artifact (not built yet).
+Shared packages export TypeScript source, with no build step. Apps bundle: api and worker with tsdown (to `dist/main.js`), mobile and portal with Vite. A runtime dependency used by a bundled app must be a direct dependency of that app, with the same version as in the packages that use it. Each app is meant to be built separately; `pnpm release:build` bundles all four into one release (see "Release").
 
 ## Tech stack
 
@@ -265,7 +269,13 @@ Needs Docker, and pnpm 12 (it downloads Node 24 by itself). Run commands from th
 | `./scripts/setup-workspace.sh`              | One-time setup per workspace, safe to repeat: `pnpm install`, `.env`, shared database container, this workspace's databases, migrations, seed, Playwright Chromium. |
 | `pnpm dev`                                  | API, worker, mobile and portal with hot reload, in one process group                                                                                                |
 | `pnpm dev:https`                            | Same over HTTPS, for an iPhone on the local network (POSIX shells)                                                                                                  |
-| `pnpm check`                                | Type check, Oxlint, Oxfmt check, Vitest. **Every agent runs it before finishing**                                                                                   |
+| `pnpm check`                                | Type check (also `scripts/`, `e2e/` and the root configs), Oxlint, Oxfmt check, `check:generated`, Vitest. **Every agent runs it before finishing**                 |
+| `pnpm check:generated`                      | Regenerates the OpenAPI description, the client and the migrations in place and fails if that changed any file (review and commit the result). Part of `pnpm check` |
+| `pnpm test:visual:docker`                   | Storybook visual tests, run in the Playwright Docker image (needs Docker)                                                                                           |
+| `pnpm screenshots:update`                   | Same, but rewrites the reference images in `packages/ui/src/__screenshots__`. The only way to make them                                                             |
+| `pnpm release:build`                        | Builds everything into `release/` and `padvinder-release.tar.gz` (refuses a dirty tree; `--allow-dirty` for a local test)                                           |
+| `pnpm release:image`, `pnpm release:smoke`  | Build the container image `padvinder:local` from the tarball; start it against a fresh database and check `/api/health`, `/app/` and `/`                            |
+| `pnpm scan:secrets`, `pnpm lint:workflows`  | Gitleaks over the whole git history; actionlint (with shellcheck) over `.github/workflows` (both in Docker)                                                         |
 | `pnpm test`, `pnpm test:e2e`                | Vitest only; Playwright (needs plain `pnpm dev`, not `dev:https`)                                                                                                   |
 | `pnpm format`                               | Oxfmt writes (it also formats Markdown)                                                                                                                             |
 | `pnpm db:generate`, `db:migrate`, `db:seed` | Create a migration after a schema change; apply migrations; seed made-up data                                                                                       |
@@ -277,11 +287,14 @@ Details:
 
 - **Per-workspace databases and ports.** One shared Compose project, `padvinder` (image `imresamu/postgis:18-3.6-bookworm`, host port 54329), serves all workspaces. Each workspace gets `padvinder_<workspace>` and `padvinder_<workspace>_test`, named after `CONDUCTOR_WORKSPACE_NAME`. Ports start at `CONDUCTOR_PORT` (default 4100): API B, mobile B+1, portal B+2, Storybook B+3. Setup writes `.env`; put overrides in `.env.local`. `.env.example` lists all variables. `ALLOWED_ORIGINS` is a comma-separated list of exact origins (no path, no trailing slash); production sets one.
 - **Database.** Locale `C.UTF-8`; sort Dutch text with `COLLATE "nl-NL-x-icu"`. Changing `POSTGRES_INITDB_ARGS` needs `docker compose down -v`. Only the core `postgis` extension. The image has the same major and minor versions as Alwaysdata, not the same patch versions: on 21 November 2026 it gave PostgreSQL 18.1 and PostGIS 3.6.1, Alwaysdata 18.7 and 3.6.2. `docker compose pull` updates it.
-- **Tests.** Vitest projects; the root config loads env (real env, then `.env.local`, then `.env`) and prepares a test template database once per run. Each DB test file calls `createTestDatabase()` from `@padvinder/db/testing` in `beforeAll` and `await t?.drop()` in `afterAll`. Do not run two `pnpm test` at once in the same workspace. Component tests use jsdom and Testing Library; tests of the generated client need the helpers from `@padvinder/api-client/testing`. Storybook screenshot tests (`toMatchScreenshot` in the Playwright image) come in pull request 2.
+- **Tests.** Vitest projects; the root config loads env (real env, then `.env.local`, then `.env`) and prepares a test template database once per run. Each DB test file calls `createTestDatabase()` from `@padvinder/db/testing` in `beforeAll` and `await t?.drop()` in `afterAll`. Do not run two `pnpm test` at once in the same workspace. Component tests use jsdom and Testing Library; tests of the generated client need the helpers from `@padvinder/api-client/testing`. `pnpm test` skips the visual tests.
+- **Visual tests.** Every story in `packages/ui` is rendered in Chromium and compared with a reference image (Vitest browser mode with `composeStories` and `toMatchScreenshot`; config `packages/ui/vitest.visual.config.ts`, not part of `pnpm test`). References are `packages/ui/src/__screenshots__/**/*-chromium-linux.png`. Only ever generate them with `pnpm screenshots:update`, which runs the pinned Playwright image (`mcr.microsoft.com/playwright:v1.65.1-noble`, amd64 like CI; emulated on Apple silicon) in Docker, never on the host: fonts and rendering differ per platform, and CI compares in the same image. Running `pnpm test:visual` on a Mac or Windows host makes ignored `-darwin.png` or `-win32.png` files and fails. The image tag must equal the exact `@playwright/test` and `playwright` versions; `scripts/playwright-version.test.ts` fails when they differ, so a Playwright upgrade also changes the tag (in `ci.yml` and `scripts/visual-tests.sh`) and needs new references. When a story changes on purpose, run `pnpm screenshots:update` and commit the images. When CI fails, the actual and diff images are in the `visual-diffs` artifact (locally: `packages/ui/.vitest/attachments`).
+- **Release.** `pnpm release:build` writes `release/`, packed as `padvinder-release.tar.gz` (top-level `release/`). It contains `api/` and `worker/` (each with `dist/` and production `node_modules`), `mobile/` and `portal/` (the static builds), `migrations/` (the Drizzle folder), `release.env` (`GIT_COMMIT`, and `MOBILE_DIST_DIR` and `PORTAL_DIST_DIR`, which are relative and resolve against the working directory) and `release.json` (commit, app version, build). Start it from inside `release/`: `node --env-file=release.env --env-file=<secrets> api/dist/migrate.js migrations`, then `api/dist/main.js` and `worker/dist/main.js`. Variables already in the environment win over both files. The migrate command takes the migrations folder as its only argument. `infra/container/Dockerfile` builds the container image from the same directory (base `node:24-bookworm-slim`, Debian 12 like Alwaysdata); `scripts/smoke-test-image.sh` runs it against a database and checks health, the worker heartbeat and both front ends. The Vite builds need no dev ports.
+- **CI.** See "CI". Docker images used by workflows and scripts are pinned by tag in the files themselves.
 - **iPhone over HTTPS.** Run `mkcert -install` once first (interactive macOS prompt). Install and trust the mkcert root CA on the phone: send `rootCA.pem` from `mkcert -CAROOT` by AirDrop or email, install the profile, then enable full trust in Settings, General, About, Certificate Trust Settings. Open `https://<LAN IP>:<MOBILE_PORT>/app/`. Android over USB needs no HTTPS: forward the port in `chrome://inspect`.
 - **App icon.** The one source is `packages/ui/assets/icon.svg` (the brand icon; do not redraw it). `apps/mobile/public/icon.svg` and `apps/portal/public/favicon.svg` are symlinks to it. The mobile PNG icons (maskable and Apple touch icons full-bleed in `#c8102e`) are generated at build time by `@vite-pwa/assets-generator` (`apps/mobile/pwa-assets.config.ts`). The portal is not a PWA, so its `favicon.ico` and `apple-touch-icon-180x180.png` are committed; after changing the source icon run `pnpm icons:generate` and commit the result.
 - **Generated files.** Never edit them; regenerate. `packages/db/drizzle/**`: `pnpm db:generate`. `packages/api-client/openapi.json` and `src/generated/**`: `pnpm api:generate`. Commit both.
-- **Toolchain notes.** `@hey-api/openapi-ts` 0.99.0 crashes on TypeScript 7, so `packages/api-client` has a devDependency `typescript@6.0.3` for generation only; its type check uses the root TypeScript 7. Revisit when hey-api supports TS 7. pnpm 12 has a minimum release age: very new pinned packages need an exact-version entry in `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`. `allowBuilds: { esbuild: false }` is deliberate.
+- **Toolchain notes.** `@hey-api/openapi-ts` 0.99.0 crashes on TypeScript 7, so `packages/api-client` has a devDependency `typescript@6.0.3` for generation only; its type check uses the root TypeScript 7. Revisit when hey-api supports TS 7. pnpm 12 has a minimum release age: very new pinned packages need an exact-version entry in `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`. `allowBuilds: { esbuild: false }` is deliberate. `@playwright/test` and `playwright` are pinned exactly and must match the Playwright image tag (a Vitest test checks this). The root `tsconfig.json` type-checks `scripts/`, `e2e/` and the root configs; it allows `.ts` import extensions because scripts run with plain `node`.
 - **shadcn/ui.** After every `shadcn add`, rewrite `import { cn } from "cn"` to `../../lib/utils` and remove the `cn` npm package. Do not use `@/` imports (Vite does not resolve them). The generated Button is 36 px high; use the large size for touch targets.
 - **Mobile app path.** Base and router basename are `/app/` (the trailing slash keeps "/" inside the PWA scope); manifest `id`, `start_url` and `scope` are `/app/`. Service worker registration lives in `apps/mobile/src/hooks`, once per page.
 
@@ -301,11 +314,23 @@ Copy this slice when you add a feature; it touches every layer. `packages/contra
 - The species list is not in the skeleton.
 - The idempotent-write pattern (client-generated UUIDv7; same ID twice gives one record) arrives in slice 1 with authentication; until then, no write endpoints.
 
-### Planned workflow (not built yet)
+### CI
+
+GitHub Actions, `.github/workflows/ci.yml`, on every pull request and on `workflow_dispatch`. The job names are the required status checks (see `docs/repository-settings.md` for the repository settings, which the maintainer applies by hand):
+
+- `check`: `pnpm check` against a PostGIS service container (includes the generated-files check).
+- `visual`: the Storybook visual tests in the Playwright image. Failures upload `visual-diffs`.
+- `e2e`: Playwright end-to-end tests against `pnpm dev`, in the Playwright image.
+- `scan`: gitleaks over the whole history, and actionlint (`pnpm scan:secrets`, `pnpm lint:workflows`).
+- `release / build` (the reusable `build-release.yml`): builds the release, builds the container image from the tarball, smoke-tests it, and uploads the tarball as artifact `release-<full commit sha>` for 7 days. Pull request 3 deploys from that artifact.
+
+Workflows use no secrets, run with read-only permissions, and pin every action to a full commit SHA. Tools run as pinned Docker images from scripts in `scripts/`, so the same command works locally. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for npm, GitHub Actions and Docker files. It does not update the `container:` and `services:` images inside workflows: update those by hand (the Playwright tag together with the package, see "Visual tests").
+
+### Planned workflow (deployment not built yet)
 
 - **Every change goes through a pull request and CI,** also with one developer. Short-lived branches from `main`.
-- **CI on every pull request:** type check, lint, unit tests, and visual tests of Storybook stories (reference images generated in the Playwright Docker image, not on your own machine).
 - **Deployment:** merging to `main` deploys to staging automatically; production follows after approval. Migrations run on the server in the deploy step, before the services restart. Staging shares 1 GB of RAM with production, so it may be switched off when unused.
+- **Branch protection** on `main` requires the CI checks; see `docs/repository-settings.md`.
 - **Do not install dependencies on the server.** The artifact contains everything.
 
 ### Tests
