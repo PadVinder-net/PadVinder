@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import { recordAudit, type AuditAction, type AuditActor } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
@@ -13,6 +14,7 @@ export type AdminErrorCode =
   | "organization_not_found"
   | "working_group_not_found"
   | "user_not_found"
+  | "invalid_email"
   | "name_taken"
   | "last_platform_admin";
 
@@ -31,11 +33,28 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-export type RoleChange = { userId: string; changed: boolean };
+const emailSchema = z.email().max(254);
 
-// Every writer of users.is_platform_admin must take this lock (account deletion will too).
-// Serializes every change of the platform admin flag, so two revokes cannot both see "two admins".
+/** Normalizes and checks the address; throws `invalid_email` before anything is written. */
+function parseEmail(email: string): string {
+  const address = normalizeEmail(email);
+  if (!emailSchema.safeParse(address).success) throw new AdminError("invalid_email");
+  return address;
+}
+
+/** `created` is true when the grant made a new, empty account for the address. */
+export type RoleChange = { userId: string; changed: boolean; created?: boolean };
+
 const PLATFORM_ADMIN_LOCK = 7_301_100_001;
+
+/**
+ * Every writer of users.is_platform_admin must take this lock (account deletion will too).
+ * Serializes every change of the platform admin flag, so two revokes cannot both see "two admins".
+ * Held until the transaction ends.
+ */
+export async function lockPlatformAdmins(tx: DbTransaction): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${PLATFORM_ADMIN_LOCK})`);
+}
 
 async function requireOrganization(tx: DbTransaction, organizationId: string): Promise<void> {
   const [row] = await tx
@@ -55,25 +74,28 @@ async function requireWorkingGroup(tx: DbTransaction, workingGroupId: string): P
 }
 
 /** Finds the account by address, or creates an empty one. Safe when two callers do it at once. */
-async function findOrCreateUser(tx: DbTransaction, email: string): Promise<string> {
-  const address = normalizeEmail(email);
+async function findOrCreateUser(
+  tx: DbTransaction,
+  email: string,
+): Promise<{ id: string; created: boolean }> {
+  const address = parseEmail(email);
   const [created] = await tx
     .insert(users)
     .values({ name: "", email: address, emailVerified: false })
     .onConflictDoNothing({ target: users.email })
     .returning({ id: users.id });
-  if (created) return created.id;
+  if (created) return { id: created.id, created: true };
   const [existing] = await tx.select({ id: users.id }).from(users).where(eq(users.email, address));
   // A concurrent transaction that inserted the row has committed by now (the insert waited for it).
   if (!existing) throw new AdminError("user_not_found");
-  return existing.id;
+  return { id: existing.id, created: false };
 }
 
 async function requireUser(tx: DbTransaction, email: string): Promise<string> {
   const [row] = await tx
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.email, normalizeEmail(email)));
+    .where(eq(users.email, parseEmail(email)));
   if (!row) throw new AdminError("user_not_found");
   return row.id;
 }
@@ -173,16 +195,16 @@ export async function grantPlatformAdmin(
   actor: AuditActor,
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${PLATFORM_ADMIN_LOCK})`);
-    const userId = await findOrCreateUser(tx, input.email);
+    await lockPlatformAdmins(tx);
+    const { id: userId, created } = await findOrCreateUser(tx, input.email);
     const updated = await tx
       .update(users)
       .set({ isPlatformAdmin: true })
       .where(and(eq(users.id, userId), eq(users.isPlatformAdmin, false)))
       .returning({ id: users.id });
-    if (updated.length === 0) return { userId, changed: false };
+    if (updated.length === 0) return { userId, changed: false, created };
     await audit(tx, actor, null, "role.platform_admin_granted", userId);
-    return { userId, changed: true };
+    return { userId, changed: true, created };
   });
 }
 
@@ -192,8 +214,8 @@ export async function revokePlatformAdmin(
   actor: AuditActor,
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
-    // The lock is held until the transaction ends: a second revoke waits, then counts again.
-    await tx.execute(sql`select pg_advisory_xact_lock(${PLATFORM_ADMIN_LOCK})`);
+    // A second revoke waits for the lock, then counts again.
+    await lockPlatformAdmins(tx);
     const userId = await requireUser(tx, input.email);
     const [target] = await tx
       .select({ isPlatformAdmin: users.isPlatformAdmin })
@@ -218,15 +240,15 @@ export async function grantOrganizationAdmin(
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
     await requireOrganization(tx, input.organizationId);
-    const userId = await findOrCreateUser(tx, input.email);
+    const { id: userId, created } = await findOrCreateUser(tx, input.email);
     const inserted = await tx
       .insert(organizationAdmins)
       .values({ userId, organizationId: input.organizationId })
       .onConflictDoNothing()
       .returning({ userId: organizationAdmins.userId });
-    if (inserted.length === 0) return { userId, changed: false };
+    if (inserted.length === 0) return { userId, changed: false, created };
     await audit(tx, actor, input.organizationId, "role.organization_admin_granted", userId);
-    return { userId, changed: true };
+    return { userId, changed: true, created };
   });
 }
 
@@ -260,7 +282,7 @@ export async function grantCoordinator(
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
     const organizationId = await requireWorkingGroup(tx, input.workingGroupId);
-    const userId = await findOrCreateUser(tx, input.email);
+    const { id: userId, created } = await findOrCreateUser(tx, input.email);
     // One statement: insert, or raise a volunteer; a coordinator row is left alone (no row returned).
     const changed = await tx
       .insert(workingGroupMemberships)
@@ -271,11 +293,11 @@ export async function grantCoordinator(
         setWhere: eq(workingGroupMemberships.role, "volunteer"),
       })
       .returning({ id: workingGroupMemberships.id });
-    if (changed.length === 0) return { userId, changed: false };
+    if (changed.length === 0) return { userId, changed: false, created };
     await audit(tx, actor, organizationId, "role.coordinator_granted", userId, {
       workingGroupId: input.workingGroupId,
     });
-    return { userId, changed: true };
+    return { userId, changed: true, created };
   });
 }
 

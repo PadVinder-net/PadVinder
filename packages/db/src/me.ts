@@ -48,13 +48,13 @@ export async function getMe(db: Db, userId: string): Promise<MeDetails | null> {
     .innerJoin(workingGroups, eq(workingGroups.id, workingGroupMemberships.workingGroupId))
     .innerJoin(organizations, eq(organizations.id, workingGroups.organizationId))
     .where(and(eq(workingGroupMemberships.userId, userId), eq(workingGroups.active, true)))
-    .orderBy(asc(dutch(organizations.name)), asc(dutch(workingGroups.name)));
+    .orderBy(asc(dutch(organizations.name)), asc(dutch(workingGroups.name)), asc(workingGroups.id));
   const admins = await db
     .select({ id: organizations.id, name: organizations.name })
     .from(organizationAdmins)
     .innerJoin(organizations, eq(organizations.id, organizationAdmins.organizationId))
     .where(eq(organizationAdmins.userId, userId))
-    .orderBy(asc(dutch(organizations.name)));
+    .orderBy(asc(dutch(organizations.name)), asc(organizations.id));
   const [flag] = await db
     .select({ isPlatformAdmin: users.isPlatformAdmin })
     .from(users)

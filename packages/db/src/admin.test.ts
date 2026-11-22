@@ -223,7 +223,7 @@ test("grantCoordinator raises a volunteer, with one entry", async () => {
     { email: "v@example.test", workingGroupId: groupId },
     system,
   );
-  expect(raised).toEqual({ userId: v!.id, changed: true });
+  expect(raised).toEqual({ userId: v!.id, changed: true, created: false });
   expect(
     await db()
       .select()
@@ -353,4 +353,20 @@ test("the audit entry of a coordinator grant names the organization and the grou
     details: { workingGroupId: groupId },
   });
   expect(JSON.stringify(entry)).not.toContain("example.test");
+});
+
+test("an invalid address is rejected before any write", async () => {
+  for (const email of ["", "nobody", "a@", `${"a".repeat(250)}@example.test`]) {
+    await expect(grantPlatformAdmin(db(), { email }, system)).rejects.toMatchObject({
+      code: "invalid_email",
+    });
+  }
+  expect(await db().select().from(users)).toEqual([]);
+});
+
+test("a grant reports whether it created the account", async () => {
+  const first = await grantPlatformAdmin(db(), { email: "n@example.test" }, system);
+  const second = await grantPlatformAdmin(db(), { email: "n@example.test" }, system);
+  expect(first.created).toBe(true);
+  expect(second.created).toBe(false);
 });

@@ -124,3 +124,27 @@ test("no command and --help print the help and exit 0", async () => {
   expect(out.join("\n")).toContain("grant-coordinator");
   expect(err).toEqual([]);
 });
+
+test("a grant for an unknown address says it made a new account", async () => {
+  expect(await run("grant-platform-admin", "--email", " New@Example.test ")).toBe(0);
+  expect(await run("grant-platform-admin", "--email", "new@example.test")).toBe(0);
+  expect(out).toEqual(["changed (new account for new@example.test)", "unchanged"]);
+});
+
+test("an invalid address exits 1 and writes nothing", async () => {
+  expect(await run("grant-platform-admin", "--email", "not-an-address")).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/not a valid email/i)]);
+  expect(await t!.db.select().from(users)).toEqual([]);
+});
+
+test("an ID option that is not a UUID exits 1 with one line", async () => {
+  expect(await run("grant-coordinator", "--email", "a@example.test", "--working-group", "x")).toBe(
+    1,
+  );
+  expect(err).toEqual([expect.stringMatching(/--working-group must be an ID/)]);
+});
+
+test("--help warns that grants create accounts", async () => {
+  await run("--help");
+  expect(out.join("\n")).toMatch(/create the account/);
+});

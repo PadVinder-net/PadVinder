@@ -36,6 +36,7 @@ export function createDb(
   });
   // Without a listener, an error on an idle client crashes the process.
   pool.on("error", options.onError ?? ((error) => console.error("Database pool error:", error)));
+  // Keep Drizzle's paramsInErrors off: query parameters can hold personal data and errors are logged.
   const db = drizzle({ client: pool, relations });
   return { db, pool };
 }

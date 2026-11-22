@@ -1,8 +1,3 @@
-import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-import { createDb } from "@padvinder/db";
-import { runAdminCommand } from "./run-admin-command";
-
 /**
  * The maintainer's tool for organizations, working groups and roles. It needs only DATABASE_URL:
  *
@@ -10,6 +5,11 @@ import { runAdminCommand } from "./run-admin-command";
  *
  * Locally: `pnpm admin <command>` from the repository root.
  */
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+import { createDb } from "@padvinder/db";
+import { runAdminCommand } from "./run-admin-command";
+
 /** The message with its causes on one line each; Drizzle hides the real error in the cause. */
 function describe(error: unknown): string {
   const lines: string[] = [];
@@ -25,6 +25,7 @@ function describe(error: unknown): string {
   return lines.join("\ncaused by: ");
 }
 
+/** Reads DATABASE_URL, runs the command from argv and returns the exit code. */
 async function main(): Promise<number> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {

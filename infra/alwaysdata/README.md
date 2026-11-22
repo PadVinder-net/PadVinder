@@ -303,16 +303,16 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 
 ## Administration tool
 
-The maintainer creates organizations and working groups, and gives roles, with `api/dist/admin.js`, which is part of every release. It needs only `DATABASE_URL`. Run it over SSH from the live release, with the same two env files as the services:
+The maintainer creates organizations and working groups, and gives roles, with `api/dist/admin.js`, which is part of every release. It needs only `DATABASE_URL`. Run it over SSH from the live release, with the same two env files as the services. `NODEJS_VERSION=24` is needed because the default Node of an SSH session is not guaranteed (the deploy step sets it too):
 
 ```sh
 ssh <account>@ssh-<account>.alwaysdata.net
 cd padvinder/<env>/current
-node --env-file=release.env --env-file=../../.env api/dist/admin.js list
-node --env-file=release.env --env-file=../../.env api/dist/admin.js --help   # all commands
+NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/admin.js list
+NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/admin.js --help   # all commands
 ```
 
-`list` prints organizations and working groups with their IDs, and no personal data. The other commands print an ID or `changed` or `unchanged`; an error is one line on stderr and exit code 1. Every change is written to the audit log with the system as actor. The first platform admin is made this way: `grant-platform-admin --email <address>`; the person then logs in with that address. The deploy smoke test runs `list` once, so CI proves the tool is in the artifact. Locally, use `pnpm admin <command>` from the repository root.
+`list` prints organizations and working groups with their IDs, and no personal data. The other commands print an ID or `changed` or `unchanged`; an error is one line on stderr and exit code 1. The grant commands create the account when the address is unknown (and then print `changed (new account for <address>)`), so check the address carefully. Every change is written to the audit log with the system as actor. The first platform admin is made this way: `grant-platform-admin --email <address>`; the person then logs in with that address. The deploy smoke test runs `list` once, so CI proves the tool is in the artifact. Locally, use `pnpm admin <command>` from the repository root.
 
 ## Operating notes
 
