@@ -1,5 +1,6 @@
 packages:
   - "apps/*"
+  - "infra/*"
   - "packages/*"
 minimumReleaseAgeExclude:
   - drizzle-kit@1.0.0-rc.6

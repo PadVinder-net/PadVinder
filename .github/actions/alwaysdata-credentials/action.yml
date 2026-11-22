@@ -1,0 +1,78 @@
+name: Alwaysdata SSH credentials
+description: >-
+  Loads the deploy key into a dedicated ssh-agent (socket $RUNNER_TEMP/ssh-agent.sock) and
+  writes the known hosts of an environment to $RUNNER_TEMP/known_hosts. Exports
+  DEPLOY_SSH_AGENT_SOCK, DEPLOY_SSH_AGENT_PID and SSH_KNOWN_HOSTS_FILE for the infra CLIs; not
+  SSH_AUTH_SOCK, so no other ssh or git in the job uses the agent. The key reaches the agent
+  over stdin and never touches the disk. The job must stop the agent in a final step with
+  if: always(): SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k, then remove the socket.
+
+inputs:
+  ssh-key:
+    description: The private deploy key, from the secret DEPLOY_SSH_KEY.
+    required: true
+  known-hosts:
+    description: The known_hosts lines of the SSH host, from the secret SSH_KNOWN_HOSTS.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The inputs go through env:, never into the script: a ${{ }} in run: is pasted into the
+    # shell source before it runs.
+    - name: Load the SSH credentials
+      shell: bash
+      env:
+        DEPLOY_SSH_KEY: ${{ inputs.ssh-key }}
+        SSH_KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        set -euo pipefail
+        if [[ -z "$DEPLOY_SSH_KEY" ]]; then
+          echo "::error::The secret DEPLOY_SSH_KEY is empty or missing in this environment."
+          exit 1
+        fi
+        if [[ -z "$SSH_KNOWN_HOSTS" ]]; then
+          echo "::error::The secret SSH_KNOWN_HOSTS is empty or missing in this environment."
+          exit 1
+        fi
+        umask 077
+        printf '%s\n' "$SSH_KNOWN_HOSTS" >"$RUNNER_TEMP/known_hosts"
+        echo "SSH_KNOWN_HOSTS_FILE=$RUNNER_TEMP/known_hosts" >>"$GITHUB_ENV"
+
+        socket="$RUNNER_TEMP/ssh-agent.sock"
+        rm -f "$socket"
+        # Without the secrets in its environment: the agent outlives this step, and a process's
+        # environment is readable in /proc/<pid>/environ for as long as it runs.
+        agent_env="$(env -u DEPLOY_SSH_KEY -u SSH_KNOWN_HOSTS ssh-agent -s -a "$socket")"
+        pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9][0-9]*\);.*/\1/p' <<<"$agent_env")"
+        if [[ -z "$pid" ]]; then
+          echo "::error::ssh-agent did not start."
+          exit 1
+        fi
+        # Exported before the key is loaded, so the final step of the job finds the agent to
+        # stop even when loading fails.
+        {
+          echo "DEPLOY_SSH_AGENT_SOCK=$socket"
+          echo "DEPLOY_SSH_AGENT_PID=$pid"
+        } >>"$GITHUB_ENV"
+        export SSH_AUTH_SOCK="$socket"
+
+        # Over stdin, so the key is never written to a file and is in no environment but this
+        # step's. ssh-add refuses a key without a final newline, and a pasted secret often lacks
+        # one. The lifetime outlasts the longest job (35 minutes); the final step stops the
+        # agent sooner.
+        if ! printf '%s\n' "$DEPLOY_SSH_KEY" |
+          env -u DEPLOY_SSH_KEY -u SSH_KNOWN_HOSTS SSH_ASKPASS_REQUIRE=never ssh-add -q -t 3600 -; then
+          echo "::error::Could not load DEPLOY_SSH_KEY into ssh-agent. It must be the whole private key file, without a passphrase."
+          exit 1
+        fi
+        if ! keys="$(ssh-add -l)"; then
+          echo "::error::ssh-agent holds no key after loading DEPLOY_SSH_KEY."
+          exit 1
+        fi
+        if [[ "$(wc -l <<<"$keys")" -ne 1 ]]; then
+          echo "::error::ssh-agent holds more than one key; it must hold only the deploy key."
+          exit 1
+        fi
+        # Only the type and size, not the fingerprint or the comment.
+        awk '{ gsub(/[()]/, "", $NF); print "ssh-agent holds the deploy key (" $NF ", " $1 " bits)." }' <<<"$keys"

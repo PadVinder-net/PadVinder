@@ -1,0 +1,11 @@
+{
+  "name": "@padvinder/infra-alwaysdata",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

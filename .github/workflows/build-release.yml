@@ -1,5 +1,6 @@
 # Builds the release tarball, builds a container image from it and smoke-tests that image
-# against a fresh database. Called by CI on every pull request, and by the deployment.
+# against a fresh database. Called by CI on every pull request, by Deploy test, and by the
+# deployment.
 name: Build release
 
 on:
@@ -10,6 +11,20 @@ on:
         type: string
         required: false
         default: ""
+      build-number:
+        description: PADVINDER_BUILD_NUMBER, stamped into release.json. Empty uses this run's number.
+        type: string
+        required: false
+        default: ""
+      retention-days:
+        description: How many days the release artifact is kept.
+        type: number
+        required: false
+        default: 7
+    outputs:
+      artifact-name:
+        description: The name of the uploaded artifact, release-<commit>.
+        value: ${{ jobs.build.outputs.artifact-name }}
 
 permissions:
   contents: read
@@ -21,6 +36,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      artifact-name: ${{ steps.commit.outputs.artifact-name }}
     services:
       postgres:
         image: imresamu/postgis:18-3.6-bookworm
@@ -38,6 +55,7 @@ jobs:
           --health-retries 30
     env:
       PADVINDER_APP_VERSION: ${{ inputs.app-version }}
+      PADVINDER_BUILD_NUMBER: ${{ inputs.build-number || github.run_number }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,10 +74,10 @@ jobs:
           postgres://padvinder:padvinder@host.docker.internal:5432/padvinder
       # For a pull request, HEAD is the merge commit: the commit that was built.
       - id: commit
-        run: echo "sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+        run: echo "artifact-name=release-$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-${{ steps.commit.outputs.sha }}
+          name: ${{ steps.commit.outputs.artifact-name }}
           path: padvinder-release.tar.gz
-          retention-days: 7
+          retention-days: ${{ inputs.retention-days }}
           if-no-files-found: error

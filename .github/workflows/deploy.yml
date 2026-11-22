@@ -1,0 +1,137 @@
+# Builds the release once and deploys that same tarball: to staging on every push to main,
+# then to production after a required reviewer of the production environment approves.
+# Only main deploys: one Alwaysdata account holds both environments, so the staging
+# credentials reach production too, and only reviewed code may hold them. Both GitHub
+# environments allow the branch main only. The secrets live in those environments; the
+# release job has no environment and sees none of them.
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  # By hand: run it from main (re-runs a deploy). From another branch the deploy jobs skip.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No workflow-level concurrency group: each deploy job has its own, which queues deploys of
+# one environment instead of cancelling a deploy halfway. provision.yml and
+# staging-services.yml use the same groups.
+
+jobs:
+  release:
+    uses: ./.github/workflows/build-release.yml
+    with:
+      build-number: ${{ github.run_number }}
+      retention-days: 30
+
+  staging:
+    needs: release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Worst case: setup, upload, migrations (at most 10 minutes), restart and health check,
+    # then a rollback with its own restart and health check. Room for all of it.
+    timeout-minutes: 35
+    environment:
+      name: staging
+      url: https://staging.padvinder.net
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.release.outputs.artifact-name }}
+      # After the dependencies are installed, so no install script can use the key.
+      - uses: ./.github/actions/alwaysdata-credentials
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Deploy
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          COMMIT: ${{ github.sha }}
+        run: >-
+          pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz
+          --commit "$COMMIT"
+      - name: Stop the SSH agent
+        if: always()
+        run: |
+          if [[ -n "${DEPLOY_SSH_AGENT_PID:-}" ]]; then
+            SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k >/dev/null 2>&1 ||
+              echo "The SSH agent had already stopped."
+          fi
+          rm -f "$RUNNER_TEMP/ssh-agent.sock"
+
+  production:
+    needs: [release, staging]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Worst case: setup, upload, migrations (at most 10 minutes), restart and health check,
+    # then a rollback with its own restart and health check. Room for all of it.
+    timeout-minutes: 35
+    # The required reviewers of this environment are the approval.
+    environment:
+      name: production
+      url: https://padvinder.net
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # The approval may come long after the push. If main has moved on since, a newer run
+      # deploys a newer commit: do not put this older one live in between.
+      - name: Check that this is still the head of main
+        id: head
+        env:
+          COMMIT: ${{ github.sha }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          head="$(git ls-remote "$REPOSITORY_URL" refs/heads/main | cut -f1)"
+          if [[ -z "$head" ]]; then
+            echo "::error::Could not read the head of main."
+            exit 1
+          fi
+          if [[ "$head" == "$COMMIT" ]]; then
+            echo "current=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipped: main has moved on to $head since $COMMIT. Its own run deploys it."
+            echo "current=false" >>"$GITHUB_OUTPUT"
+          fi
+      - if: steps.head.outputs.current == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.release.outputs.artifact-name }}
+      # After the dependencies are installed, so no install script can use the key.
+      - if: steps.head.outputs.current == 'true'
+        uses: ./.github/actions/alwaysdata-credentials
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Deploy
+        if: steps.head.outputs.current == 'true'
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          COMMIT: ${{ github.sha }}
+        run: >-
+          pnpm infra:deploy --environment production --tarball padvinder-release.tar.gz
+          --commit "$COMMIT"
+      - name: Stop the SSH agent
+        if: always()
+        run: |
+          if [[ -n "${DEPLOY_SSH_AGENT_PID:-}" ]]; then
+            SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k >/dev/null 2>&1 ||
+              echo "The SSH agent had already stopped."
+          fi
+          rm -f "$RUNNER_TEMP/ssh-agent.sock"

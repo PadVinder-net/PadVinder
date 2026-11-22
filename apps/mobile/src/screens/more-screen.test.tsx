@@ -33,3 +33,10 @@ test("more screen shows the load error", async () => {
   renderScreen();
   expect(await screen.findByText(/De server is niet bereikbaar/)).toBeVisible();
 });
+
+test("more screen shows the app version and build", async () => {
+  mockFetch({ "/api/health": healthyFixture });
+  renderScreen();
+  expect(screen.getByText("App-versie 2027.0.0 (dev)")).toBeVisible();
+  await screen.findByText("Alles werkt");
+});

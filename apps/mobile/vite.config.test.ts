@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
 import type { ConfigEnv, UserConfig } from "vite";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { manifest } from "./pwa-manifest";
@@ -77,4 +78,18 @@ test("the maskable and Apple touch icons are full-bleed in the brand color", () 
     maskable: { padding: 0, resizeOptions: { background: "#c8102e" } },
     apple: { padding: 0, resizeOptions: { background: "#c8102e" } },
   });
+});
+
+test("defaults the app version to package.json's version", () => {
+  vi.stubEnv("PADVINDER_APP_VERSION", "");
+  const { version } = JSON.parse(readFileSync(`${import.meta.dirname}/package.json`, "utf8"));
+  expect(version).toBe("2027.0.0");
+  expect(resolve().define?.__APP_VERSION__).toBe(JSON.stringify(version));
+});
+
+test("stamps PADVINDER_BUILD_NUMBER, defaulting to dev", () => {
+  vi.stubEnv("PADVINDER_BUILD_NUMBER", "57");
+  expect(resolve().define?.__APP_BUILD__).toBe(JSON.stringify("57"));
+  vi.stubEnv("PADVINDER_BUILD_NUMBER", "");
+  expect(resolve().define?.__APP_BUILD__).toBe(JSON.stringify("dev"));
 });
