@@ -1,4 +1,4 @@
-import { liveEventAudiences } from "@padvinder/contracts";
+import { liveEventAudiences, type LiveEvent } from "@padvinder/contracts";
 import { type Db, liveEventsChannel } from "@padvinder/db";
 import type { ServerResponse } from "node:http";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -27,7 +27,8 @@ export const eventsRoutes: FastifyPluginAsyncZod<{
   });
 
   // Needs a login (401 before the stream opens). Each event goes only to the connections of its
-  // audience (the design, "Live events"); the stream checks its session every `sessionRecheckMs`.
+  // audience (the design, "Live events"); the stream checks its session every `sessionRecheckMs`
+  // and reloads its rights when an `access-changed` event for its user passes.
   app.get(
     "/events",
     { preHandler: app.requireActor, schema: { hide: true } },
@@ -45,7 +46,7 @@ export const eventsRoutes: FastifyPluginAsyncZod<{
       });
       open.add(raw);
 
-      // Set by `requireActor`. Replaced by every successful check, so changed rights take effect.
+      // Set by `requireActor`. Replaced by every successful load, so changed rights take effect.
       let actor: Actor = request.actor!;
       let ended = false;
 
@@ -54,24 +55,23 @@ export const eventsRoutes: FastifyPluginAsyncZod<{
         raw.write(chunk);
       };
 
-      // The hub has already validated the event against the channel's schema.
-      const unsubscribe = notifications.subscribe(liveEventsChannel, (event) => {
-        if (!shouldDeliver(actor, liveEventAudiences[event.type], addressOf(event))) return;
-        write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-      });
-      const keepalive = setInterval(() => write(": keepalive\n\n"), SSE_KEEPALIVE_MS);
-
-      // Loads the actor again from the stream's own cookie. A session that is gone ends the
-      // stream; the browser's reconnect then gets a 401. A database failure keeps the old actor
-      // and tries again at the next interval: ending the stream would make every open app
-      // reconnect at once while the database is struggling.
-      let checking = false;
-      const check = async () => {
-        if (checking || ended) return;
-        checking = true;
+      // Loads the actor again from the stream's own cookie: every `sessionRecheckMs`, and when an
+      // `access-changed` event for this user passes. No actor any more (the session or the account
+      // is gone) ends the stream; the browser's reconnect then gets a 401. A database failure
+      // keeps the old actor: ending the stream would make every open app reconnect at once while
+      // the database is struggling. Loads may overlap (a check is running when an event needs a
+      // reload); each one is numbered when it starts, and a load never replaces the actor of a
+      // load that started after it, so an older answer cannot overwrite a newer one.
+      let loadsStarted = 0;
+      let newestApplied = 0;
+      let loading = 0;
+      const reload = async () => {
+        const number = ++loadsStarted;
+        loading++;
         try {
           const fresh = await loadActor(app, db, request);
-          if (ended) return;
+          if (ended || number < newestApplied) return;
+          newestApplied = number;
           if (fresh === null) end();
           else actor = fresh;
         } catch (error) {
@@ -86,10 +86,37 @@ export const eventsRoutes: FastifyPluginAsyncZod<{
             "Live events session check failed; keeping the stream open",
           );
         } finally {
-          checking = false;
+          loading--;
         }
       };
-      const recheck = setInterval(() => void check(), sessionRecheckMs);
+
+      // Events are handled one at a time, in order: an `access-changed` for this user reloads
+      // the actor before anything is decided about it or about the events after it. The event is
+      // then delivered with the fresh actor, or with the old one if the database failed.
+      let queue = Promise.resolve();
+      const handle = async (event: LiveEvent) => {
+        if (ended) return;
+        if (event.type === "access-changed" && event.userId === actor.userId) {
+          await reload();
+          if (ended) return;
+        }
+        if (!shouldDeliver(actor, liveEventAudiences[event.type], addressOf(event))) return;
+        write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      };
+      // The hub has already validated the event against the channel's schema.
+      const unsubscribe = notifications.subscribe(liveEventsChannel, (event) => {
+        queue = queue
+          .then(() => handle(event))
+          .catch((error: unknown) => {
+            request.log.error({ errorName: (error as Error).name }, "Live event not handled");
+          });
+      });
+      const keepalive = setInterval(() => write(": keepalive\n\n"), SSE_KEEPALIVE_MS);
+
+      // The periodic check skips a turn while a load is still running; that load is fresh enough.
+      const recheck = setInterval(() => {
+        if (loading === 0 && !ended) void reload();
+      }, sessionRecheckMs);
 
       const cleanup = () => {
         if (ended) return;

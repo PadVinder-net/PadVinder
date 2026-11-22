@@ -2,6 +2,7 @@ import { z } from "zod";
 import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 import { recordAudit, type AuditAction, type AuditActor } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
+import { notifyAccessChanged } from "./notifications";
 import {
   organizationAdmins,
   organizations,
@@ -191,7 +192,11 @@ export async function listOrganizations(db: Db): Promise<
   }));
 }
 
-async function audit(
+/**
+ * Records a change of the user's rights: the audit entry, and the access-changed event that makes
+ * their open apps and streams load the new rights. Only for a change that happened.
+ */
+async function recordRoleChange(
   tx: DbTransaction,
   actor: AuditActor,
   organizationId: string | null,
@@ -206,6 +211,7 @@ async function audit(
     subject: { type: "user", id: userId },
     details,
   });
+  await notifyAccessChanged(tx, userId);
 }
 
 export async function grantPlatformAdmin(
@@ -222,7 +228,7 @@ export async function grantPlatformAdmin(
       .where(and(eq(users.id, userId), eq(users.isPlatformAdmin, false)))
       .returning({ id: users.id });
     if (updated.length === 0) return { userId, changed: false, created };
-    await audit(tx, actor, null, "role.platform_admin_granted", userId);
+    await recordRoleChange(tx, actor, null, "role.platform_admin_granted", userId);
     return { userId, changed: true, created };
   });
 }
@@ -252,7 +258,7 @@ export async function revokePlatformAdmin(
       );
     if (others === 0) throw new AdminError("last_platform_admin");
     await tx.update(users).set({ isPlatformAdmin: false }).where(eq(users.id, userId));
-    await audit(tx, actor, null, "role.platform_admin_revoked", userId);
+    await recordRoleChange(tx, actor, null, "role.platform_admin_revoked", userId);
     return { userId, changed: true };
   });
 }
@@ -271,7 +277,13 @@ export async function grantOrganizationAdmin(
       .onConflictDoNothing()
       .returning({ userId: organizationAdmins.userId });
     if (inserted.length === 0) return { userId, changed: false, created };
-    await audit(tx, actor, input.organizationId, "role.organization_admin_granted", userId);
+    await recordRoleChange(
+      tx,
+      actor,
+      input.organizationId,
+      "role.organization_admin_granted",
+      userId,
+    );
     return { userId, changed: true, created };
   });
 }
@@ -294,7 +306,13 @@ export async function revokeOrganizationAdmin(
       )
       .returning({ userId: organizationAdmins.userId });
     if (deleted.length === 0) return { userId, changed: false };
-    await audit(tx, actor, input.organizationId, "role.organization_admin_revoked", userId);
+    await recordRoleChange(
+      tx,
+      actor,
+      input.organizationId,
+      "role.organization_admin_revoked",
+      userId,
+    );
     return { userId, changed: true };
   });
 }
@@ -318,7 +336,7 @@ export async function grantCoordinator(
       })
       .returning({ id: workingGroupMemberships.id });
     if (changed.length === 0) return { userId, changed: false, created };
-    await audit(tx, actor, organizationId, "role.coordinator_granted", userId, {
+    await recordRoleChange(tx, actor, organizationId, "role.coordinator_granted", userId, {
       workingGroupId: input.workingGroupId,
     });
     return { userId, changed: true, created };
@@ -345,7 +363,7 @@ export async function revokeCoordinator(
       )
       .returning({ id: workingGroupMemberships.id });
     if (updated.length === 0) return { userId, changed: false };
-    await audit(tx, actor, organizationId, "role.coordinator_revoked", userId, {
+    await recordRoleChange(tx, actor, organizationId, "role.coordinator_revoked", userId, {
       workingGroupId: input.workingGroupId,
     });
     return { userId, changed: true };

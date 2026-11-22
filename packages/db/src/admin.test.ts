@@ -1,4 +1,6 @@
+import type { LiveEvent } from "@padvinder/contracts";
 import { asc, eq } from "drizzle-orm";
+import pg from "pg";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import {
   AdminError,
@@ -14,6 +16,7 @@ import {
   revokePlatformAdmin,
 } from "./admin";
 import { getAccess } from "./access";
+import { liveEventsChannel, notify } from "./notifications";
 import type { AuditActor } from "./audit-log";
 import { auditLogEntries, users, workingGroupMemberships, workingGroups } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
@@ -401,4 +404,108 @@ test("a grant reports whether it created the account", async () => {
   const second = await grantPlatformAdmin(db(), { email: "n@example.test" }, system);
   expect(first.created).toBe(true);
   expect(second.created).toBe(false);
+});
+
+/**
+ * Listens on the live events channel on a connection of its own. `drain()` sends a marker in a
+ * transaction of its own and returns everything that arrived before it: PostgreSQL delivers
+ * notifications in commit order, so whatever an earlier transaction sent has arrived by then.
+ */
+async function listenForLiveEvents() {
+  const listener = new pg.Client({ connectionString: t!.url });
+  await listener.connect();
+  const received: LiveEvent[] = [];
+  let arrived: (() => void) | undefined;
+  listener.on("notification", (message) => {
+    received.push(liveEventsChannel.schema.parse(JSON.parse(message.payload ?? "")));
+    arrived?.();
+  });
+  await listener.query(`LISTEN ${liveEventsChannel.name}`);
+  let markers = 0;
+  return {
+    async drain(): Promise<LiveEvent[]> {
+      const beatAt = new Date(Date.UTC(2027, 2, 1, 19, 30, markers++)).toISOString();
+      await db().transaction((tx) =>
+        notify(tx, liveEventsChannel, { type: "worker-heartbeat", beatAt }),
+      );
+      const isMarker = (e: LiveEvent) => e.type === "worker-heartbeat" && e.beatAt === beatAt;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("The marker did not arrive")), 5_000);
+        const check = () => {
+          if (!received.some(isMarker)) return;
+          clearTimeout(timer);
+          resolve();
+        };
+        arrived = check;
+        check();
+      });
+      const index = received.findIndex(isMarker);
+      return received.splice(0, index + 1).slice(0, index);
+    },
+    close: () => listener.end(),
+  };
+}
+
+test("every grant and revoke that changes something sends access-changed for that user", async () => {
+  const { orgId, groupId } = await setup();
+  const events = await listenForLiveEvents();
+  try {
+    const changed = (userId: string) => [{ type: "access-changed", userId }];
+
+    const platform = await grantPlatformAdmin(db(), { email: "p@example.test" }, system);
+    expect(await events.drain()).toEqual(changed(platform.userId));
+    await grantPlatformAdmin(db(), { email: "q@example.test" }, system);
+    await events.drain();
+    expect((await revokePlatformAdmin(db(), { email: "p@example.test" }, system)).userId).toBe(
+      platform.userId,
+    );
+    expect(await events.drain()).toEqual(changed(platform.userId));
+
+    const orgInput = { email: "o@example.test", organizationId: orgId };
+    const orgAdmin = await grantOrganizationAdmin(db(), orgInput, system);
+    expect(await events.drain()).toEqual(changed(orgAdmin.userId));
+    await revokeOrganizationAdmin(db(), orgInput, system);
+    expect(await events.drain()).toEqual(changed(orgAdmin.userId));
+
+    const groupInput = { email: "c@example.test", workingGroupId: groupId };
+    const coordinator = await grantCoordinator(db(), groupInput, system);
+    expect(await events.drain()).toEqual(changed(coordinator.userId));
+    await revokeCoordinator(db(), groupInput, system);
+    expect(await events.drain()).toEqual(changed(coordinator.userId));
+  } finally {
+    await events.close();
+  }
+});
+
+test("a grant or revoke that changes nothing, or fails, sends no event", async () => {
+  const { orgId, groupId } = await setup();
+  await grantPlatformAdmin(db(), { email: "p@example.test" }, system);
+  await grantOrganizationAdmin(db(), { email: "o@example.test", organizationId: orgId }, system);
+  await grantCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system);
+  const events = await listenForLiveEvents();
+  try {
+    expect((await grantPlatformAdmin(db(), { email: "p@example.test" }, system)).changed).toBe(
+      false,
+    );
+    await expect(
+      revokePlatformAdmin(db(), { email: "p@example.test" }, system),
+    ).rejects.toMatchObject({ code: "last_platform_admin" });
+    expect((await revokePlatformAdmin(db(), { email: "o@example.test" }, system)).changed).toBe(
+      false,
+    );
+    const orgInput = { email: "o@example.test", organizationId: orgId };
+    expect((await grantOrganizationAdmin(db(), orgInput, system)).changed).toBe(false);
+    expect(
+      (await revokeOrganizationAdmin(db(), { ...orgInput, email: "c@example.test" }, system))
+        .changed,
+    ).toBe(false);
+    const groupInput = { email: "c@example.test", workingGroupId: groupId };
+    expect((await grantCoordinator(db(), groupInput, system)).changed).toBe(false);
+    expect(
+      (await revokeCoordinator(db(), { ...groupInput, email: "o@example.test" }, system)).changed,
+    ).toBe(false);
+    expect(await events.drain()).toEqual([]);
+  } finally {
+    await events.close();
+  }
 });

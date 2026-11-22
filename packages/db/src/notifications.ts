@@ -51,3 +51,26 @@ export async function notify<S extends z.ZodType>(
 
 /** All live events for the SSE stream: one channel, the payload is the `liveEventSchema` union. */
 export const liveEventsChannel = defineChannel("live_events", liveEventSchema);
+
+/**
+ * Tells the user's open apps and event streams that their memberships, roles or requests
+ * changed. Call it in the transaction that makes the change, and only when something changed.
+ */
+export async function notifyAccessChanged(tx: DbTransaction, userId: string): Promise<void> {
+  await notify(tx, liveEventsChannel, { type: "access-changed", userId });
+}
+
+/**
+ * Tells the coordinators of the group (and the admins of its organization) that a membership
+ * request was created, withdrawn or decided. Call it in the transaction that makes the change.
+ */
+export async function notifyMembershipRequestsChanged(
+  tx: DbTransaction,
+  group: { workingGroupId: string; organizationId: string },
+): Promise<void> {
+  await notify(tx, liveEventsChannel, {
+    type: "membership-requests-changed",
+    workingGroupId: group.workingGroupId,
+    organizationId: group.organizationId,
+  });
+}

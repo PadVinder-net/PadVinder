@@ -4,6 +4,8 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import {
   defineChannel,
   notify,
+  notifyAccessChanged,
+  notifyMembershipRequestsChanged,
   liveEventsChannel,
   type NotificationChannel,
 } from "./notifications";
@@ -52,6 +54,24 @@ async function nextPayload(): Promise<string> {
   }
   return payloads.shift()!;
 }
+
+test("notifyAccessChanged sends access-changed with the user's ID only", async () => {
+  const userId = "0192f1a0-0000-7000-8000-000000000003";
+  await t!.db.transaction((tx) => notifyAccessChanged(tx, userId));
+  expect(JSON.parse(await nextPayload())).toEqual({ type: "access-changed", userId });
+});
+
+test("notifyMembershipRequestsChanged sends the group and its organization only", async () => {
+  const group = {
+    workingGroupId: "0192f1a0-0000-7000-8000-000000000001",
+    organizationId: "0192f1a0-0000-7000-8000-000000000002",
+  };
+  await t!.db.transaction((tx) => notifyMembershipRequestsChanged(tx, group));
+  expect(JSON.parse(await nextPayload())).toEqual({
+    type: "membership-requests-changed",
+    ...group,
+  });
+});
 
 test("delivers a payload that parses with the channel schema", async () => {
   const event = { type: "worker-heartbeat", beatAt: "2027-03-01T19:30:00.000Z" } as const;
