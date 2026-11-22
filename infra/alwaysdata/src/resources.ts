@@ -67,6 +67,11 @@ export function databaseUserPermissions(
   };
 }
 
+/** A host as Alwaysdata stores it on a site: with the root path, `example.org/`. */
+export function siteAddress(host: string): string {
+  return host.endsWith("/") ? host : `${host}/`;
+}
+
 export function desiredResources(
   account: string,
   env: EnvironmentName,
@@ -75,7 +80,11 @@ export function desiredResources(
   const environment = environments[env];
   const directory = environmentDirectory(env);
   const database = databaseName(account, env);
-  const [firstAddress] = environment.addresses;
+  // Alwaysdata stores a site address as host plus path, the root being `/`: it returns
+  // `staging.padvinder.net/` for `staging.padvinder.net` (22 November 2026). Send and match
+  // that form, so the site is found and its addresses compare equal.
+  const siteAddresses = environment.addresses.map(siteAddress);
+  const [firstAddress] = siteAddresses;
   if (firstAddress === undefined) throw new Error(`The ${env} environment has no address`);
 
   const service = (program: ServiceProgram): DesiredResource => {
@@ -139,7 +148,7 @@ export function desiredResources(
         type: "reverse_proxy",
         // UNVERIFIED: whether the API keeps the order; lists of plain values are compared as
         // sets, so another order is not a change.
-        addresses: environment.addresses,
+        addresses: siteAddresses,
         ssl_force: true,
         // The reverse proxy's target is `url`: the API rejects a reverse_proxy site without it
         // (22 November 2026). UNVERIFIED: whether the proxy accepts the services hostname

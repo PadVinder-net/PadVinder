@@ -113,7 +113,7 @@ test("without --apply it prints the plan and changes nothing", async () => {
   expect(calls).toEqual([]);
   expect(output.join("\n")).toMatch(/create\s+service\s+padvinder-api \(staging\)/);
   // A site is labeled by its address: the API does not keep a site's name.
-  expect(output.join("\n")).toMatch(/create\s+site\s+staging\.padvinder\.net /);
+  expect(output.join("\n")).toMatch(/create\s+site\s+staging\.padvinder\.net\/ /);
 });
 
 test("plan output never contains the password", async () => {
@@ -441,7 +441,7 @@ test("--inspect shows only field types of other resources, and the managed value
     {
       id: expect.any(Number),
       type: "reverse_proxy",
-      addresses: ["staging.padvinder.net"],
+      addresses: ["staging.padvinder.net/"],
       ssl_force: true,
       url: "http://services-<account>.alwaysdata.net:8301",
     },

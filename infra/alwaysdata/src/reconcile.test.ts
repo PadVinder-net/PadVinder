@@ -37,7 +37,7 @@ test("an empty account plans five creates in order, and no SSH user", async () =
   expect(plan.map((c) => [c.action, c.kind, c.identity])).toEqual([
     ["create", "database", "acme_staging"],
     ["create", "database/user", "acme_staging"],
-    ["create", "site", "staging.padvinder.net"],
+    ["create", "site", "staging.padvinder.net/"],
     ["create", "service", "padvinder-api (staging)"],
     ["create", "service", "padvinder-worker (staging)"],
   ]);
@@ -63,10 +63,10 @@ test("apply creates the resources; the services name no SSH user", async () => {
     password,
     permissions: { acme_staging: "FULL" },
   });
-  const site = stored("site", "addresses", "staging.padvinder.net");
+  const site = stored("site", "addresses", "staging.padvinder.net/");
   expect(site).toMatchObject({
     type: "reverse_proxy",
-    addresses: ["staging.padvinder.net"],
+    addresses: ["staging.padvinder.net/"],
     ssl_force: true,
     url: "http://services-acme.alwaysdata.net:8301",
   });
@@ -321,17 +321,17 @@ test("the account as found on 22 November 2026: only the services are created", 
   fake.resources.get("site")?.push(
     {
       id: 30,
-      name: "padvinder.net",
+      name: "",
       type: "reverse_proxy",
-      addresses: ["padvinder.net"],
+      addresses: ["padvinder.net/"],
       ssl_force: true,
       url: "http://services-acme.alwaysdata.net:8300",
     },
     {
       id: 31,
-      name: "staging.padvinder.net",
+      name: "",
       type: "reverse_proxy",
-      addresses: ["staging.padvinder.net"],
+      addresses: ["staging.padvinder.net/"],
       ssl_force: true,
       url: "http://services-acme.alwaysdata.net:8301",
     },
@@ -341,7 +341,7 @@ test("the account as found on 22 November 2026: only the services are created", 
   expect(plan.map((c) => [c.action, c.kind, c.identity, c.id])).toEqual([
     ["ok", "database", "acme_staging", 11],
     ["ok", "database/user", "acme_staging", 20],
-    ["ok", "site", "staging.padvinder.net", 31],
+    ["ok", "site", "staging.padvinder.net/", 31],
     ["create", "service", "padvinder-api (staging)", undefined],
     ["create", "service", "padvinder-worker (staging)", undefined],
   ]);
@@ -358,7 +358,7 @@ test("a site with differing managed fields is updated, never created again", asy
     id: 31,
     name: "something else",
     type: "reverse_proxy",
-    addresses: ["staging.padvinder.net"],
+    addresses: ["staging.padvinder.net/"],
     ssl_force: false,
     url: "http://services-acme.alwaysdata.net:8301",
   });
@@ -366,7 +366,7 @@ test("a site with differing managed fields is updated, never created again", asy
   expect(plan[2]).toMatchObject({
     action: "update",
     kind: "site",
-    identity: "staging.padvinder.net",
+    identity: "staging.padvinder.net/",
     id: 31,
     fields: ["ssl_force"],
   });
