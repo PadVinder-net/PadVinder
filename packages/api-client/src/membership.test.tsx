@@ -16,7 +16,10 @@ import {
   listMembersQueryKey,
   listMembershipRequestsQueryKey,
   listWorkingGroupsQueryKey,
+  mayOpenMembers,
+  mayRemoveMember,
   memberListWorkingGroups,
+  relationToWorkingGroup,
   reviewableWorkingGroups,
   useApproveMembershipRequest,
   useCreateMembershipRequest,
@@ -89,6 +92,52 @@ describe("which working groups a user reviews and sees the members of", () => {
     expect(reviewableWorkingGroups(meFixture, workingGroupsFixture)).toEqual([]);
     expect(memberListWorkingGroups(meFixture, workingGroupsFixture)).toEqual([noord]);
     expect(memberListWorkingGroups(applicantMeFixture, workingGroupsFixture)).toEqual([]);
+  });
+});
+
+describe("what a user may do with the members of a working group", () => {
+  const coordinatorOfNoord: MeResponse = {
+    ...meFixture,
+    memberships: [
+      { id: "0192f3c0-0000-7000-8000-0000000000c1", isCoordinator: true, workingGroup: noord },
+      { id: "0192f3c0-0000-7000-8000-0000000000c2", isCoordinator: false, workingGroup: dorp },
+    ],
+  };
+  const adminOfVoorbeeldstad: MeResponse = {
+    ...applicantMeFixture,
+    organizationAdminOf: [noord.organization],
+  };
+  const platformAdmin: MeResponse = {
+    ...applicantMeFixture,
+    user: { ...applicantMeFixture.user, isPlatformAdmin: true },
+  };
+
+  test("the relation is the strongest one, as on the server", () => {
+    expect(relationToWorkingGroup(platformAdmin, dorp)).toBe("platformAdmin");
+    expect(relationToWorkingGroup(adminOfVoorbeeldstad, zuidOost)).toBe("organizationAdmin");
+    expect(relationToWorkingGroup(adminOfVoorbeeldstad, dorp)).toBe("outsider");
+    expect(relationToWorkingGroup(coordinatorOfNoord, noord)).toBe("coordinator");
+    expect(relationToWorkingGroup(coordinatorOfNoord, dorp)).toBe("volunteer");
+    expect(relationToWorkingGroup(coordinatorOfNoord, zuidOost)).toBe("outsider");
+  });
+
+  test("a coordinator removes volunteers of their group; admins remove anyone", () => {
+    expect(mayRemoveMember(coordinatorOfNoord, noord, false)).toBe(true);
+    expect(mayRemoveMember(coordinatorOfNoord, noord, true)).toBe(false);
+    expect(mayRemoveMember(coordinatorOfNoord, dorp, false)).toBe(false);
+    expect(mayRemoveMember(coordinatorOfNoord, zuidOost, false)).toBe(false);
+    expect(mayRemoveMember(adminOfVoorbeeldstad, noord, true)).toBe(true);
+    expect(mayRemoveMember(adminOfVoorbeeldstad, dorp, false)).toBe(false);
+    expect(mayRemoveMember(platformAdmin, dorp, true)).toBe(true);
+    expect(mayRemoveMember(meFixture, noord, false)).toBe(false);
+  });
+
+  test("only coordinators and admins open a member", () => {
+    expect(mayOpenMembers(coordinatorOfNoord, noord)).toBe(true);
+    expect(mayOpenMembers(coordinatorOfNoord, dorp)).toBe(false);
+    expect(mayOpenMembers(adminOfVoorbeeldstad, salamanderbrug)).toBe(true);
+    expect(mayOpenMembers(platformAdmin, dorp)).toBe(true);
+    expect(mayOpenMembers(meFixture, noord)).toBe(false);
   });
 });
 

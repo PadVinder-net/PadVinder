@@ -10,6 +10,8 @@ test("a platform admin sees a working system on the Meer tab", async ({ page, co
   await page.goto("/app/");
   await page.getByRole("link", { name: "Meer" }).click();
   await expect(page).toHaveURL(/\/app\/more$/);
+  await page.getByRole("link", { name: "Systeemstatus" }).click();
+  await expect(page).toHaveURL(/\/app\/more\/system$/);
   await expect(page.getByRole("heading", { name: "Systeemstatus" })).toBeVisible();
   await expect(page.getByText("Alles werkt")).toBeVisible({ timeout: 15_000 });
 });
@@ -24,9 +26,13 @@ test("a volunteer does not see the system status", async ({ page, context }) => 
   await expect(page.getByText("Systeemstatus")).toHaveCount(0);
 });
 
-test("a deep link to /app/more works on reload", async ({ page, context }) => {
-  await createSession(context, newAddress("system"));
-  await page.goto("/app/more");
+test("a deep link below /app/more works on reload", async ({ page, context }) => {
+  // A platform admin gets the tabs without a working group; a fresh account would get the picker.
+  const address = newAddress("system");
+  runAdmin("grant-platform-admin", "--email", address);
+  await createSession(context, address);
+  await page.goto("/app/more/system");
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Meer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Systeemstatus" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Meer" })).toHaveAttribute("aria-current", "page");
 });

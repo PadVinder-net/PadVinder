@@ -3,16 +3,15 @@ import {
   apiErrorMessage,
   listWorkingGroupsOptions,
   useCreateMembershipRequest,
-  useDeleteAccount,
   useLogOut,
-  useUpdateMe,
   useWithdrawMembershipRequest,
   type GetMeResponse,
 } from "@padvinder/api-client";
-import { Button, ProfileForm, WaitingForApproval, WorkingGroupPicker } from "@padvinder/ui";
+import { Button, WaitingForApproval, WorkingGroupPicker } from "@padvinder/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { newId } from "../lib/new-id";
+import { ProfileEditor } from "../screens/more/profile-screen";
 
 const connectionMessage = "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.";
 const goneMessage = "Deze werkgroep bestaat niet meer. Kies een andere werkgroep.";
@@ -161,27 +160,12 @@ function Choose({ rejectedFrom }: { rejectedFrom?: string }) {
 }
 
 function ProfileScreen({ me, onBack }: { me: GetMeResponse; onBack(): void }) {
-  const updateMe = useUpdateMe();
-  const deleteAccount = useDeleteAccount();
-  const error = deleteAccount.isError
-    ? apiErrorMessage(apiErrorCode(deleteAccount.error))
-    : updateMe.isError
-      ? connectionMessage
-      : undefined;
   return (
     <main className="flex flex-col gap-4 p-6">
       <Button variant="outline" className="h-12 self-start text-lg" onClick={onBack}>
         Terug
       </Button>
-      <ProfileForm
-        me={me}
-        saving={updateMe.isPending}
-        saved={updateMe.isSuccess}
-        deleting={deleteAccount.isPending}
-        error={error}
-        onSave={({ name, phone }) => updateMe.mutate({ name, phone })}
-        onDelete={() => deleteAccount.mutate()}
-      />
+      <ProfileEditor me={me} />
     </main>
   );
 }

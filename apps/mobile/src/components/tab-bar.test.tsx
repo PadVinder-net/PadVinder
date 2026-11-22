@@ -29,3 +29,9 @@ test("only the current tab is marked as the current page", () => {
   expect(screen.getByRole("link", { name: "Kaart" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Vanavond" })).not.toHaveAttribute("aria-current");
 });
+
+test("the Meer tab stays current on the screens below it, Vanavond only on its own", () => {
+  renderAt("/more/membership-requests/0192f3c0-0000-7000-8000-0000000000d2");
+  expect(screen.getByRole("link", { name: "Meer" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", { name: "Vanavond" })).not.toHaveAttribute("aria-current");
+});

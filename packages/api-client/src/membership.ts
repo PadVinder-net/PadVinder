@@ -194,3 +194,49 @@ function withAdministered(
     (group) => groupIds.has(group.id) || administered.has(group.organization.id),
   );
 }
+
+/** The strongest relation a user has to a working group; the same order as on the server. */
+export type WorkingGroupRelation =
+  | "platformAdmin"
+  | "organizationAdmin"
+  | "coordinator"
+  | "volunteer"
+  | "outsider";
+
+/**
+ * The app's copy of the server's `relationTo` (apps/api/src/permissions/rules.ts), read from me.
+ * Only for showing or hiding buttons: the API decides, and the app shows its answer.
+ */
+export function relationToWorkingGroup(
+  me: MeResponse,
+  group: WorkingGroupSummary,
+): WorkingGroupRelation {
+  if (me.user.isPlatformAdmin) return "platformAdmin";
+  if (me.organizationAdminOf.some((organization) => organization.id === group.organization.id))
+    return "organizationAdmin";
+  const membership = me.memberships.find((m) => m.workingGroup.id === group.id);
+  if (!membership) return "outsider";
+  return membership.isCoordinator ? "coordinator" : "volunteer";
+}
+
+const staff: readonly WorkingGroupRelation[] = [
+  "platformAdmin",
+  "organizationAdmin",
+  "coordinator",
+];
+
+/** Coordinators and admins open a member to see the contact details. */
+export function mayOpenMembers(me: MeResponse, group: WorkingGroupSummary): boolean {
+  return staff.includes(relationToWorkingGroup(me, group));
+}
+
+/** A coordinator removes volunteers of their group; admins remove anyone. */
+export function mayRemoveMember(
+  me: MeResponse,
+  group: WorkingGroupSummary,
+  memberIsCoordinator: boolean,
+): boolean {
+  const relation = relationToWorkingGroup(me, group);
+  if (relation === "coordinator") return !memberIsCoordinator;
+  return staff.includes(relation);
+}

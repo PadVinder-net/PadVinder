@@ -4,6 +4,7 @@ export { Button } from "./components/ui/button";
 export { Card } from "./components/ui/card";
 export { cn } from "./lib/utils";
 export { formatDate, formatDateTime } from "./lib/format";
+export { displayName, nameInSentence } from "./lib/display-name";
 export { normalizeCode } from "./lib/code";
 export { CodeForm, type CodeFormProps } from "./components/login/code-form";
 export { EmailForm, type EmailFormProps } from "./components/login/email-form";

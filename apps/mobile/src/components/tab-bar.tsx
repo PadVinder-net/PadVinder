@@ -20,7 +20,8 @@ export function TabBar() {
           <li key={tab.to} className="flex-1">
             <NavLink
               to={tab.to}
-              end
+              // Vanavond is current on "/" only; the other tabs stay current on the screens below them.
+              end={tab.to === "/"}
               className={({ isActive }) =>
                 cn(
                   "flex h-14 items-center justify-center border-t-4 text-base",
