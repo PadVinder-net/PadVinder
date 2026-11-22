@@ -7,6 +7,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail } from "../mail/login-code-mail";
 import type { Mailer } from "../mail/mailer";
+import { checkLoginCodeRequest, IP_LIMITS } from "./login-rate-limit";
 
 export type AuthDeps = { env: ApiEnv; db: Db; mailer: Mailer; log: FastifyBaseLogger };
 
@@ -52,9 +53,10 @@ function describeMailError(error: unknown) {
 
 /**
  * Better Auth with the email OTP plugin: one flow for signing up and logging in with a code
- * from the mail. The settings and why are in the design ("Login"). Rate limits come later.
+ * from the mail. The settings and why are in the design ("Login").
  */
 export function createAuth({ env, db, mailer, log }: AuthDeps) {
+  const limitsOn = env.LOGIN_RATE_LIMITS === "on";
   return betterAuth({
     appName: "PadVinder",
     baseURL: env.PUBLIC_ORIGIN,
@@ -81,7 +83,21 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
       expiresIn: 180 * DAY_SECONDS,
       updateAge: DAY_SECONDS,
     },
-    rateLimit: { enabled: false },
+    // Per IP address, counted in `rate_limits`. Explicitly off otherwise: Better Auth's default is
+    // "on when NODE_ENV is production", in memory. The custom rules replace Better Auth's own,
+    // stricter defaults for these paths (3 per minute). Sign-out needs no limit; every other path
+    // is not mounted (`authRoutes`), so Better Auth's global default never applies.
+    rateLimit: limitsOn
+      ? {
+          enabled: true,
+          storage: "database",
+          customRules: {
+            "/email-otp/send-verification-otp": IP_LIMITS.sendCode,
+            "/sign-in/email-otp": IP_LIMITS.checkCode,
+            "/sign-out": false,
+          },
+        }
+      : { enabled: false },
     advanced: {
       cookiePrefix: "padvinder",
       useSecureCookies: env.PUBLIC_ORIGIN.startsWith("https://"),
@@ -89,6 +105,11 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
       // Better Auth skips its own origin check when NODE_ENV is "test"; tests must see production.
       disableOriginCheck: false,
       database: { generateId: "uuid" },
+      // The client IP for the limiter comes from Better Auth's default header, X-Forwarded-For,
+      // used only when it holds exactly one address. Which header Alwaysdata's proxy sets, and
+      // whether it overwrites or appends, is checked on staging before the limits are trusted (the
+      // design, "Checks on real phones and on Alwaysdata"). Without a usable address, Better Auth
+      // falls back to one bucket per path shared by every client.
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
@@ -107,7 +128,20 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         }
         // The address is trimmed and lowercased before Better Auth looks at it.
         if (!("email" in body) || typeof body.email !== "string") return;
-        return { context: { body: { ...body, email: normalizeEmail(body.email) } } };
+        const email = normalizeEmail(body.email);
+        // Per address, which Better Auth does not offer. Here and not in `sendVerificationOTP`:
+        // Better Auth swallows what that throws and answers 200. Refused before a code is made.
+        if (
+          limitsOn &&
+          ctx.path === "/email-otp/send-verification-otp" &&
+          (await checkLoginCodeRequest(db, email, new Date())) === "limited"
+        ) {
+          throw APIError.from("TOO_MANY_REQUESTS", {
+            code: "TOO_MANY_REQUESTS",
+            message: "Too many login codes requested for this address",
+          });
+        }
+        return { context: { body: { ...body, email } } };
       }),
     },
     databaseHooks: {
