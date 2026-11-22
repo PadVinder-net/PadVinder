@@ -59,23 +59,55 @@ function randomSuffix(): string {
 }
 
 /**
- * Drops and recreates the template database, migrates it and closes every connection to it.
- * Also drops clones left behind by an interrupted run: they are disposable.
- * Call this once per test run, before any test file starts.
+ * A new, unused name for a test database: the template's name, "_" and 8 random lowercase
+ * letters. Create every test database with such a name, so `prepareTestTemplate` and
+ * `scripts/teardown-workspace.sh` drop it when an interrupted run leaves it behind.
  */
-export async function prepareTestTemplate(): Promise<void> {
-  const template = templateName();
-  const stale = new RegExp(
-    `^${template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}_[a-z]{${SUFFIX_LENGTH}}$`,
-  );
+export function newTestDatabaseName(): string {
+  const name = `${templateName()}_${randomSuffix()}`;
+  if (Buffer.byteLength(name) > MAX_NAME_BYTES) {
+    throw new Error(
+      `Test database name "${name}" is longer than ${MAX_NAME_BYTES} bytes. Use a shorter workspace name.`,
+    );
+  }
+  return name;
+}
+
+/**
+ * Whether `name` has the form `newTestDatabaseName()` gives for this template. Anchored and exact,
+ * so it never matches the template itself, the workspace's dev database, or the databases of a
+ * workspace named "<workspace>_test_...".
+ */
+export function isTestDatabaseName(name: string, template = templateName()): boolean {
+  const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped}_[a-z]{${SUFFIX_LENGTH}}$`).test(name);
+}
+
+/**
+ * Drops the test databases of `template` (see `isTestDatabaseName`). They are disposable, but
+ * this also drops those of tests that are still running: call it only before a run starts.
+ */
+export async function dropTestDatabases(template = templateName()): Promise<void> {
   await withAdmin(async (admin) => {
     const { rows } = await admin.query<{ datname: string }>(
       "select datname from pg_database where datname like $1",
       [`${template.replace(/[\\%_]/g, "\\$&")}\\_%`],
     );
-    for (const { datname } of rows.filter((row) => stale.test(row.datname))) {
+    for (const { datname } of rows.filter((row) => isTestDatabaseName(row.datname, template))) {
       await admin.query(`drop database if exists ${quoteIdentifier(datname)} with (force)`);
     }
+  });
+}
+
+/**
+ * Drops and recreates the template database, migrates it and closes every connection to it.
+ * Also drops test databases left behind by an interrupted run.
+ * Call this once per test run, before any test file starts.
+ */
+export async function prepareTestTemplate(): Promise<void> {
+  const template = templateName();
+  await dropTestDatabases(template);
+  await withAdmin(async (admin) => {
     await admin.query(`drop database if exists ${quoteIdentifier(template)} with (force)`);
     await admin.query(`create database ${quoteIdentifier(template)}`);
   });
@@ -85,12 +117,7 @@ export async function prepareTestTemplate(): Promise<void> {
 /** Creates an isolated, migrated database as a clone of the template. */
 export async function createTestDatabase(): Promise<TestDatabase> {
   const template = templateName();
-  const name = `${template}_${randomSuffix()}`;
-  if (Buffer.byteLength(name) > MAX_NAME_BYTES) {
-    throw new Error(
-      `Test database name "${name}" is longer than ${MAX_NAME_BYTES} bytes. Use a shorter workspace name.`,
-    );
-  }
+  const name = newTestDatabaseName();
   await withAdmin(async (admin) => {
     const sql = `create database ${quoteIdentifier(name)} template ${quoteIdentifier(template)}`;
     // The template's last connection may still be closing on the server; retry briefly.

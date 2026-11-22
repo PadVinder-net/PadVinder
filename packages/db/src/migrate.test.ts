@@ -4,7 +4,7 @@ import { join } from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { runMigrations } from "./migrate";
-import { createTestDatabase, type TestDatabase } from "./testing";
+import { createTestDatabase, newTestDatabaseName, type TestDatabase } from "./testing";
 
 let t: TestDatabase | undefined;
 beforeAll(async () => {
@@ -63,12 +63,12 @@ test("rejects a folder without migrations before connecting", async () => {
 
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
-  const name = `${decodeURIComponent(admin.pathname.slice(1))}_c`;
+  // A test database name, so the cleanup drops it if this run is interrupted.
+  const name = newTestDatabaseName();
   admin.pathname = "/postgres";
   const client = new pg.Client({ connectionString: admin.toString() });
   await client.connect();
   try {
-    await client.query(`drop database if exists "${name}"`);
     await client.query(
       `create database "${name}" template template0 encoding 'UTF8' lc_collate 'C' lc_ctype 'C'`,
     );

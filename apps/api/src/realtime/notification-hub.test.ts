@@ -307,8 +307,10 @@ test("the liveness check detects a stalled connection and the hub reconnects", a
 
 test("a healthy connection survives its liveness checks", async () => {
   const livenessCheckIntervalMs = 50;
-  const livenessCheckTimeoutMs = 50;
-  const { log, messages } = recordingLogger("warn");
+  // Far above how long a `select 1` takes under a loaded test run (tens of ms at worst), so only a
+  // timeout that was left running after its answer can fire, not a slow answer.
+  const livenessCheckTimeoutMs = 400;
+  const { log, lines } = recordingLogger("warn");
   const listenerBackends = async () =>
     (
       await t!.pool.query<{ pid: number; query: string }>(
@@ -325,14 +327,22 @@ test("a healthy connection survives its liveness checks", async () => {
   });
   try {
     const [before] = await listenerBackends();
-    // Three liveness checks, each with time for its answer timeout to fire if it were left running.
-    await new Promise((resolve) =>
-      setTimeout(resolve, 3 * (livenessCheckIntervalMs + livenessCheckTimeoutMs)),
+    expect(before).toBeDefined();
+    // Long enough for a timeout left running after the first check to fire, and for many checks.
+    const until = Date.now() + 2 * (livenessCheckIntervalMs + livenessCheckTimeoutMs);
+    const samples: { pid: number; query: string }[][] = [];
+    while (Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 2 * livenessCheckIntervalMs));
+      samples.push(await listenerBackends());
+    }
+    // Checked after the last query, so a connection lost while it ran is not missed.
+    expect(lines).toEqual([]);
+    // The same single connection the whole time.
+    expect(samples.map((rows) => rows.map((row) => row.pid))).toEqual(
+      samples.map(() => [before!.pid]),
     );
-    expect(messages()).not.toContain("Notification listener connection lost");
-    // Still the same single connection, and the liveness check did run on it.
-    const after = await listenerBackends();
-    expect(after).toEqual([{ pid: before!.pid, query: "select 1" }]);
+    // And the liveness check did run on it.
+    expect(samples.at(-1)).toEqual([{ pid: before!.pid, query: "select 1" }]);
   } finally {
     await hub.close();
   }
