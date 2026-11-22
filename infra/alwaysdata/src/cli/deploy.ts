@@ -2,10 +2,10 @@
 // check, and a rollback when the health check fails.
 // Usage: pnpm infra:deploy --environment <staging|production> --tarball <path> --commit <sha>
 //          [--health-url <url>]
-// Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, SSH_KNOWN_HOSTS_FILE, and SSH_AUTH_SOCK or
-// DEPLOY_SSH_KEY_FILE from the environment. Its output lands in a public log: every line
-// goes through redactForLog(): secrets are hidden, IP addresses show as <ip> and the
-// account name as <account>.
+// Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, SSH_KNOWN_HOSTS_FILE, and
+// DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE from the environment. Its output lands in a
+// public log: every line goes through redactForLog(): secrets are hidden, IP addresses show
+// as <ip> and the account name as <account>.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";

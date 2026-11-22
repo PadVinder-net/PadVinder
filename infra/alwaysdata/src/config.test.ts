@@ -5,7 +5,7 @@ const complete = {
   ALWAYSDATA_ACCOUNT: "acme",
   ALWAYSDATA_API_KEY: "api-key-value",
   DATABASE_PASSWORD: "database-password-value",
-  SSH_AUTH_SOCK: "/tmp/ssh-agent.sock",
+  DEPLOY_SSH_AGENT_SOCK: "/tmp/ssh-agent.sock",
   SSH_KNOWN_HOSTS_FILE: "/tmp/known_hosts",
 };
 
@@ -35,7 +35,7 @@ test("loadInfraConfig names every missing variable without values", () => {
   for (const name of [
     "ALWAYSDATA_ACCOUNT",
     "DATABASE_PASSWORD",
-    "SSH_AUTH_SOCK or DEPLOY_SSH_KEY_FILE",
+    "DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE",
     "SSH_KNOWN_HOSTS_FILE",
   ]) {
     expect(message).toContain(name);
@@ -51,10 +51,17 @@ test("loadInfraConfig takes the key from DEPLOY_SSH_KEY_FILE over the agent when
   ).toEqual({ keyFile: "/tmp/deploy_key" });
   expect(
     loadInfraConfig(
-      { ...complete, SSH_AUTH_SOCK: "", DEPLOY_SSH_KEY_FILE: "/tmp/deploy_key" },
+      { ...complete, DEPLOY_SSH_AGENT_SOCK: "", DEPLOY_SSH_KEY_FILE: "/tmp/deploy_key" },
       "staging",
     ).ssh?.identity,
   ).toEqual({ keyFile: "/tmp/deploy_key" });
+});
+
+test("loadInfraConfig ignores SSH_AUTH_SOCK, so a personal agent is never used by accident", () => {
+  const { DEPLOY_SSH_AGENT_SOCK: _, ...withoutAgent } = complete;
+  expect(() =>
+    loadInfraConfig({ ...withoutAgent, SSH_AUTH_SOCK: "/tmp/personal-agent.sock" }, "staging"),
+  ).toThrow("Set these environment variables: DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE");
 });
 
 test("loadInfraConfig needs the known hosts file with an agent too", () => {

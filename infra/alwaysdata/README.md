@@ -68,8 +68,10 @@ All three read their settings from environment variables with the same names as 
 
 SSH needs `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file) and the private key, from one of two places:
 
-- `SSH_AUTH_SOCK`: the socket of an ssh-agent that holds the key. This is how CI does it: the composite action `.github/actions/alwaysdata-credentials` starts a dedicated agent, loads the `DEPLOY_SSH_KEY` secret into it over stdin, and writes the `SSH_KNOWN_HOSTS` secret to a file. The key never touches the runner's disk. The final step of each job stops the agent (`ssh-agent -k`).
-- `DEPLOY_SSH_KEY_FILE`: path to the private key file, for local runs. When it is set, it wins over `SSH_AUTH_SOCK`.
+- `DEPLOY_SSH_AGENT_SOCK`: the socket of an ssh-agent that holds the key. This is how CI does it: the composite action `.github/actions/alwaysdata-credentials` starts a dedicated agent (without the secrets in its environment), loads the `DEPLOY_SSH_KEY` secret into it over stdin, and writes the `SSH_KNOWN_HOSTS` secret to a file. The key never touches the runner's disk. The action exports `DEPLOY_SSH_AGENT_SOCK` and `DEPLOY_SSH_AGENT_PID`, not `SSH_AUTH_SOCK`, and the final step of each job stops the agent (`ssh-agent -k`).
+- `DEPLOY_SSH_KEY_FILE`: path to the private key file, for local runs. When it is set, it wins over `DEPLOY_SSH_AGENT_SOCK`.
+
+The scripts never read `SSH_AUTH_SOCK`, so a local run does not use your personal agent unless you say so.
 
 ssh offers only that key file, or only the keys of that agent (`IdentityAgent=<socket>` with `IdentityFile=none`), never the default keys in `~/.ssh`, and reads no `~/.ssh/config`. With an agent it offers every key the agent holds: the one in CI holds only the deploy key, but a personal agent may hold many, and a server stops after a few wrong ones.
 
@@ -101,7 +103,7 @@ A deploy with a rollback takes about 7 minutes plus the time of the migrations (
 
 `workflow_dispatch` ("Run workflow") works only once a workflow file is on the default branch, `main`. Until then use the push triggers: a push to `provision/<env>` plans and inspects, and a push to `staging/<name>` deploys that branch to staging.
 
-The jobs that use secrets enter the GitHub environment `staging` or `production` and see only that environment's secrets. The release build has no environment and no secrets. Secrets go into steps through `env:` only, never into a script through `${{ }}`, and the deploy key is deleted at the end of every job.
+The jobs that use secrets enter the GitHub environment `staging` or `production` and see only that environment's secrets. The release build has no environment and no secrets. Secrets go into steps through `env:` only, never into a script through `${{ }}`, and the ssh-agent that holds the deploy key is stopped at the end of every job.
 
 The staging deploy, Provision and Staging services of one environment share the concurrency group `deploy-<env>`, so they never run at the same time. See "Operating notes" for the catch.
 
@@ -201,14 +203,17 @@ export DEPLOY_SSH_KEY_FILE="$HOME/.ssh/padvinder-deploy" SSH_KNOWN_HOSTS_FILE="$
 pnpm infra:provision --environment staging
 ```
 
-Without `DEPLOY_SSH_KEY_FILE` the scripts use the agent in `SSH_AUTH_SOCK`, which on most machines is your own agent with all its keys. To try the agent path as CI takes it, start a dedicated agent with only the deploy key for this shell:
+To try the agent path as CI takes it, start a dedicated agent with only the deploy key for this shell and point `DEPLOY_SSH_AGENT_SOCK` at it:
 
 ```sh
 unset DEPLOY_SSH_KEY_FILE
 eval "$(ssh-agent -s)" && ssh-add -t 1h "$HOME/.ssh/padvinder-deploy"   # or pipe the key in: ssh-add -t 1h -
+export DEPLOY_SSH_AGENT_SOCK="$SSH_AUTH_SOCK"
 pnpm infra:provision --environment staging
 ssh-agent -k                                                          # stop it when done
 ```
+
+`DEPLOY_SSH_AGENT_SOCK="$SSH_AUTH_SOCK"` with your own agent also works, as a deliberate choice: ssh then offers every key that agent holds, and a server stops after a few wrong ones.
 
 A local deploy needs a release built from a clean tree:
 

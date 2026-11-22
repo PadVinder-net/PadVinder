@@ -33,11 +33,12 @@ export function loadInfraConfig(
   const value = (name: string) => source[name] ?? "";
   const missing = required.filter((name) => value(name) === "");
   // The key comes from DEPLOY_SSH_KEY_FILE when it is set (local runs), otherwise from the
-  // ssh-agent in SSH_AUTH_SOCK (CI loads the key into a dedicated agent).
+  // ssh-agent in DEPLOY_SSH_AGENT_SOCK (CI loads the key into a dedicated agent). Never from
+  // SSH_AUTH_SOCK: that is usually a personal agent, and a run must not use it by accident.
   const keyFile = value("DEPLOY_SSH_KEY_FILE");
-  const agentSocket = value("SSH_AUTH_SOCK");
+  const agentSocket = value("DEPLOY_SSH_AGENT_SOCK");
   if (wantSsh && keyFile === "" && agentSocket === "") {
-    missing.push("SSH_AUTH_SOCK or DEPLOY_SSH_KEY_FILE");
+    missing.push("DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE");
   }
   if (missing.length > 0) {
     throw new Error(`Set these environment variables: ${missing.join(", ")}`);

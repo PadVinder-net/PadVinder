@@ -1,10 +1,11 @@
 name: Alwaysdata SSH credentials
 description: >-
   Loads the deploy key into a dedicated ssh-agent (socket $RUNNER_TEMP/ssh-agent.sock) and
-  writes the known hosts of an environment to $RUNNER_TEMP/known_hosts. Exports SSH_AUTH_SOCK,
-  SSH_AGENT_PID and SSH_KNOWN_HOSTS_FILE for the infra CLIs. The key reaches the agent over
-  stdin and never touches the disk. The job must stop the agent in a final step with
-  if: always(): ssh-agent -k, then remove the socket.
+  writes the known hosts of an environment to $RUNNER_TEMP/known_hosts. Exports
+  DEPLOY_SSH_AGENT_SOCK, DEPLOY_SSH_AGENT_PID and SSH_KNOWN_HOSTS_FILE for the infra CLIs; not
+  SSH_AUTH_SOCK, so no other ssh or git in the job uses the agent. The key reaches the agent
+  over stdin and never touches the disk. The job must stop the agent in a final step with
+  if: always(): SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k, then remove the socket.
 
 inputs:
   ssh-key:
@@ -51,8 +52,8 @@ runs:
         # Exported before the key is loaded, so the final step of the job finds the agent to
         # stop even when loading fails.
         {
-          echo "SSH_AUTH_SOCK=$socket"
-          echo "SSH_AGENT_PID=$pid"
+          echo "DEPLOY_SSH_AGENT_SOCK=$socket"
+          echo "DEPLOY_SSH_AGENT_PID=$pid"
         } >>"$GITHUB_ENV"
         export SSH_AUTH_SOCK="$socket"
 

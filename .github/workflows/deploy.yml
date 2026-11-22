@@ -61,8 +61,9 @@ jobs:
       - name: Stop the SSH agent
         if: always()
         run: |
-          if [[ -n "${SSH_AGENT_PID:-}" ]]; then
-            ssh-agent -k >/dev/null 2>&1 || echo "The SSH agent had already stopped."
+          if [[ -n "${DEPLOY_SSH_AGENT_PID:-}" ]]; then
+            SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k >/dev/null 2>&1 ||
+              echo "The SSH agent had already stopped."
           fi
           rm -f "$RUNNER_TEMP/ssh-agent.sock"
 
@@ -126,7 +127,8 @@ jobs:
       - name: Stop the SSH agent
         if: always()
         run: |
-          if [[ -n "${SSH_AGENT_PID:-}" ]]; then
-            ssh-agent -k >/dev/null 2>&1 || echo "The SSH agent had already stopped."
+          if [[ -n "${DEPLOY_SSH_AGENT_PID:-}" ]]; then
+            SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k >/dev/null 2>&1 ||
+              echo "The SSH agent had already stopped."
           fi
           rm -f "$RUNNER_TEMP/ssh-agent.sock"

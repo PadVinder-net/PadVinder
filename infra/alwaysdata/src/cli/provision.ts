@@ -2,9 +2,9 @@
 // Usage: pnpm infra:provision --environment <staging|production> [--apply [--rotate-password]]
 //        pnpm infra:provision --environment <staging|production> --inspect
 // Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, SSH_KNOWN_HOSTS_FILE, and
-// SSH_AUTH_SOCK or DEPLOY_SSH_KEY_FILE from the environment. Its output may land in a public
-// log: every line goes through redactForLog(): secrets are hidden, IP addresses show as <ip>
-// and the account name as <account>.
+// DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE from the environment. Its output may land in
+// a public log: every line goes through redactForLog(): secrets are hidden, IP addresses
+// show as <ip> and the account name as <account>.
 import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import { createAlwaysdataApi, type AlwaysdataApi, type ResourceKind } from "../api.ts";
