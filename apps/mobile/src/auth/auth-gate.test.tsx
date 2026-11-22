@@ -1,4 +1,10 @@
-import { healthyFixture, meFixture, meWithoutNameFixture } from "@padvinder/contracts/fixtures";
+import {
+  applicantMeFixture,
+  healthyFixture,
+  meFixture,
+  meWithoutNameFixture,
+  waitingMeFixture,
+} from "@padvinder/contracts/fixtures";
 import {
   createQueryClient,
   getHealthOptions,
@@ -54,6 +60,16 @@ test("saving the name shows the app", async () => {
   renderGate();
   await userEvent.type(await screen.findByLabelText("Naam"), "Noor de Vries");
   await userEvent.click(screen.getByRole("button", { name: "Ga verder" }));
+  expect(await screen.findByText("de app")).toBeVisible();
+});
+
+// Until the picker and the waiting screen replace it (plan 3, Task 11).
+test.each([
+  ["without a request", applicantMeFixture],
+  ["waiting", waitingMeFixture],
+])("an applicant %s sees the app", async (_label, me) => {
+  mockFetch({ "/api/me": me });
+  renderGate();
   expect(await screen.findByText("de app")).toBeVisible();
 });
 

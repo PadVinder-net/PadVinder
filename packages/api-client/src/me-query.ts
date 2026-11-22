@@ -32,13 +32,23 @@ export function meQueryOptions() {
  * Drops every cached query except `me`, and every mutation: what the previous user saw must not
  * show for the next one on the same device. Called on logging out, on logging in, and when the
  * me query finds the session gone (`createQueryClient`). `me` stays because the gate watches it.
+ * With `keepMutations` (after deleting the account) the mutations stay: the gate reads the
+ * finished deletion from them.
  */
-export function clearOtherUserData(queryClient: QueryClient): void {
+export function clearOtherUserData(
+  queryClient: QueryClient,
+  { keepMutations = false }: { keepMutations?: boolean } = {},
+): void {
   const meId = getMeQueryKey()[0]._id;
   queryClient.removeQueries({
     predicate: (query) => (query.queryKey[0] as { _id?: string } | undefined)?._id !== meId,
   });
-  queryClient.getMutationCache().clear();
+  if (!keepMutations) queryClient.getMutationCache().clear();
+}
+
+/** Asks `/api/me` again: after a change to the user's access, or when the stream was refused. */
+export function refetchMe(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: getMeQueryKey() });
 }
 
 export function useMe() {
