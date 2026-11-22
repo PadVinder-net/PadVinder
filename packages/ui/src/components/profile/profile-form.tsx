@@ -31,6 +31,7 @@ export function ProfileForm({
   const [phone, setPhone] = useState(me.user.phone ?? "");
   const [missingName, setMissingName] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [edited, setEdited] = useState(false);
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,6 +41,7 @@ export function ProfileForm({
       return;
     }
     setMissingName(false);
+    setEdited(false);
     const trimmedPhone = phone.trim();
     onSave({ name: trimmedName, phone: trimmedPhone === "" ? null : trimmedPhone });
   }
@@ -60,7 +62,10 @@ export function ProfileForm({
             autoComplete="name"
             maxLength={100}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              setEdited(true);
+            }}
             aria-invalid={nameMessage ? true : undefined}
             aria-describedby={nameMessage ? "profile-name-error" : undefined}
             className={inputClass}
@@ -79,12 +84,15 @@ export function ProfileForm({
             inputMode="tel"
             maxLength={30}
             value={phone}
-            onChange={(event) => setPhone(event.target.value)}
+            onChange={(event) => {
+              setPhone(event.target.value);
+              setEdited(true);
+            }}
             className={inputClass}
           />
         </div>
-        <FieldError id="profile-error" message={error} />
-        {saved && !error ? <p role="status">Je gegevens zijn bewaard.</p> : null}
+        <FieldError id="profile-error" message={asking ? undefined : error} />
+        {saved && !edited && !error ? <p role="status">Je gegevens zijn bewaard.</p> : null}
         <WideButton type="submit" pending={saving}>
           Bewaar
         </WideButton>
@@ -120,6 +128,7 @@ export function ProfileForm({
         confirmLabel="Verwijder account"
         destructive
         pending={deleting}
+        error={error}
         onConfirm={onDelete}
         onCancel={() => setAsking(false)}
       />

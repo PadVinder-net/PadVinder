@@ -57,3 +57,26 @@ test("removing asks first with the exact text and calls onRemove once", async ()
   await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder" }));
   expect(onRemove).toHaveBeenCalledOnce();
 });
+
+test("a nameless member reads well in the dialog", async () => {
+  setup({ ...membersWithContactFixture[1]!, name: "" });
+  await userEvent.click(screen.getByRole("button", { name: "Verwijder uit werkgroep" }));
+  const dialog = screen.getByRole("alertdialog", { name: "Deze persoon verwijderen uit Noord?" });
+  expect(dialog).toHaveTextContent("Deze persoon kan zich daarna opnieuw aanmelden.");
+});
+
+test("an error that arrives while the dialog is open shows inside it", async () => {
+  const props = {
+    member: membersWithContactFixture[1]!,
+    workingGroupName: "Noord",
+    canRemove: true,
+    onRemove: vi.fn(),
+    pending: false,
+  };
+  const { rerender } = render(<MemberDetail {...props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Verwijder uit werkgroep" }));
+  rerender(<MemberDetail {...props} error="Het lukt nu niet." />);
+  expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toHaveTextContent(
+    "Het lukt nu niet.",
+  );
+});

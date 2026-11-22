@@ -8,3 +8,14 @@ test("shows Amsterdam time (CEST in April)", () =>
 
 test("formatDate shows the Amsterdam day", () =>
   expect(formatDate("2027-01-10T23:30:00.000Z")).toBe("11 januari 2027"));
+
+test("formatDate ignores the machine time zone", () => {
+  const before = process.env.TZ;
+  process.env.TZ = "America/Los_Angeles";
+  try {
+    expect(formatDate("2027-01-10T23:30:00.000Z")).toBe("11 januari 2027");
+  } finally {
+    if (before === undefined) delete process.env.TZ;
+    else process.env.TZ = before;
+  }
+});

@@ -85,3 +85,31 @@ test("deleting the account asks first with the exact text", async () => {
   await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder account" }));
   expect(onDelete).toHaveBeenCalledOnce();
 });
+
+test("the saved message is absent when saved is not set", () => {
+  setup();
+  expect(screen.queryByText("Je gegevens zijn bewaard.")).toBeNull();
+});
+
+test("the saved message goes away after an edit", async () => {
+  setup(meFixture, { saved: true });
+  expect(screen.getByText("Je gegevens zijn bewaard.")).toBeVisible();
+  await userEvent.type(screen.getByRole("textbox", { name: "Naam" }), "x");
+  expect(screen.queryByText("Je gegevens zijn bewaard.")).toBeNull();
+});
+
+test("an error that arrives while the delete dialog is open shows inside it", async () => {
+  const props = {
+    me: meFixture,
+    onSave: vi.fn(),
+    onDelete: vi.fn(),
+    saving: false,
+    deleting: false,
+  };
+  const { rerender } = render(<ProfileForm {...props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Verwijder account" }));
+  rerender(<ProfileForm {...props} error="Het lukt nu niet." />);
+  expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toHaveTextContent(
+    "Het lukt nu niet.",
+  );
+});

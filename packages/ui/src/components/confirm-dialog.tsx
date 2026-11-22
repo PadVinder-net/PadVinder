@@ -1,4 +1,4 @@
-import { pendingLabel } from "./login/form-parts";
+import { FieldError, pendingLabel } from "./login/form-parts";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -17,6 +17,8 @@ export type ConfirmDialogProps = {
   confirmLabel: string;
   destructive?: boolean;
   pending?: boolean;
+  /** A message from the server, in Dutch; shown inside the dialog so the user sees why. */
+  error?: string;
   onConfirm(): void;
   onCancel(): void;
 };
@@ -28,6 +30,7 @@ export function ConfirmDialog({
   confirmLabel,
   destructive,
   pending,
+  error,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -40,6 +43,7 @@ export function ConfirmDialog({
             {text}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <FieldError id="confirm-dialog-error" message={error} />
         <AlertDialogFooter>
           <AlertDialogCancel disabled={pending} className="h-14 text-lg">
             Annuleer

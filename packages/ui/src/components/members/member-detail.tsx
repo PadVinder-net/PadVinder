@@ -1,6 +1,6 @@
 import type { Member } from "@padvinder/contracts";
 import { useState } from "react";
-import { displayName } from "../../lib/display-name";
+import { displayName, nameInSentence } from "../../lib/display-name";
 import { ConfirmDialog } from "../confirm-dialog";
 import { ContactRows } from "../contact-rows";
 import { FieldError, WideButton } from "../login/form-parts";
@@ -35,7 +35,7 @@ export function MemberDetail({
       ) : null}
       {canRemove ? (
         <>
-          <FieldError id="member-error" message={error} />
+          <FieldError id="member-error" message={asking ? undefined : error} />
           <WideButton
             type="button"
             variant="outline"
@@ -46,11 +46,12 @@ export function MemberDetail({
           </WideButton>
           <ConfirmDialog
             open={asking}
-            title={`${name} verwijderen uit ${workingGroupName}?`}
-            text={`${name} kan zich daarna opnieuw aanmelden.`}
+            title={`${nameInSentence(member.name)} verwijderen uit ${workingGroupName}?`}
+            text={`${nameInSentence(member.name)} kan zich daarna opnieuw aanmelden.`}
             confirmLabel="Verwijder"
             destructive
             pending={pending}
+            error={error}
             onConfirm={onRemove}
             onCancel={() => setAsking(false)}
           />

@@ -1,7 +1,7 @@
 import type { MembershipRequestForReview } from "@padvinder/contracts";
 import { useState } from "react";
 import { formatDate } from "../../lib/format";
-import { displayName } from "../../lib/display-name";
+import { displayName, nameInSentence } from "../../lib/display-name";
 import { ConfirmDialog } from "../confirm-dialog";
 import { ContactRows, DetailRow } from "../contact-rows";
 import { FieldError, WideButton } from "../login/form-parts";
@@ -34,7 +34,7 @@ export function MembershipRequestDetail({
       <p>Aangemeld op {formatDate(request.requestedAt)}</p>
       {request.status === "pending" ? (
         <>
-          <FieldError id="request-error" message={error} />
+          <FieldError id="request-error" message={asking ? undefined : error} />
           <WideButton type="button" pending={pending} onClick={onApprove}>
             Keur goed
           </WideButton>
@@ -49,10 +49,11 @@ export function MembershipRequestDetail({
           <ConfirmDialog
             open={asking}
             title="Aanmelding afwijzen?"
-            text={`${name} krijgt hierover een mail.`}
+            text={`${nameInSentence(request.applicant.name)} krijgt hierover een mail.`}
             confirmLabel="Wijs af"
             destructive
             pending={pending}
+            error={error}
             onConfirm={onReject}
             onCancel={() => setAsking(false)}
           />

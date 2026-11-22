@@ -81,3 +81,22 @@ test("shows an error", () => {
   setup(noor!, { error: "Het lukt nu niet." });
   expect(screen.getByRole("alert")).toHaveTextContent("Het lukt nu niet.");
 });
+
+test("a nameless applicant reads well in the dialog", async () => {
+  setup({ ...noor!, applicant: { ...noor!.applicant, name: "" } });
+  expect(screen.getByRole("heading", { name: "Naam niet ingevuld" })).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Wijs af" }));
+  expect(screen.getByRole("alertdialog")).toHaveTextContent(
+    "Deze persoon krijgt hierover een mail.",
+  );
+});
+
+test("an error that arrives while the dialog is open shows inside it", async () => {
+  const props = { request: noor!, onApprove: vi.fn(), onReject: vi.fn(), pending: false };
+  const { rerender } = render(<MembershipRequestDetail {...props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Wijs af" }));
+  rerender(<MembershipRequestDetail {...props} error="Het lukt nu niet." />);
+  expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toHaveTextContent(
+    "Het lukt nu niet.",
+  );
+});

@@ -35,3 +35,6 @@ export const DeletedApplicant: Story = {
     request: { ...noor!, applicant: { id: noor!.applicant.id, name: "Verwijderd account" } },
   },
 };
+export const NamelessApplicant: Story = {
+  args: { request: { ...noor!, applicant: { ...noor!.applicant, name: "" } } },
+};

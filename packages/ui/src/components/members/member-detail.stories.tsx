@@ -32,3 +32,6 @@ export const Pending: Story = { args: { pending: true } };
 export const WithError: Story = {
   args: { error: "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw." },
 };
+export const Nameless: Story = {
+  args: { member: { ...membersWithContactFixture[1]!, name: "" } },
+};

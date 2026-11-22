@@ -1,10 +1,15 @@
-/** The phone number without spaces and dashes, for a tel: link. */
-export function telHref(phone: string): string {
-  return `tel:${encodeURIComponent(phone.replace(/[^\d+]/g, ""))}`;
+/**
+ * A tel: link for a phone number, or undefined when the text is more than a number (for example
+ * "06 12 34 56 78 (na 18 uur)"): a wrong number is worse than no link.
+ */
+export function telHref(phone: string): string | undefined {
+  const digits = phone.replace(/[\s\-.()]/g, "");
+  return /^\+?\d+$/.test(digits) ? `tel:${digits}` : undefined;
 }
 
+/** A mailto: link; the address is encoded, except "@" and "+", which are valid there. */
 export function mailHref(email: string): string {
-  return `mailto:${encodeURIComponent(email).replace(/%40/g, "@")}`;
+  return `mailto:${encodeURIComponent(email).replace(/%40/g, "@").replace(/%2B/g, "+")}`;
 }
 
 const linkClass = "underline underline-offset-4 break-all";
@@ -34,9 +39,13 @@ export function ContactRows({ email, phone }: { email?: string; phone?: string |
       </DetailRow>
       {phone ? (
         <DetailRow label="Telefoonnummer">
-          <a href={telHref(phone)} className={linkClass}>
-            {phone}
-          </a>
+          {telHref(phone) ? (
+            <a href={telHref(phone)} className={linkClass}>
+              {phone}
+            </a>
+          ) : (
+            phone
+          )}
         </DetailRow>
       ) : (
         <DetailRow label="Telefoonnummer">Geen telefoonnummer</DetailRow>
