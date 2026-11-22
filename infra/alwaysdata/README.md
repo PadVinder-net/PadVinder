@@ -94,12 +94,12 @@ A deploy with a rollback takes about 7 minutes plus the time of the migrations (
 
 ## GitHub workflows
 
-| Workflow (file)                           | Trigger                                                                                       | What it does                                                                                          |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Deploy (`deploy.yml`)                     | Push to `main`; by hand from `main`                                                           | Builds the release once (`release / build`), deploys it to staging, then to production after approval |
-| Provision (`provision.yml`)               | By hand from `main` (inputs `environment`, `apply`, `rotate-password`, `inspect`)             | Plans, or applies with `apply`; with `inspect` also prints the account's field names                  |
-| Staging services (`staging-services.yml`) | By hand (input `state`: `on` or `off`)                                                        | Turns the staging services on or off                                                                  |
-| Deploy test (`deploy-test.yml`)           | Pull requests that touch the deploy path (its `paths:` filter); by hand. Not a required check | Builds a release, `pnpm test:fake-host` with it, and the credentials action with a throwaway key      |
+| Workflow (file)                           | Trigger                                                                                     | What it does                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Deploy (`deploy.yml`)                     | Push to `main`, unless it changes only docs and tests (`paths-ignore`); by hand from `main` | Builds the release once (`release / build`), deploys it to staging, then to production after approval |
+| Provision (`provision.yml`)               | By hand from `main` (inputs `environment`, `apply`, `rotate-password`, `inspect`)           | Plans, or applies with `apply`; with `inspect` also prints the account's field names                  |
+| Staging services (`staging-services.yml`) | By hand (input `state`: `on` or `off`)                                                      | Turns the staging services on or off                                                                  |
+| CI, job `deploy-test` (`ci.yml`)          | Pull requests that touch the deploy path (`scripts/lib/ci-jobs.ts`); skipped otherwise      | `pnpm test:fake-host` with CI's release tarball, and the credentials action with a throwaway key      |
 
 Only `main` reaches the environments: both GitHub environments allow the branch `main` only, and the workflows run there only (a Deploy run by hand from another branch skips its deploy jobs). `workflow_dispatch` ("Run workflow") works only once a workflow file is on `main`.
 
