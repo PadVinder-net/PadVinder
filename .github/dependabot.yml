@@ -19,6 +19,17 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    ignore:
+      # The types must match the runtime, Node.js 24 LTS (.node-version). A new major
+      # comes together with a Node.js upgrade, as for the node image below.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # packages/api-client pins typescript 6.0.3 for @hey-api/openapi-ts, which crashes
+      # on TypeScript 7 (see AGENTS.md, "Toolchain notes"). Ignoring by version would also
+      # block updates of the root TypeScript 7, so ignore majors: a new TypeScript major
+      # is a deliberate change anyway. Remove this when hey-api supports TypeScript 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       # Both Playwright packages arrive in one pull request, also for major updates. A
       # package that matches several groups goes into the first one listed, so this group
