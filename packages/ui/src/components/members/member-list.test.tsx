@@ -43,3 +43,25 @@ test("rows open the member when onOpen is given, otherwise are plain", async () 
   render(<MemberList groups={[{ workingGroup: noord, members: membersFixture }]} />);
   expect(screen.queryByRole("button")).toBeNull();
 });
+
+test("with canOpen, only the rows of groups it allows open", async () => {
+  const onOpen = vi.fn();
+  const zuidOostMember = {
+    ...membersFixture[1]!,
+    membershipId: "0192f3c0-0000-7000-8000-0000000000e9",
+    name: "Lotte Smit",
+  };
+  render(
+    <MemberList
+      groups={[
+        { workingGroup: noord, members: membersFixture },
+        { workingGroup: zuidOost, members: [zuidOostMember] },
+      ]}
+      onOpen={onOpen}
+      canOpen={(workingGroupId) => workingGroupId === noord.id}
+    />,
+  );
+  expect(screen.getByRole("button", { name: /Bram Jansen/ })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Lotte Smit/ })).toBeNull();
+  expect(screen.getByText("Lotte Smit")).toBeVisible();
+});

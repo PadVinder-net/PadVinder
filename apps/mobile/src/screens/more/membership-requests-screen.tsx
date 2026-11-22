@@ -1,4 +1,4 @@
-import { useMe, type MeResponse } from "@padvinder/api-client";
+import { apiErrorMessage, useMe, type MeResponse } from "@padvinder/api-client";
 import { MembershipRequestList } from "@padvinder/ui";
 import { useNavigate } from "react-router";
 import { FlashMessage, LoadError, Loading, SubScreen } from "./sub-screen";
@@ -21,6 +21,8 @@ function Requests({ me }: { me: MeResponse }) {
   const lists = useRequestLists(me);
   if (lists.error) return <LoadError error={lists.error} onRetry={lists.refetch} />;
   if (lists.isPending) return <Loading>Aanmeldingen laden…</Loading>;
+  // No group to review: the menu hides Aanmeldingen, and a URL typed by hand gets the API's "no".
+  if (lists.groups.length === 0) return <p className="text-lg">{apiErrorMessage("not_allowed")}</p>;
   return (
     <MembershipRequestList
       groups={lists.groups}

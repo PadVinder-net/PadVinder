@@ -1,5 +1,6 @@
 import {
   coordinatorMeFixture,
+  meFixture,
   requestsForReviewFixture,
   workingGroupsFixture,
 } from "@padvinder/contracts/fixtures";
@@ -53,8 +54,9 @@ test("approving returns to the list with the message", async () => {
   await userEvent.click(approve);
   expect(await screen.findByText("Noor Jansen is toegelaten.")).toBeVisible();
   expect(router.state.location.pathname).toBe("/app/more/membership-requests");
-  await waitFor(() => expect(screen.queryByRole("button", { name: /Noor Jansen/ })).toBeNull());
-  expect(screen.getByRole("button", { name: /Sem de Vries/ })).toBeVisible();
+  // The list loads after the navigation: wait for it, then check that Noor is gone.
+  expect(await screen.findByRole("button", { name: /Sem de Vries/ })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Noor Jansen/ })).toBeNull();
 });
 
 test("rejecting asks first, then returns to the list with the message", async () => {
@@ -121,4 +123,19 @@ test("the link from the mail survives the login screen", async () => {
   await userEvent.type(await screen.findByLabelText("Code"), "123456");
   expect(await screen.findByRole("heading", { name: "Noor Jansen" })).toBeVisible();
   expect(router.state.location.pathname).toBe(`/app/more/membership-requests/${noor!.id}`);
+});
+
+test("a volunteer who opens the requests by URL is told no", async () => {
+  const { calls } = mockFetch({ "/api/me": meFixture, "/api/working-groups": directory });
+  renderApp("/app/more/membership-requests");
+  expect(await screen.findByText("Dit mag je niet doen.")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Aanmeldingen" })).toBeNull();
+  expect(calls.some((path) => path.endsWith("/membership-requests"))).toBe(false);
+});
+
+test("a coordinator without open requests reads that there are none", async () => {
+  mockFetch(coordinatorRoutes({ [noordRequestsPath]: { membershipRequests: [] } }));
+  renderApp("/app/more/membership-requests");
+  expect(await screen.findByText("Er zijn geen open aanmeldingen.")).toBeVisible();
+  expect(screen.queryByText("Dit mag je niet doen.")).toBeNull();
 });

@@ -1,14 +1,17 @@
 import {
+  applicantMeFixture,
   coordinatorMeFixture,
   meFixture,
+  platformAdminMeFixture,
   membersFixture,
   membersWithContactFixture,
   workingGroupsFixture,
 } from "@padvinder/contracts/fixtures";
+import type { MeResponse } from "@padvinder/contracts";
 import { mockFetch } from "@padvinder/api-client/testing";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { errorResponse, renderApp } from "../../testing/render-app";
 
 vi.mock("../../hooks/use-service-worker", () => ({
@@ -53,7 +56,8 @@ test("removing a member asks first, then returns to the list with the message", 
   await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder" }));
   expect(await screen.findByText("Bram Jansen is verwijderd uit Noord.")).toBeVisible();
   expect(router.state.location.pathname).toBe("/app/more/members");
-  await waitFor(() => expect(screen.queryByRole("button", { name: /Bram Jansen/ })).toBeNull());
+  expect(await screen.findByRole("button", { name: /Anna de Vries/ })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Bram Jansen/ })).toBeNull();
 });
 
 test("a coordinator cannot remove another coordinator", async () => {
@@ -90,4 +94,61 @@ test("a member who is not in any list shows the not-found text", async () => {
   });
   renderApp("/app/more/members/0192f3c0-0000-7000-8000-0000000000ee");
   expect(await screen.findByText("Dit bestaat niet meer.")).toBeVisible();
+});
+
+test("someone without a group to list who opens the members by URL is told no", async () => {
+  // A platform admin gets the tabs without a working group; the list would be empty.
+  const { calls } = mockFetch({
+    "/api/me": platformAdminMeFixture,
+    "/api/working-groups": directory,
+  });
+  renderApp("/app/more/members");
+  expect(await screen.findByText("Dit mag je niet doen.")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Leden" })).toBeNull();
+  expect(calls.some((path) => path.endsWith("/members"))).toBe(false);
+});
+
+test("an applicant who opens the members by URL stays on the picker", async () => {
+  mockFetch({ "/api/me": applicantMeFixture, "/api/working-groups": directory });
+  renderApp("/app/more/members");
+  expect(await screen.findByRole("heading", { name: "Kies je werkgroep" })).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Leden" })).toBeNull();
+});
+
+describe("a coordinator of one group who is a volunteer of another", () => {
+  const zuidOost = workingGroupsFixture.find((g) => g.name === "Zuid-Oost")!;
+  const lotte = {
+    membershipId: "0192f3c0-0000-7000-8000-0000000000e9",
+    userId: "0192f3c0-0000-7000-8000-0000000000f9",
+    name: "Lotte Smit",
+    isCoordinator: false,
+  };
+  const me: MeResponse = {
+    ...coordinatorMeFixture,
+    memberships: [
+      ...coordinatorMeFixture.memberships,
+      { id: "0192f3c0-0000-7000-8000-0000000000c9", isCoordinator: false, workingGroup: zuidOost },
+    ],
+  };
+  const routes = {
+    "/api/me": me,
+    "/api/working-groups": directory,
+    [membersPath]: { members: membersWithContactFixture },
+    [`/api/working-groups/${zuidOost.id}/members`]: { members: [lotte] },
+  };
+
+  test("opens the rows of the group they coordinate only", async () => {
+    mockFetch(routes);
+    renderApp("/app/more/members");
+    expect(await screen.findByText("Lotte Smit")).toBeVisible();
+    expect(screen.getByRole("button", { name: /Bram Jansen/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Lotte Smit/ })).toBeNull();
+  });
+
+  test("cannot remove a member of the group they volunteer in", async () => {
+    mockFetch(routes);
+    renderApp(`/app/more/members/${lotte.membershipId}`);
+    expect(await screen.findByRole("heading", { name: "Lotte Smit" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Verwijder uit werkgroep" })).toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-import { mayOpenMembers, useMe, type MeResponse } from "@padvinder/api-client";
+import { apiErrorMessage, mayOpenMembers, useMe, type MeResponse } from "@padvinder/api-client";
 import { MemberList } from "@padvinder/ui";
 import { useNavigate } from "react-router";
 import { FlashMessage, LoadError, Loading, SubScreen } from "./sub-screen";
@@ -21,15 +21,19 @@ function Members({ me }: { me: MeResponse }) {
   const lists = useMemberLists(me);
   if (lists.error) return <LoadError error={lists.error} onRetry={lists.refetch} />;
   if (lists.isPending) return <Loading>Leden laden…</Loading>;
-  // One list for all groups: rows open when the user may open members in at least one group.
-  // In a group where they are a volunteer, the member screen then shows only the name.
-  const canOpen = lists.groups.some(({ workingGroup }) => mayOpenMembers(me, workingGroup));
+  // No group to list: the menu hides Leden, and a URL typed by hand gets the API's "no".
+  if (lists.groups.length === 0) return <p className="text-lg">{apiErrorMessage("not_allowed")}</p>;
+  const openable = new Set(
+    lists.groups
+      .filter(({ workingGroup }) => mayOpenMembers(me, workingGroup))
+      .map(({ workingGroup }) => workingGroup.id),
+  );
   return (
     <MemberList
       groups={lists.groups}
-      onOpen={
-        canOpen ? (membershipId) => void navigate(`/more/members/${membershipId}`) : undefined
-      }
+      onOpen={(membershipId) => void navigate(`/more/members/${membershipId}`)}
+      // Only coordinators and admins of a group open its members; elsewhere the rows are plain.
+      canOpen={(workingGroupId) => openable.has(workingGroupId)}
     />
   );
 }
