@@ -57,16 +57,21 @@ The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`
 
 All three read their settings from environment variables with the same names as the GitHub secrets. Errors name missing variables, never their values. Every line they print goes through `redactForLog()`: secrets show as `***`, IP addresses as `<ip>` and the account name as `<account>`.
 
-| Command                                                                                        | Needs                                                                            | What it does                                                                                                                                         |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm infra:provision --environment <env>`                                                     | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `DATABASE_PASSWORD`, SSH files below | Prints the plan: which resources it would create or update. Changes nothing                                                                          |
-| `pnpm infra:provision --environment <env> --apply [--rotate-password]`                         | same                                                                             | Carries out the plan, then writes the env file over SSH and creates `releases/`. Never restarts anything; it says when a restart is needed           |
-| `pnpm infra:provision --environment <env> --inspect`                                           | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                       | Read-only. Prints field names and value types of the account's resources, and the managed values of ours, to confirm the names in `src/resources.ts` |
-| `pnpm infra:deploy --environment <env> --tarball padvinder-release.tar.gz --commit <full sha>` | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, SSH files below                      | Deploys one release (steps below)                                                                                                                    |
-| `pnpm infra:services --environment <env> (--enable \| --disable \| --restart)`                 | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                       | Turns the two services of an environment on or off, or restarts them                                                                                 |
-| `pnpm test:fake-host`                                                                          | Docker, a release tarball for the deploy test                                    | Tests SSH, upload and deploy against a fake host container. In CI as the `deploy-test` check                                                         |
+| Command                                                                                        | Needs                                                                      | What it does                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm infra:provision --environment <env>`                                                     | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `DATABASE_PASSWORD`, SSH below | Prints the plan: which resources it would create or update. Changes nothing                                                                          |
+| `pnpm infra:provision --environment <env> --apply [--rotate-password]`                         | same                                                                       | Carries out the plan, then writes the env file over SSH and creates `releases/`. Never restarts anything; it says when a restart is needed           |
+| `pnpm infra:provision --environment <env> --inspect`                                           | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Read-only. Prints field names and value types of the account's resources, and the managed values of ours, to confirm the names in `src/resources.ts` |
+| `pnpm infra:deploy --environment <env> --tarball padvinder-release.tar.gz --commit <full sha>` | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, SSH below                      | Deploys one release (steps below)                                                                                                                    |
+| `pnpm infra:services --environment <env> (--enable \| --disable \| --restart)`                 | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Turns the two services of an environment on or off, or restarts them                                                                                 |
+| `pnpm test:fake-host`                                                                          | Docker, a release tarball for the deploy test                              | Tests SSH, upload and deploy against a fake host container. In CI as the `deploy-test` check                                                         |
 
-The SSH files are `DEPLOY_SSH_KEY_FILE` (path to the private key) and `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file). In GitHub Actions, the composite action `.github/actions/alwaysdata-credentials` writes both from the `DEPLOY_SSH_KEY` and `SSH_KNOWN_HOSTS` secrets.
+SSH needs `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file) and the private key, from one of two places:
+
+- `SSH_AUTH_SOCK`: the socket of an ssh-agent that holds the key. This is how CI does it: the composite action `.github/actions/alwaysdata-credentials` starts a dedicated agent, loads the `DEPLOY_SSH_KEY` secret into it over stdin, and writes the `SSH_KNOWN_HOSTS` secret to a file. The key never touches the runner's disk. The final step of each job stops the agent (`ssh-agent -k`).
+- `DEPLOY_SSH_KEY_FILE`: path to the private key file, for local runs. When it is set, it wins over `SSH_AUTH_SOCK`.
+
+ssh offers only that key file, or only the keys of that agent (`IdentityAgent=<socket>` with `IdentityFile=none`), never the default keys in `~/.ssh`, and reads no `~/.ssh/config`. With an agent it offers every key the agent holds: the one in CI holds only the deploy key, but a personal agent may hold many, and a server stops after a few wrong ones.
 
 With `--apply`, once the SSH user exists, provisioning first reads the env file over SSH and compares its password, and only then changes anything through the API: a failing SSH login or a password that differs without `--rotate-password` stops the run with nothing changed. On the first run the SSH user is new and has no key yet, so the env file is written after the apply (and the run asks you to add the key).
 
@@ -117,13 +122,13 @@ Settings, Environments in the repository. The step by step for the environments,
 - [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off (one maintainer would block himself). Deployment branches and tags: `main` and `provision/production`.
 - [ ] In each environment, these five secrets:
 
-| Name                 | Kind   | Staging and production                             | How to make it                                                         |
-| -------------------- | ------ | -------------------------------------------------- | ---------------------------------------------------------------------- |
-| `ALWAYSDATA_API_KEY` | Secret | One token per environment (advised), or one shared | Alwaysdata panel, Profile, Tokens. Needs 2FA on the profile. See below |
-| `DEPLOY_SSH_KEY`     | Secret | The same key in both                               | `ssh-keygen`, see below. The private key, the whole file               |
-| `DATABASE_PASSWORD`  | Secret | Different per environment                          | `openssl rand -hex 32`                                                 |
-| `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                       |
-| `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                               |
+| Name                 | Kind   | Staging and production                             | How to make it                                                          |
+| -------------------- | ------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| `ALWAYSDATA_API_KEY` | Secret | One token per environment (advised), or one shared | Alwaysdata panel, Profile, Tokens. Needs 2FA on the profile. See below  |
+| `DEPLOY_SSH_KEY`     | Secret | The same key in both                               | `ssh-keygen`, see below. The private key, the whole file, no passphrase |
+| `DATABASE_PASSWORD`  | Secret | Different per environment                          | `openssl rand -hex 32`                                                  |
+| `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                        |
+| `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                                |
 
 GitHub's wildcards in deployment branch rules do not match `/`, so a staging branch is `staging/<name>` with no further slash.
 
@@ -196,6 +201,15 @@ export DEPLOY_SSH_KEY_FILE="$HOME/.ssh/padvinder-deploy" SSH_KNOWN_HOSTS_FILE="$
 pnpm infra:provision --environment staging
 ```
 
+Without `DEPLOY_SSH_KEY_FILE` the scripts use the agent in `SSH_AUTH_SOCK`, which on most machines is your own agent with all its keys. To try the agent path as CI takes it, start a dedicated agent with only the deploy key for this shell:
+
+```sh
+unset DEPLOY_SSH_KEY_FILE
+eval "$(ssh-agent -s)" && ssh-add -t 1h "$HOME/.ssh/padvinder-deploy"   # or pipe the key in: ssh-add -t 1h -
+pnpm infra:provision --environment staging
+ssh-agent -k                                                          # stop it when done
+```
+
 A local deploy needs a release built from a clean tree:
 
 ```sh
@@ -220,7 +234,7 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 
 - **Database password:** set a new `DATABASE_PASSWORD` in the environment (`openssl rand -hex 32 | gh secret set ...`), then run Provision with `apply` and `rotate-password` on. Without `rotate-password` the run refuses, because the env file would then disagree with the database user. Then restart the services straight away: new database connections fail until they run with the new file.
 - **API token:** make a new token in the panel, set `ALWAYSDATA_API_KEY`, delete the old token in the panel.
-- **Deploy key:** make a new key pair, add the new public key to `<account>_deploy` in the panel, set `DEPLOY_SSH_KEY` in both environments, check that a deploy or a Provision apply works, then remove the old public key in the panel.
+- **Deploy key:** make a new key pair, add the new public key to `<account>_deploy` in the panel, set `DEPLOY_SSH_KEY` in both environments, check that a deploy or a Provision apply works, then remove the old public key in the panel. The key must have no passphrase: the action loads it into ssh-agent without a prompt, and fails with "Could not load DEPLOY_SSH_KEY into ssh-agent" otherwise.
 - **SSH host key** (only if Alwaysdata changes it): make `SSH_KNOWN_HOSTS` again, after checking the fingerprint.
 
 ### Turning staging off and on
@@ -318,6 +332,7 @@ The first deploy to staging is also the test the project plan asks for. Record e
 | UNVERIFIED: service `environment` format (`NAME=value`, space-separated)                                                                          | `--inspect`                                                                                                                      | not yet verified |
 | UNVERIFIED: a listed service reports `ssh_user` as an id                                                                                          | `--inspect`                                                                                                                      | not yet verified |
 | UNVERIFIED: the service on/off field `is_disabled`                                                                                                | Staging services off and on; the panel shows the change                                                                          | not yet verified |
+| The ssh-agent of the credentials step outlives that step on GitHub's runner, and the job's last step stops it                                     | The deploy's upload works; the step "Stop the SSH agent" prints nothing (not "had already stopped")                              | not yet verified |
 | The status codes of the API's `PATCH` and `restart` (the fake answers 204)                                                                        | The first apply and deploy succeed                                                                                               | not yet verified |
 
 When a name differs, change it in `src/resources.ts` only, and the fake in `src/testing/fake-api.ts` if its answers differ.
