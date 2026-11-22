@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import {
   AdminError,
@@ -61,6 +61,7 @@ test("creates an organization and a working group, each with an audit entry", as
   ]);
 });
 
+// The name check is case-sensitive, like the unique index it relies on.
 test("a second working group with the same name in one organization is name_taken", async () => {
   const { orgId } = await setup();
   await expect(
@@ -109,25 +110,61 @@ test("two grants at once give one account and one entry", async () => {
   expect(await db().select().from(auditLogEntries)).toHaveLength(1);
 });
 
-test("the last platform admin cannot be revoked", async () => {
+async function entries() {
+  const rows = await db()
+    .select()
+    .from(auditLogEntries)
+    .orderBy(asc(auditLogEntries.occurredAt), asc(auditLogEntries.id));
+  return rows.map((e) => ({
+    action: e.action,
+    organizationId: e.organizationId,
+    subjectType: e.subjectType,
+    subjectId: e.subjectId,
+    details: e.details,
+  }));
+}
+
+test("the last platform admin cannot be revoked, and nothing is written", async () => {
   await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
-  await expect(
-    revokePlatformAdmin(db(), { email: "a@example.test" }, system),
-  ).rejects.toMatchObject({ code: "last_platform_admin" });
-  await expect(
-    revokePlatformAdmin(db(), { email: "a@example.test" }, system),
-  ).rejects.toBeInstanceOf(AdminError);
+  const before = await entries();
+  const attempt = revokePlatformAdmin(db(), { email: "a@example.test" }, system);
+  await expect(attempt).rejects.toBeInstanceOf(AdminError);
+  await expect(attempt).rejects.toMatchObject({ code: "last_platform_admin" });
+  expect(await entries()).toEqual(before);
 });
 
-test("with two platform admins one can be revoked", async () => {
-  await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
+test("with two platform admins one can be revoked, with one entry", async () => {
+  const a = await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
   await grantPlatformAdmin(db(), { email: "b@example.test" }, system);
   const result = await revokePlatformAdmin(db(), { email: "a@example.test" }, system);
-  expect(result.changed).toBe(true);
+  expect(result).toEqual({ userId: a.userId, changed: true });
   expect((await getAccess(db(), result.userId))?.isPlatformAdmin).toBe(false);
+  const after = await entries();
+  expect(after).toHaveLength(3);
+  expect(after[2]).toEqual({
+    action: "role.platform_admin_revoked",
+    organizationId: null,
+    subjectType: "user",
+    subjectId: a.userId,
+    details: {},
+  });
   expect((await revokePlatformAdmin(db(), { email: "a@example.test" }, system)).changed).toBe(
     false,
   );
+  expect(await entries()).toHaveLength(3);
+});
+
+test("a platform admin grant writes an entry without an organization", async () => {
+  const a = await grantPlatformAdmin(db(), { email: "a@example.test" }, system);
+  expect(await entries()).toEqual([
+    {
+      action: "role.platform_admin_granted",
+      organizationId: null,
+      subjectType: "user",
+      subjectId: a.userId,
+      details: {},
+    },
+  ]);
 });
 
 test("two revokes at once cannot remove the last two platform admins", async () => {
@@ -148,8 +185,8 @@ test("revoking for an unknown address is user_not_found", async () => {
   ).rejects.toMatchObject({ code: "user_not_found" });
 });
 
-test("grantCoordinator creates the membership, or raises a volunteer", async () => {
-  const { groupId } = await setup();
+test("grantCoordinator creates the membership, with one entry, and a repeat adds none", async () => {
+  const { orgId, groupId } = await setup();
   const first = await grantCoordinator(
     db(),
     { email: "c@example.test", workingGroupId: groupId },
@@ -157,11 +194,23 @@ test("grantCoordinator creates the membership, or raises a volunteer", async () 
   );
   expect(first.changed).toBe(true);
   expect((await getAccess(db(), first.userId))?.memberships[0]?.role).toBe("coordinator");
+  const granted = {
+    action: "role.coordinator_granted",
+    organizationId: orgId,
+    subjectType: "user",
+    subjectId: first.userId,
+    details: { workingGroupId: groupId },
+  };
+  expect((await entries()).slice(2)).toEqual([granted]);
   expect(
     (await grantCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system))
       .changed,
   ).toBe(false);
+  expect(await entries()).toHaveLength(3);
+});
 
+test("grantCoordinator raises a volunteer, with one entry", async () => {
+  const { orgId, groupId } = await setup();
   const [v] = await db()
     .insert(users)
     .values({ name: "", email: "v@example.test" })
@@ -181,10 +230,19 @@ test("grantCoordinator creates the membership, or raises a volunteer", async () 
       .from(workingGroupMemberships)
       .where(eq(workingGroupMemberships.userId, v!.id)),
   ).toMatchObject([{ role: "coordinator" }]);
+  expect((await entries()).slice(2)).toEqual([
+    {
+      action: "role.coordinator_granted",
+      organizationId: orgId,
+      subjectType: "user",
+      subjectId: v!.id,
+      details: { workingGroupId: groupId },
+    },
+  ]);
 });
 
-test("revokeCoordinator leaves a volunteer membership", async () => {
-  const { groupId } = await setup();
+test("revokeCoordinator leaves a volunteer membership, with one entry, and a repeat adds none", async () => {
+  const { orgId, groupId } = await setup();
   const { userId } = await grantCoordinator(
     db(),
     { email: "c@example.test", workingGroupId: groupId },
@@ -195,44 +253,53 @@ test("revokeCoordinator leaves a volunteer membership", async () => {
       .changed,
   ).toBe(true);
   expect((await getAccess(db(), userId))?.memberships).toMatchObject([{ role: "volunteer" }]);
+  expect((await entries()).slice(3)).toEqual([
+    {
+      action: "role.coordinator_revoked",
+      organizationId: orgId,
+      subjectType: "user",
+      subjectId: userId,
+      details: { workingGroupId: groupId },
+    },
+  ]);
   expect(
     (await revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system))
       .changed,
   ).toBe(false);
+  expect(await entries()).toHaveLength(4);
 });
 
-test("organization admin can be granted and revoked", async () => {
+test("organization admin can be granted and revoked, each with one entry", async () => {
   const { orgId } = await setup();
-  const granted = await grantOrganizationAdmin(
-    db(),
-    { email: "o@example.test", organizationId: orgId },
-    system,
-  );
+  const input = { email: "o@example.test", organizationId: orgId };
+  const granted = await grantOrganizationAdmin(db(), input, system);
   expect(granted.changed).toBe(true);
   expect((await getAccess(db(), granted.userId))?.adminOfOrganizationIds).toEqual([orgId]);
-  expect(
-    (await grantOrganizationAdmin(db(), { email: "o@example.test", organizationId: orgId }, system))
-      .changed,
-  ).toBe(false);
-  expect(
-    (
-      await revokeOrganizationAdmin(
-        db(),
-        { email: "o@example.test", organizationId: orgId },
-        system,
-      )
-    ).changed,
-  ).toBe(true);
+  expect((await entries()).slice(2)).toEqual([
+    {
+      action: "role.organization_admin_granted",
+      organizationId: orgId,
+      subjectType: "user",
+      subjectId: granted.userId,
+      details: {},
+    },
+  ]);
+  expect((await grantOrganizationAdmin(db(), input, system)).changed).toBe(false);
+  expect(await entries()).toHaveLength(3);
+
+  expect((await revokeOrganizationAdmin(db(), input, system)).changed).toBe(true);
   expect((await getAccess(db(), granted.userId))?.adminOfOrganizationIds).toEqual([]);
-  expect(
-    (
-      await revokeOrganizationAdmin(
-        db(),
-        { email: "o@example.test", organizationId: orgId },
-        system,
-      )
-    ).changed,
-  ).toBe(false);
+  expect((await entries()).slice(3)).toEqual([
+    {
+      action: "role.organization_admin_revoked",
+      organizationId: orgId,
+      subjectType: "user",
+      subjectId: granted.userId,
+      details: {},
+    },
+  ]);
+  expect((await revokeOrganizationAdmin(db(), input, system)).changed).toBe(false);
+  expect(await entries()).toHaveLength(4);
 });
 
 test("an unknown organization or working group is reported by code", async () => {
@@ -247,6 +314,25 @@ test("an unknown organization or working group is reported by code", async () =>
     grantCoordinator(db(), { email: "o@example.test", workingGroupId: missing }, system),
   ).rejects.toMatchObject({ code: "working_group_not_found" });
   expect(await db().select().from(users)).toHaveLength(0);
+});
+
+test("revokes for an unknown target are reported by code", async () => {
+  const { orgId, groupId } = await setup();
+  const missing = "01900000-0000-7000-8000-000000000000";
+  const before = await entries();
+  await expect(
+    revokeCoordinator(db(), { email: "c@example.test", workingGroupId: missing }, system),
+  ).rejects.toMatchObject({ code: "working_group_not_found" });
+  await expect(
+    revokeCoordinator(db(), { email: "niemand@example.test", workingGroupId: groupId }, system),
+  ).rejects.toMatchObject({ code: "user_not_found" });
+  await expect(
+    revokeOrganizationAdmin(db(), { email: "o@example.test", organizationId: missing }, system),
+  ).rejects.toMatchObject({ code: "organization_not_found" });
+  await expect(
+    revokeOrganizationAdmin(db(), { email: "niemand@example.test", organizationId: orgId }, system),
+  ).rejects.toMatchObject({ code: "user_not_found" });
+  expect(await entries()).toEqual(before);
 });
 
 test("the audit entry of a coordinator grant names the organization and the group, and no person by name", async () => {

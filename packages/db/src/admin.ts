@@ -33,6 +33,7 @@ export function normalizeEmail(email: string): string {
 
 export type RoleChange = { userId: string; changed: boolean };
 
+// Every writer of users.is_platform_admin must take this lock (account deletion will too).
 // Serializes every change of the platform admin flag, so two revokes cannot both see "two admins".
 const PLATFORM_ADMIN_LOCK = 7_301_100_001;
 
