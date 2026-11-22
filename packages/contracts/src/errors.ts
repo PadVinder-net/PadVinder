@@ -13,6 +13,8 @@ export const apiErrorCodes = {
   alreadyMember: "already_member",
   alreadyRequested: "already_requested",
   alreadyDecided: "already_decided",
+  /** The membership changed (made coordinator, or no longer) while the request was being handled. */
+  membershipChanged: "membership_changed",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];

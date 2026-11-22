@@ -107,6 +107,19 @@ export type UpdateMeRequestInput = {
     phone?: string | null;
 };
 
+export type MemberInput = {
+    membershipId: string;
+    userId: string;
+    name: string;
+    isCoordinator: boolean;
+    email?: string;
+    phone?: string | null;
+};
+
+export type MemberListResponseInput = {
+    members: Array<MemberInput>;
+};
+
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
@@ -213,6 +226,19 @@ export type MeResponse = {
 export type UpdateMeRequest = {
     name?: string;
     phone?: string | null;
+};
+
+export type Member = {
+    membershipId: string;
+    userId: string;
+    name: string;
+    isCoordinator: boolean;
+    email?: string;
+    phone?: string | null;
+};
+
+export type MemberListResponse = {
+    members: Array<Member>;
 };
 
 export type VersionResponse = {
@@ -378,6 +404,84 @@ export type ListMembershipRequestsResponses = {
 };
 
 export type ListMembershipRequestsResponse = ListMembershipRequestsResponses[keyof ListMembershipRequestsResponses];
+
+export type ListMembersData = {
+    body?: never;
+    path: {
+        workingGroupId: string;
+    };
+    query?: never;
+    url: '/api/working-groups/{workingGroupId}/members';
+};
+
+export type ListMembersErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type ListMembersError = ListMembersErrors[keyof ListMembersErrors];
+
+export type ListMembersResponses = {
+    /**
+     * Default Response
+     */
+    200: MemberListResponse;
+};
+
+export type ListMembersResponse = ListMembersResponses[keyof ListMembersResponses];
+
+export type RemoveMembershipData = {
+    body?: never;
+    path: {
+        membershipId: string;
+    };
+    query?: never;
+    url: '/api/memberships/{membershipId}';
+};
+
+export type RemoveMembershipErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type RemoveMembershipError = RemoveMembershipErrors[keyof RemoveMembershipErrors];
+
+export type RemoveMembershipResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type RemoveMembershipResponse = RemoveMembershipResponses[keyof RemoveMembershipResponses];
 
 export type CreateMembershipRequestData = {
     body: CreateMembershipRequestInput;

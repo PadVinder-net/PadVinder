@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetVersionData, GetVersionResponses, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
+import type { ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetVersionData, GetVersionResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -54,6 +54,16 @@ export const listWorkingGroups = <ThrowOnError extends boolean = false>(options?
  * The group's pending requests with the applicants' contact details, oldest first. For its reviewers
  */
 export const listMembershipRequests = <ThrowOnError extends boolean = false>(options: Options<ListMembershipRequestsData, ThrowOnError>): RequestResult<ListMembershipRequestsResponses, ListMembershipRequestsErrors, ThrowOnError> => (options.client ?? client).get<ListMembershipRequestsResponses, ListMembershipRequestsErrors, ThrowOnError>({ url: '/api/working-groups/{workingGroupId}/membership-requests', ...options });
+
+/**
+ * The members of a working group by name. Email and phone only for its coordinators and admins
+ */
+export const listMembers = <ThrowOnError extends boolean = false>(options: Options<ListMembersData, ThrowOnError>): RequestResult<ListMembersResponses, ListMembersErrors, ThrowOnError> => (options.client ?? client).get<ListMembersResponses, ListMembersErrors, ThrowOnError>({ url: '/api/working-groups/{workingGroupId}/members', ...options });
+
+/**
+ * Remove a member from a working group. A coordinator may not remove a coordinator
+ */
+export const removeMembership = <ThrowOnError extends boolean = false>(options: Options<RemoveMembershipData, ThrowOnError>): RequestResult<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError> => (options.client ?? client).delete<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError>({ url: '/api/memberships/{membershipId}', ...options });
 
 /**
  * Ask to join a working group. Sending the same id again returns the stored request

@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { approveMembershipRequest, createMembershipRequest, getHealth, getMe, getMembershipRequest, getVersion, listMembershipRequests, listWorkingGroups, type Options, rejectMembershipRequest, updateMe, withdrawMembershipRequest } from '../sdk.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { approveMembershipRequest, createMembershipRequest, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, withdrawMembershipRequest } from '../sdk.gen';
+import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -145,6 +145,41 @@ export const listMembershipRequestsOptions = (options: Options<ListMembershipReq
     },
     queryKey: listMembershipRequestsQueryKey(options)
 });
+
+export const listMembersQueryKey = (options: Options<ListMembersData>) => createQueryKey('listMembers', options);
+
+/**
+ * The members of a working group by name. Email and phone only for its coordinators and admins
+ */
+export const listMembersOptions = (options: Options<ListMembersData>) => queryOptions<ListMembersResponse, ListMembersError, ListMembersResponse, ReturnType<typeof listMembersQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listMembers({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listMembersQueryKey(options)
+});
+
+/**
+ * Remove a member from a working group. A coordinator may not remove a coordinator
+ */
+export const removeMembershipMutation = (options?: Partial<Options<RemoveMembershipData>>): UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> => {
+    const mutationOptions: UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await removeMembership({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 /**
  * Ask to join a working group. Sending the same id again returns the stored request

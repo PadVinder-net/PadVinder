@@ -3,6 +3,7 @@ export * from "./events";
 export * from "./health";
 export * from "./login";
 export * from "./me";
+export * from "./members";
 export * from "./membership-requests";
 export * from "./version";
 export * from "./working-groups";
