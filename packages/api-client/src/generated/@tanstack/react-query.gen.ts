@@ -235,7 +235,7 @@ export const withdrawMembershipRequestMutation = (options?: Partial<Options<With
 export const getMembershipRequestQueryKey = (options: Options<GetMembershipRequestData>) => createQueryKey('getMembershipRequest', options);
 
 /**
- * One request with the applicant's contact details, for its reviewers. Any status
+ * One request, any status, for its reviewers. The applicant's contact details only while pending
  */
 export const getMembershipRequestOptions = (options: Options<GetMembershipRequestData>) => queryOptions<GetMembershipRequestResponse, GetMembershipRequestError, GetMembershipRequestResponse, ReturnType<typeof getMembershipRequestQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

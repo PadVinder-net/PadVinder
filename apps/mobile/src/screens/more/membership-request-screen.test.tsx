@@ -20,6 +20,16 @@ const [noor, sem] = requestsForReviewFixture;
 const requestPath = `/api/membership-requests/${noor!.id}`;
 const noordRequestsPath = `/api/working-groups/${noord.id}/membership-requests`;
 
+/** A decided request as the API answers it: without the applicant's contact details. */
+function decided(status: "approved" | "rejected") {
+  return {
+    ...noor,
+    status,
+    decidedAt: noor!.requestedAt,
+    applicant: { id: noor!.applicant.id, name: noor!.applicant.name },
+  };
+}
+
 function coordinatorRoutes(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     "/api/me": coordinatorMeFixture,
@@ -45,7 +55,7 @@ test("the list shows the open requests and opens one", async () => {
 
 test("approving returns to the list with the message", async () => {
   const routes = coordinatorRoutes({
-    [`POST ${requestPath}/approve`]: { ...noor, status: "approved", decidedAt: noor!.requestedAt },
+    [`POST ${requestPath}/approve`]: decided("approved"),
   });
   mockFetch(routes);
   const { router } = renderApp(`/app/more/membership-requests/${noor!.id}`);
@@ -62,11 +72,7 @@ test("approving returns to the list with the message", async () => {
 test("rejecting asks first, then returns to the list with the message", async () => {
   mockFetch(
     coordinatorRoutes({
-      [`POST ${requestPath}/reject`]: {
-        ...noor,
-        status: "rejected",
-        decidedAt: noor!.requestedAt,
-      },
+      [`POST ${requestPath}/reject`]: decided("rejected"),
     }),
   );
   const { router } = renderApp(`/app/more/membership-requests/${noor!.id}`);
@@ -85,12 +91,16 @@ test("an already decided request shows the handled text", async () => {
   renderApp(`/app/more/membership-requests/${noor!.id}`);
   const approve = await screen.findByRole("button", { name: "Keur goed" });
   // Someone else approved it in the meantime.
-  routes[requestPath] = { ...noor, status: "approved", decidedAt: noor!.requestedAt };
+  routes[requestPath] = decided("approved");
   await userEvent.click(approve);
   expect(await screen.findByText("Deze aanmelding is al behandeld.")).toBeVisible();
   // The request is loaded again and shows no buttons.
   await waitFor(() => expect(screen.queryByRole("button", { name: "Keur goed" })).toBeNull());
   expect(calls.filter((path) => path === requestPath)).toHaveLength(2);
+  // A decided request comes without contact details, and the screen shows no rows for them.
+  expect(screen.getByRole("heading", { name: "Noor Jansen" })).toBeVisible();
+  expect(screen.queryByText("E-mailadres")).toBeNull();
+  expect(screen.queryByRole("link", { name: "noor@example.test" })).toBeNull();
 });
 
 test("a request opened by an outsider shows the not-found text", async () => {

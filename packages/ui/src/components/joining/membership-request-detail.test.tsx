@@ -72,9 +72,16 @@ test("Annuleer does not reject", async () => {
 });
 
 test("a decided request shows no buttons and the handled text", () => {
-  setup({ ...noor!, status: "approved", decidedAt: "2027-01-12T09:30:00.000+01:00" });
+  // The API sends a decided request without the applicant's contact details.
+  setup({
+    ...noor!,
+    status: "approved",
+    decidedAt: "2027-01-12T09:30:00.000+01:00",
+    applicant: { id: noor!.applicant.id, name: noor!.applicant.name },
+  });
   expect(screen.getByText("Deze aanmelding is al behandeld.")).toBeVisible();
   expect(screen.queryByRole("button")).toBeNull();
+  expect(screen.queryByText("E-mailadres")).toBeNull();
 });
 
 test("shows an error", () => {

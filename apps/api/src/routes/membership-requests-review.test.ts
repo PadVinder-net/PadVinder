@@ -185,17 +185,16 @@ test("the list holds the applicant's name, email address and phone number, oldes
   expect(res.body).not.toMatch(/receivedAt|userId|organizationId|decidedBy/);
 });
 
-test("one request opens with its applicant, also after it was decided", async () => {
+test("a pending request opens with its applicant's name, email address and phone number", async () => {
   const applicant = await newApplicant();
   const id = await freshRequest(cast.workingGroup.workingGroupId, applicant);
-  expect((await reject(cast.members.coordinator, id)).statusCode).toBe(200);
   const res = await getOne(cast.members.coordinator, id);
   expect(res.statusCode).toBe(200);
   expect(res.json()).toEqual({
     id,
-    status: "rejected",
+    status: "pending",
     requestedAt: "2027-01-10T18:00:00.000Z",
-    decidedAt: expect.any(String),
+    decidedAt: null,
     workingGroup: castGroup(),
     applicant: {
       id: applicant.id,
@@ -214,6 +213,55 @@ test("one request opens with its applicant, also after it was decided", async ()
   ]);
 });
 
+/** The raw answer holds no contact keys and none of the applicant's contact details. */
+function expectNoContact(
+  res: { body: string; json: () => { applicant: object } },
+  applicant: { email: string },
+) {
+  expect(Object.keys(res.json().applicant).sort()).toEqual(["id", "name"]);
+  expect(res.body).not.toMatch(/"email"|"phone"|06 1234/);
+  expect(res.body).not.toContain(applicant.email);
+}
+
+test("a withdrawn, rejected or approved request opens without the applicant's contact details", async () => {
+  for (const status of ["withdrawn", "rejected", "approved"] as const) {
+    const applicant = await newApplicant();
+    const id = await freshRequest(cast.workingGroup.workingGroupId, applicant);
+    if (status === "withdrawn") {
+      await ctx.t.db
+        .update(membershipRequests)
+        .set({ status: "withdrawn", decidedAt: new Date() })
+        .where(eq(membershipRequests.id, id));
+    } else {
+      const decided = await decide(
+        cast.members.coordinator,
+        id,
+        status === "approved" ? "approve" : "reject",
+      );
+      expect(decided.statusCode).toBe(200);
+      expectNoContact(decided, applicant);
+    }
+    // The same for every reviewer, platform admins included.
+    for (const who of [
+      cast.members.coordinator,
+      cast.members.organizationAdmin,
+      cast.members.platformAdmin,
+    ]) {
+      const res = await getOne(who, id);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        id,
+        status,
+        requestedAt: "2027-01-10T18:00:00.000Z",
+        decidedAt: expect.any(String),
+        workingGroup: castGroup(),
+        applicant: { id: applicant.id, name: applicant.name },
+      });
+      expectNoContact(res, applicant);
+    }
+  }
+});
+
 test("approving creates a volunteer membership and one audit entry without personal data", async () => {
   const applicant = await newApplicant();
   const id = await freshRequest(cast.workingGroup.workingGroupId, applicant);
@@ -223,8 +271,9 @@ test("approving creates a volunteer membership and one audit entry without perso
     id,
     status: "approved",
     decidedAt: expect.any(String),
-    applicant: { id: applicant.id, email: applicant.email },
+    applicant: { id: applicant.id, name: applicant.name },
   });
+  expectNoContact(res, applicant);
   expect(await membershipsOf(applicant.id)).toMatchObject([
     { workingGroupId: cast.workingGroup.workingGroupId, isCoordinator: false },
   ]);
@@ -273,6 +322,8 @@ test("the same decision again is 200 and writes nothing new", async () => {
     const again = await decide(cast.members.platformAdmin, id, decision);
     expect([first.statusCode, again.statusCode]).toEqual([200, 200]);
     expect(again.json()).toEqual(first.json());
+    // The "unchanged" answer is about a decided request: no contact details either.
+    expectNoContact(again, applicant);
     expect(await auditOf(id)).toHaveLength(1);
     expect(await membershipsOf(applicant.id)).toHaveLength(decision === "approve" ? 1 : 0);
     // The first decider stays on record.

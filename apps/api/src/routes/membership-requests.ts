@@ -205,7 +205,8 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
       preHandler: app.requireActor,
       schema: {
         operationId: "getMembershipRequest",
-        summary: "One request with the applicant's contact details, for its reviewers. Any status",
+        summary:
+          "One request, any status, for its reviewers. The applicant's contact details only while pending",
         params: requestParamsSchema,
         response: { 200: membershipRequestForReviewSchema, ...errorResponses(400, 401, 403, 404) },
       },

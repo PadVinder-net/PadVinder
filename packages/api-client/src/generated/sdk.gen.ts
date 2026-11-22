@@ -88,7 +88,7 @@ export const createMembershipRequest = <ThrowOnError extends boolean = false>(op
 export const withdrawMembershipRequest = <ThrowOnError extends boolean = false>(options: Options<WithdrawMembershipRequestData, ThrowOnError>): RequestResult<WithdrawMembershipRequestResponses, WithdrawMembershipRequestErrors, ThrowOnError> => (options.client ?? client).post<WithdrawMembershipRequestResponses, WithdrawMembershipRequestErrors, ThrowOnError>({ url: '/api/membership-requests/{id}/withdraw', ...options });
 
 /**
- * One request with the applicant's contact details, for its reviewers. Any status
+ * One request, any status, for its reviewers. The applicant's contact details only while pending
  */
 export const getMembershipRequest = <ThrowOnError extends boolean = false>(options: Options<GetMembershipRequestData, ThrowOnError>): RequestResult<GetMembershipRequestResponses, GetMembershipRequestErrors, ThrowOnError> => (options.client ?? client).get<GetMembershipRequestResponses, GetMembershipRequestErrors, ThrowOnError>({ url: '/api/membership-requests/{id}', ...options });
 

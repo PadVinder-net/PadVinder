@@ -27,8 +27,16 @@ export const Pending: Story = { args: { pending: true } };
 export const WithError: Story = {
   args: { error: "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw." },
 };
+/** A decided request comes without the applicant's contact details. */
 export const AlreadyHandled: Story = {
-  args: { request: { ...noor!, status: "approved", decidedAt: "2027-01-12T09:30:00.000+01:00" } },
+  args: {
+    request: {
+      ...noor!,
+      status: "approved",
+      decidedAt: "2027-01-12T09:30:00.000+01:00",
+      applicant: { id: noor!.applicant.id, name: noor!.applicant.name },
+    },
+  },
 };
 export const DeletedApplicant: Story = {
   args: {

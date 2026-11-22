@@ -16,19 +16,22 @@ export function toMembershipRequest(record: MembershipRequestRecord): Membership
 }
 
 /**
- * The answer for a reviewer: the request plus the applicant's name, email address and phone. A
- * deleted account's record has no contact keys, and neither has the answer.
+ * The answer for a reviewer: the request plus the applicant's name, and their email address and
+ * phone only while the request is pending ("Who sees names" allows a reviewer the contact details
+ * of someone with a pending request; after the decision a member's contact comes only from the
+ * members list). A deleted account's record has no contact keys, and neither has the answer.
  */
 export function toMembershipRequestForReview(
   record: MembershipRequestReviewRecord,
 ): MembershipRequestForReview {
+  const showContact = record.status === "pending";
   return {
     ...toMembershipRequest(record),
     applicant: {
       id: record.applicant.id,
       name: record.applicant.name,
-      ...(record.applicant.email !== undefined && { email: record.applicant.email }),
-      ...(record.applicant.phone !== undefined && { phone: record.applicant.phone }),
+      ...(showContact && record.applicant.email !== undefined && { email: record.applicant.email }),
+      ...(showContact && record.applicant.phone !== undefined && { phone: record.applicant.phone }),
     },
   };
 }

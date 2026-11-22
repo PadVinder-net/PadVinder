@@ -1542,7 +1542,7 @@
     "/api/membership-requests/{id}": {
       "get": {
         "operationId": "getMembershipRequest",
-        "summary": "One request with the applicant's contact details, for its reviewers. Any status",
+        "summary": "One request, any status, for its reviewers. The applicant's contact details only while pending",
         "parameters": [
           {
             "schema": {

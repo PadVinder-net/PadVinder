@@ -36,9 +36,10 @@ export type MembershipRequest = z.infer<typeof membershipRequestSchema>;
 
 /**
  * A request as a reviewer sees it: a coordinator of the group, an admin of its organization or a
- * platform admin. Only they may see the applicant's contact details; nobody else gets this shape.
- * An applicant who deleted their account has no `email` and `phone` keys, and the name
- * "Verwijderd account".
+ * platform admin. Only they may see the applicant's contact details, and only while the request
+ * is pending: a decided or withdrawn request has no `email` and `phone` keys. Nobody else gets this
+ * shape. An applicant who deleted their account has no `email` and `phone` keys either, and the
+ * name "Verwijderd account".
  */
 export const membershipRequestForReviewSchema = membershipRequestSchema
   .extend({
