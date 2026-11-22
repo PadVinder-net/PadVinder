@@ -4,8 +4,11 @@ import {
   type HealthResponse,
 } from "@padvinder/contracts";
 import { getDatabaseDiagnostics, getLatestHeartbeat, type Db } from "@padvinder/db";
+import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { ApiEnv } from "../env";
+import { loadActor } from "../permissions/actor";
+import { decide } from "../permissions/rules";
 
 /** The whole database check answers within this time, also when the database hangs. */
 const DATABASE_CHECK_TIMEOUT_MS = 3_000;
@@ -27,6 +30,16 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
   app,
   { env, db },
 ) => {
+  /** The actor, or `null` for no login. A failure counts as "no actor": the endpoint must answer. */
+  async function loadActorOrNull(request: FastifyRequest) {
+    try {
+      return await withTimeout(loadActor(app, db, request), DATABASE_CHECK_TIMEOUT_MS);
+    } catch (error) {
+      request.log.warn({ err: error }, "Health check could not load the actor");
+      return null;
+    }
+  }
+
   app.get(
     "/health",
     {
@@ -42,25 +55,41 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
       let database: HealthResponse["database"];
       let lastHeartbeat: Date | null;
       try {
-        const [diagnostics, heartbeat] = await withTimeout(
-          Promise.all([getDatabaseDiagnostics(db), getLatestHeartbeat(db)]),
+        const [diagnostics, heartbeat, actor] = await withTimeout(
+          Promise.all([
+            getDatabaseDiagnostics(db),
+            getLatestHeartbeat(db),
+            loadActorOrNull(request),
+          ]),
           DATABASE_CHECK_TIMEOUT_MS,
         );
-        database = {
-          reachable: true,
-          postgresVersion: diagnostics.postgresVersion,
-          postgisVersion: diagnostics.postgisVersion,
-          latestMigration: diagnostics.latestMigration && {
-            name: diagnostics.latestMigration.name,
-            createdAt: diagnostics.latestMigration.createdAt.toISOString(),
-          },
-        };
+        const showDetails =
+          actor !== null && decide(actor, { action: "system.viewDatabaseDetails" }) === "allowed";
+        database = showDetails
+          ? {
+              reachable: true,
+              detailsHidden: false,
+              postgresVersion: diagnostics.postgresVersion,
+              postgisVersion: diagnostics.postgisVersion,
+              latestMigration: diagnostics.latestMigration && {
+                name: diagnostics.latestMigration.name,
+                createdAt: diagnostics.latestMigration.createdAt.toISOString(),
+              },
+            }
+          : {
+              reachable: true,
+              detailsHidden: true,
+              postgresVersion: null,
+              postgisVersion: null,
+              latestMigration: null,
+            };
         lastHeartbeat = heartbeat;
       } catch (error) {
         // Connect timeout, statement timeout, query error or no answer: report it, never throw.
         request.log.warn({ err: error }, "Health check could not reach the database");
         database = {
           reachable: false,
+          detailsHidden: true,
           postgresVersion: null,
           postgisVersion: null,
           latestMigration: null,

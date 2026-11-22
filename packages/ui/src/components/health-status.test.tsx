@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import {
   databaseUnreachableFixture,
+  detailsHiddenFixture,
   healthyFixture,
   workerStaleFixture,
 } from "@padvinder/contracts/fixtures";
@@ -51,4 +52,13 @@ test("PostGIS not installed", () => {
     />,
   );
   expect(screen.getByText("Niet geïnstalleerd")).toBeVisible();
+});
+test("hidden details leave the version rows out", () => {
+  render(<HealthStatus health={detailsHiddenFixture} />);
+  expect(screen.queryByText("PostgreSQL")).toBeNull();
+  expect(screen.queryByText("PostGIS")).toBeNull();
+  expect(screen.queryByText("Laatste migratie")).toBeNull();
+  expect(screen.getByText("Verbonden")).toBeVisible();
+  expect(screen.getByText("Alles werkt")).toBeVisible();
+  expect(screen.getByText("0123456")).toBeVisible();
 });

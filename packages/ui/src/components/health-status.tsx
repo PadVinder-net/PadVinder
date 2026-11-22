@@ -41,11 +41,16 @@ function Body({
     ? `Laatste hartslag: ${formatDateTime(worker.lastHeartbeatAt)}`
     : "Nog geen hartslag";
 
+  const databaseDetails: [label: string, value: string][] = database.detailsHidden
+    ? []
+    : [
+        ["PostgreSQL", database.postgresVersion ?? "Onbekend"],
+        ["PostGIS", database.postgisVersion ?? "Niet geïnstalleerd"],
+        ["Laatste migratie", database.latestMigration?.name ?? "Onbekend"],
+      ];
   const rows: [label: string, value: string][] = [
     ["Database", database.reachable ? "Verbonden" : "Niet bereikbaar"],
-    ["PostgreSQL", database.postgresVersion ?? "Onbekend"],
-    ["PostGIS", database.postgisVersion ?? "Niet geïnstalleerd"],
-    ["Laatste migratie", database.latestMigration?.name ?? "Onbekend"],
+    ...databaseDetails,
     ["Achtergrondtaken", heartbeat],
     ["Versie", health.commit.slice(0, 7)],
   ];

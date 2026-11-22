@@ -73,6 +73,9 @@
               "reachable": {
                 "type": "boolean"
               },
+              "detailsHidden": {
+                "type": "boolean"
+              },
               "postgresVersion": {
                 "nullable": true,
                 "type": "string"
@@ -102,6 +105,7 @@
             },
             "required": [
               "reachable",
+              "detailsHidden",
               "postgresVersion",
               "postgisVersion",
               "latestMigration"
@@ -351,6 +355,9 @@
               "reachable": {
                 "type": "boolean"
               },
+              "detailsHidden": {
+                "type": "boolean"
+              },
               "postgresVersion": {
                 "nullable": true,
                 "type": "string"
@@ -381,6 +388,7 @@
             },
             "required": [
               "reachable",
+              "detailsHidden",
               "postgresVersion",
               "postgisVersion",
               "latestMigration"

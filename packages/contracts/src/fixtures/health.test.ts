@@ -1,8 +1,13 @@
 import { expect, test } from "vitest";
 import { healthResponseSchema } from "../health";
-import { databaseUnreachableFixture, healthyFixture, workerStaleFixture } from "./health";
+import {
+  databaseUnreachableFixture,
+  detailsHiddenFixture,
+  healthyFixture,
+  workerStaleFixture,
+} from "./health";
 
-test.each([healthyFixture, workerStaleFixture, databaseUnreachableFixture])(
+test.each([healthyFixture, workerStaleFixture, databaseUnreachableFixture, detailsHiddenFixture])(
   "fixture matches the schema",
   (f) => expect(healthResponseSchema.parse(f)).toEqual(f),
 );

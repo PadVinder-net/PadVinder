@@ -2,6 +2,7 @@ import type { HealthResponse } from "../health";
 
 const database: HealthResponse["database"] = {
   reachable: true,
+  detailsHidden: false,
   postgresVersion: "18.7",
   postgisVersion: "3.6.2",
   latestMigration: { name: "0001_worker_heartbeats", createdAt: "2026-11-21T10:00:00.000Z" },
@@ -26,9 +27,22 @@ export const databaseUnreachableFixture: HealthResponse = {
   status: "degraded",
   database: {
     reachable: false,
+    detailsHidden: true,
     postgresVersion: null,
     postgisVersion: null,
     latestMigration: null,
   },
   worker: { lastHeartbeatAt: null },
+};
+
+/** What nobody and every non-admin gets: the status, without the database details. */
+export const detailsHiddenFixture: HealthResponse = {
+  ...healthyFixture,
+  database: {
+    reachable: true,
+    detailsHidden: true,
+    postgresVersion: null,
+    postgisVersion: null,
+    latestMigration: null,
+  },
 };

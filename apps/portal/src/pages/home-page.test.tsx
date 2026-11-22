@@ -1,4 +1,4 @@
-import { healthyFixture, meFixture } from "@padvinder/contracts/fixtures";
+import { healthyFixture, meFixture, platformAdminMeFixture } from "@padvinder/contracts/fixtures";
 import { createTestQueryClient, mockFetch } from "@padvinder/api-client/testing";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
@@ -18,11 +18,22 @@ function renderHome(client = createTestQueryClient()) {
   );
 }
 
-test("home page links to the system status", async () => {
-  mockFetch({ "/api/me": meFixture });
+test("a platform admin sees the link to the system status", async () => {
+  mockFetch({ "/api/me": platformAdminMeFixture });
   renderHome();
   expect(await screen.findByRole("heading", { level: 1, name: "PadVinder" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Systeemstatus" })).toHaveAttribute("href", "/system");
+  expect(screen.getByRole("button", { name: "Log uit" })).toBeVisible();
+});
+
+test("anyone else sees that there is nothing to do yet, and can log out", async () => {
+  mockFetch({ "/api/me": meFixture });
+  renderHome();
+  expect(
+    await screen.findByText("Hier is nog niets te doen. Het beheer komt binnenkort."),
+  ).toBeVisible();
+  expect(screen.queryByRole("link", { name: "Systeemstatus" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Log uit" })).toBeVisible();
 });
 
 test("Log uit logs out and shows the login screen", async () => {

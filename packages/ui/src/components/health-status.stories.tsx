@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   databaseUnreachableFixture,
+  detailsHiddenFixture,
   healthyFixture,
   workerStaleFixture,
 } from "@padvinder/contracts/fixtures";
@@ -25,5 +26,6 @@ type Story = StoryObj<typeof meta>;
 export const Healthy: Story = { args: { health: healthyFixture } };
 export const WorkerStale: Story = { args: { health: workerStaleFixture } };
 export const DatabaseUnreachable: Story = { args: { health: databaseUnreachableFixture } };
+export const DetailsHidden: Story = { args: { health: detailsHiddenFixture } };
 export const Loading: Story = { args: {} };
 export const LoadFailed: Story = { args: { loadFailed: true } };

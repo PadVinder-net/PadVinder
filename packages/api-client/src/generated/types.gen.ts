@@ -21,6 +21,7 @@ export type HealthResponseInput = {
     checkedAt: string;
     database: {
         reachable: boolean;
+        detailsHidden: boolean;
         postgresVersion: string | null;
         postgisVersion: string | null;
         latestMigration: {
@@ -91,6 +92,7 @@ export type HealthResponse = {
     checkedAt: string;
     database: {
         reachable: boolean;
+        detailsHidden: boolean;
         postgresVersion: string | null;
         postgisVersion: string | null;
         latestMigration: {
