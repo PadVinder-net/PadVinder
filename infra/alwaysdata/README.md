@@ -94,14 +94,14 @@ A deploy with a rollback takes about 7 minutes plus the time of the migrations (
 
 ## GitHub workflows
 
-| Workflow (file)                           | Trigger                                                                                                                      | What it does                                                                                                          |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Deploy (`deploy.yml`)                     | Push to `main` or to `staging/**`; by hand                                                                                   | Builds the release once (`release / build`), deploys it to staging, then for `main` only to production after approval |
-| Provision (`provision.yml`)               | By hand (inputs `environment`, `apply`, `rotate-password`, `inspect`); push to `provision/staging` or `provision/production` | By hand: plan, or apply with `apply`. A push only plans and inspects, so it is always read-only                       |
-| Staging services (`staging-services.yml`) | By hand (input `state`: `on` or `off`)                                                                                       | Turns the staging services on or off                                                                                  |
-| Deploy test (`deploy-test.yml`)           | Pull requests that touch the deploy path (its `paths:` filter); by hand. Not a required check                                | Builds a release, `pnpm test:fake-host` with it, and the credentials action with a throwaway key                      |
+| Workflow (file)                           | Trigger                                                                                       | What it does                                                                                          |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Deploy (`deploy.yml`)                     | Push to `main`; by hand from `main`                                                           | Builds the release once (`release / build`), deploys it to staging, then to production after approval |
+| Provision (`provision.yml`)               | By hand from `main` (inputs `environment`, `apply`, `rotate-password`, `inspect`)             | Plans, or applies with `apply`; with `inspect` also prints the account's field names                  |
+| Staging services (`staging-services.yml`) | By hand (input `state`: `on` or `off`)                                                        | Turns the staging services on or off                                                                  |
+| Deploy test (`deploy-test.yml`)           | Pull requests that touch the deploy path (its `paths:` filter); by hand. Not a required check | Builds a release, `pnpm test:fake-host` with it, and the credentials action with a throwaway key      |
 
-`workflow_dispatch` ("Run workflow") works only once a workflow file is on the default branch, `main`. Until then use the push triggers: a push to `provision/<env>` plans and inspects, and a push to `staging/<name>` deploys that branch to staging.
+Only `main` reaches the environments: both GitHub environments allow the branch `main` only, and the workflows run there only (a Deploy run by hand from another branch skips its deploy jobs). `workflow_dispatch` ("Run workflow") works only once a workflow file is on `main`.
 
 The jobs that use secrets enter the GitHub environment `staging` or `production` and see only that environment's secrets. The release build has no environment and no secrets. Secrets go into steps through `env:` only, never into a script through `${{ }}`, and the ssh-agent that holds the deploy key is stopped at the end of every job.
 
@@ -120,8 +120,8 @@ The staging deploy, Provision and Staging services of one environment share the 
 
 Settings, Environments in the repository. The step by step for the environments, with `gh` commands, is in `docs/repository-settings.md`, section 4. In short:
 
-- [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, branch rules `main`, `staging/**` and `provision/staging`.
-- [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off (one maintainer would block himself). Deployment branches and tags: `main` and `provision/production`.
+- [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, the branch rule `main` only.
+- [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off (one maintainer would block himself). Deployment branches and tags: `main` only.
 - [ ] In each environment, these five secrets:
 
 | Name                 | Kind   | Staging and production                             | How to make it                                                          |
@@ -132,7 +132,7 @@ Settings, Environments in the repository. The step by step for the environments,
 | `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                        |
 | `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                                |
 
-GitHub's wildcards in deployment branch rules do not match `/`, so a staging branch is `staging/<name>` with no further slash.
+**Why `main` only, also for staging.** Both environments live on one Alwaysdata account, and there every SSH user and every API token reaches everything: the staging token can read and change production, and the deploy key logs in as the user that runs both. Whoever can run code in the `staging` environment can therefore read production's secrets and data. So the account is the security boundary, not the environment, and staging is treated as production-sensitive: only reviewed code on `main` may hold the deploy credentials. A branch cannot be tried on staging from GitHub; merge it, or the maintainer deploys it locally with the CLI (see "Running locally").
 
 The account name and the known-hosts line are secrets too, not variables: GitHub prints the `env:` values of a non-secret in a step's log, and this repository's logs are public. A secret is masked there. The known-hosts line holds `ssh-<account>.alwaysdata.net`, so it would reveal the account name. The scripts also mask the account name in their own output.
 
@@ -182,14 +182,17 @@ Only store the known hosts after the fingerprint matches; with a wrong one the d
 
 ## First run, in this order
 
+The workflows reach the environments only from `main`, so the first runs happen after pull request 8 is merged.
+
 1. **Secrets** in both environments, as above.
-2. **Plan staging, read-only.** Push the branch to `provision/staging` (`git push origin HEAD:provision/staging`). The Provision run plans and inspects; nothing changes. Check the plan, and compare the inspect output with the `UNVERIFIED` fields in `src/resources.ts`. Fix the names there if they differ, and push again.
-3. **Apply staging.** Once the workflow is on `main`: Actions, Provision, Run workflow, environment `staging`, `apply` on. Until it is on `main`, run it locally instead (see "Running locally"). It creates the SSH user, the database, the database user, the site and the two services. The first apply then fails at writing the env file, because the SSH user has no key yet; the output says so.
-4. **Add the deploy public key** `padvinder-deploy.pub` to the SSH user `<account>_deploy` in the panel.
-5. **Apply staging again.** It finds everything `ok`, writes `padvinder/staging/.env` and creates `releases/`.
-6. **Deploy to staging.** Push a branch to `staging/<name>`, or merge to `main`. The services start failing as soon as they are created (no release yet), and Alwaysdata may turn them off; the first deploy turns them on.
-7. **Verify** staging: the "Verification" section below.
-8. **Production:** steps 2, 3 and 5 with `production` (`provision/production` for the read-only plan). Each run waits for your approval, also a plan. The SSH user and its key already exist, so the first apply writes the env file. Then merge to `main`, check staging, and approve the production job.
+2. **Merge pull request 8.** Its Deploy run fails safely, because nothing is provisioned yet: the staging job loads the key, unpacks the release and asks the API for the services, then stops with `Deploy failed: Found no service "padvinder-api (staging)". Found no service "padvinder-worker (staging)". Run pnpm infra:provision --environment staging to see what differs.` It has not used SSH or changed anything, and production does not start, because it needs the staging job.
+3. **Plan staging, read-only.** Actions, Provision, Run workflow (from `main`), environment `staging`, `apply` off, `inspect` on. Nothing changes. Check the plan, and compare the inspect output with the `UNVERIFIED` fields in `src/resources.ts`. If the names differ, fix them there in a pull request, merge it (its Deploy run fails as in step 2) and plan again.
+4. **Apply staging.** The same with `apply` on. It creates the SSH user, the database, the database user, the site and the two services. The first apply then fails at writing the env file, because the SSH user has no key yet; the output says so.
+5. **Add the deploy public key** `padvinder-deploy.pub` to the SSH user `<account>_deploy` in the panel.
+6. **Apply staging again.** It finds everything `ok`, writes `padvinder/staging/.env` and creates `releases/`.
+7. **Deploy to staging.** Actions, Deploy, Run workflow (from `main`); or re-run the failed run of step 2. The services start failing as soon as they are created (no release yet), and Alwaysdata may turn them off; the first deploy turns them on. The production job then waits for approval: reject it for now (Review deployments): production is not provisioned yet, and a deploy waiting in the group `deploy-production` gets in the way of provisioning it (see "Operating notes").
+8. **Verify** staging: the "Verification" section below.
+9. **Production:** steps 3, 4 and 6 with `production`. Each run waits for your approval, also a plan. The SSH user and its key already exist, so the first apply writes the env file. Then run Deploy again from `main`, check staging, and approve the production job.
 
 ## Running locally
 
@@ -225,8 +228,8 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 ## Operating notes
 
 - **Merging to `main`** deploys to staging, then waits for your approval for production. Approve in the run (Review deployments).
-- **A branch on staging:** push it to `staging/<name>`. Every push redeploys. Delete the branch afterwards; the next merge to `main` puts `main` back on staging.
-- **A branch's migrations stay on staging.** Deploying a `staging/**` branch applies its migrations to the staging database, and Drizzle tracks migrations by name. If such a migration is later changed or dropped before the merge, staging no longer matches `main`'s migrations: the changed one is never run again, and a dropped one's tables stay. When that happens, recreate the staging database (drop it in the panel and run Provision with `apply`, which creates it with the right locale) or restore it from a backup taken before the branch, then deploy `main` again.
+- **A branch on staging:** only by merging it, or by the maintainer locally with the CLI (`pnpm release:build` on the branch, then `pnpm infra:deploy --environment staging`, see "Running locally"). GitHub never deploys a branch other than `main`: the environments allow `main` only (see "GitHub setup"). After a local deploy of a branch, run Deploy from `main` to put `main` back on staging.
+- **A branch's migrations stay on staging.** Deploying a branch locally applies its migrations to the staging database, and Drizzle tracks migrations by name. If such a migration is later changed or dropped before the merge, staging no longer matches `main`'s migrations: the changed one is never run again, and a dropped one's tables stay. When that happens, recreate the staging database (drop it in the panel and run Provision with `apply`, which creates it with the right locale) or restore it from a backup taken before the branch, then deploy `main` again.
 - **A skipped production job shows green.** When you approve an older run after `main` has moved on, the production job deploys nothing; its summary has the notice "Skipped: main has moved on". The newest run deploys the newest commit.
 - **Rollback.** A failed health check rolls back on its own. For a manual rollback of production: revert the change on `main` (a pull request), which deploys the reverted state; re-running an older run's production job does not work, because it skips when its commit is no longer the head of `main`. In a hurry, deploy an older commit locally (check it out, `pnpm release:build`, `pnpm infra:deploy`). Re-running an older run's staging job does put that older commit on staging, as long as its artifact exists (30 days).
 - **Do not start Provision (either environment) or Staging services while a deploy of that environment is queued.** They share the concurrency group `deploy-<env>` (`deploy-staging` and `deploy-production`), and GitHub cancels a pending run when a newer one joins the group. A running job is never cancelled. If a deploy was cancelled this way, re-run it (Re-run failed jobs).

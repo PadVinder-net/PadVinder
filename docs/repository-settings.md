@@ -112,8 +112,8 @@ gh api repos/OWNER/REPO/automated-security-fixes --method PUT
 
 Settings, Environments. The workflows in `.github/workflows/` (`deploy.yml`, `provision.yml`, `staging-services.yml`) enter these environments, and only there do they see the secrets. Where each value comes from is in `infra/alwaysdata/README.md`, "GitHub setup".
 
-- [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, with the branch rules `main`, `staging/**` and `provision/staging`. No required reviewers.
-- [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off, or one maintainer blocks himself. Deployment branches and tags: `main` and `provision/production`.
+- [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, with the one branch rule `main`. No required reviewers.
+- [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off, or one maintainer blocks himself. Deployment branches and tags: the one branch rule `main`.
 - [ ] In both environments, the five secrets: `ALWAYSDATA_API_KEY`, `DEPLOY_SSH_KEY`, `DATABASE_PASSWORD` (a different one per environment), `ALWAYSDATA_ACCOUNT` and `SSH_KNOWN_HOSTS`. There are no variables: GitHub prints the `env:` values of a non-secret in the step log, and the logs are public (the account name and the known-hosts line, which holds the account name, would show). One deploy key may serve both environments: both use the same SSH user.
 
 Through the API (the environment names are created on the first call; add the secrets with `gh secret set`, see the README):
@@ -122,9 +122,7 @@ Through the API (the environment names are created on the first call; add the se
 gh api repos/OWNER/REPO/environments/staging --method PUT --input - <<'JSON'
 { "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
 JSON
-for pattern in main 'staging/**' provision/staging; do
-  gh api repos/OWNER/REPO/environments/staging/deployment-branch-policies --method POST -f name="$pattern" -f type=branch
-done
+gh api repos/OWNER/REPO/environments/staging/deployment-branch-policies --method POST -f name=main -f type=branch
 
 REVIEWER_ID=$(gh api users/<login> --jq .id)   # the maintainer's GitHub login
 gh api repos/OWNER/REPO/environments/production --method PUT --input - <<JSON
@@ -134,12 +132,10 @@ gh api repos/OWNER/REPO/environments/production --method PUT --input - <<JSON
   "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true }
 }
 JSON
-for pattern in main provision/production; do
-  gh api repos/OWNER/REPO/environments/production/deployment-branch-policies --method POST -f name="$pattern" -f type=branch
-done
+gh api repos/OWNER/REPO/environments/production/deployment-branch-policies --method POST -f name=main -f type=branch
 ```
 
-GitHub's wildcards do not match `/`, so a staging branch is `staging/<name>` with no further slash. Secrets are per environment: set each in both.
+Secrets are per environment: set each in both. Do not add other branches (such as `staging/**` or `provision/*`), not even to staging: both environments are on one Alwaysdata account, where every SSH user and API token reaches everything, so whoever can run code in `staging` can read production's secrets. Only reviewed code on `main` may hold them; `infra/alwaysdata/README.md`, "GitHub setup", explains this. To check: `gh api repos/OWNER/REPO/environments/<env>/deployment-branch-policies --jq '.branch_policies[].name'` prints `main` only, for both.
 
 ## 5. Check afterwards
 

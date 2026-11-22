@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-21-monorepo-setup-design.md`, sections "Deployment", "Provisioning (`infra/alwaysdata/`)", "Database locale", "Alwaysdata verification", and item 3 of "Order of work". Read it, `AGENTS.md`, and the release contract of pull request 2 (AGENTS.md "Release", `scripts/build-release.sh`) before any task. Research notes on the Alwaysdata API (public docs, 21 November 2026): `.context/alwaysdata-api-research.md`.
 
+> **Superseded in part, 22 November 2026.** Later the same day the `staging/**` and `provision/<env>` push triggers were removed again (both environments now allow `main` only, because one Alwaysdata account holds both), `deploy-test` moved to its own path-filtered workflow and is no longer a required check, and the deploy key reaches ssh through a dedicated ssh-agent instead of a file. The lines below that say otherwise are history; `infra/alwaysdata/README.md` and the spec's "Notes after implementation" are current.
+
 ## Global Constraints
 
 - AGENTS.md applies in full. The repository is public: no secrets, real personal data, account names, IP addresses or passwords in commits, workflow files, logs or pull request text. Every secret is passed through environment variables or stdin, never through a command-line argument, and every log line that could hold one goes through `redact()` (Task 1).
@@ -257,14 +259,14 @@ test("shows the app version and build", ...); // "App-versie 2027.0.0 (build dev
 - Produces:
   - `build-release.yml`: new inputs `build-number` (string, default empty → `PADVINDER_BUILD_NUMBER` unset) and `retention-days` (number, default 7); output `artifact-name` (`release-<sha>`).
   - Composite action `alwaysdata-credentials`: writes `DEPLOY_SSH_KEY` to `$RUNNER_TEMP/deploy_key` (mode 600) and `SSH_KNOWN_HOSTS` to `$RUNNER_TEMP/known_hosts`, and exports `DEPLOY_SSH_KEY_FILE` and `SSH_KNOWN_HOSTS_FILE`. Inputs come through `env:`, never interpolated into `run:`. A final step of each job that uses it removes the key (`if: always()`).
-  - `deploy.yml`, name `Deploy`, triggers `push` to `main` and to `staging/**`, and `workflow_dispatch`; `permissions: contents: read`. Jobs:
+  - `deploy.yml`, name `Deploy`, triggers `push` to `main` and to `staging/**` (the `staging/**` trigger was removed later, see the note at the top), and `workflow_dispatch`; `permissions: contents: read`. Jobs:
     - `release`: `uses: ./.github/workflows/build-release.yml` with `build-number: ${{ github.run_number }}`, `retention-days: 30`.
     - `staging` (needs `release`; `environment: { name: staging, url: https://staging.padvinder.net }`; `concurrency: { group: deploy-staging, cancel-in-progress: false }`; timeout 20): checkout, setup, download the artifact, credentials, `pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --commit ${{ github.sha }}`.
     - `production` (needs `staging`; `if: github.ref == 'refs/heads/main'`; `environment: { name: production, url: https://padvinder.net }`; group `deploy-production`; timeout 20): the same for production. The environment's required reviewers are the approval.
-  - `provision.yml`, name `Provision`, `workflow_dispatch` with inputs `environment` (choice staging/production) and `apply` (boolean, default false), and `push` to branches `provision/staging` and `provision/production` (plan only, environment from the branch name). One job in that environment: credentials, `pnpm infra:provision --environment <env>` plus `--apply` only when the dispatch input says so.
+  - `provision.yml`, name `Provision`, `workflow_dispatch` with inputs `environment` (choice staging/production) and `apply` (boolean, default false), and `push` to branches `provision/staging` and `provision/production` (plan only, environment from the branch name). One job in that environment: credentials, `pnpm infra:provision --environment <env>` plus `--apply` only when the dispatch input says so. (The push triggers were removed later, see the note at the top.)
   - `staging-services.yml`, `workflow_dispatch` with input `state` (choice on/off): `pnpm infra:services --environment staging --enable|--disable`.
   - `ci.yml` job `deploy-test` (needs `release`; timeout 15; PostGIS service as in `check`): download `release-${{ github.sha }}`, `pnpm test:fake-host`.
-  - Required check list in `docs/repository-settings.md` gains `deploy-test` (Task 7).
+  - Required check list in `docs/repository-settings.md` gains `deploy-test` (Task 7). (Removed again later, see the note at the top.)
 
 - [ ] **Step 1: Write the workflows.**
 - [ ] **Step 2: Lint and test.** `pnpm lint:workflows && pnpm vitest run --project scripts && pnpm check`. Expected: PASS.
@@ -280,7 +282,7 @@ test("shows the app version and build", ...); // "App-versie 2027.0.0 (build dev
 - Modify: `AGENTS.md` (allowed sections only), `docs/repository-settings.md`, the spec (dated notes for what turned out differently)
 
 - [ ] **Step 1: Write `infra/alwaysdata/README.md`:** what runs where (sites, services, databases, SSH user, server layout); every account and every manual step (API token with 2FA, adding the deploy public key to the SSH user in the panel, the GitHub environments, secrets and variables with how to generate each: `ssh-keygen -t ed25519 -N "" -C padvinder-deploy`, `openssl rand -hex 32`, `ssh-keyscan ssh-<account>.alwaysdata.net`); DNS records as they are, as names and types only (no IP addresses in the repository; say where to read them in the panel); rebuilding everything from scratch on Alwaysdata and on another host (dump and restore, copy files, change DNS); rotating a secret; turning staging off and on; reading logs (`~/admin/logs/services/`); a "Verification" section with one row per spec item and "not yet verified".
-- [ ] **Step 2: Update `docs/repository-settings.md`:** environments `staging` (deployment branches `main`, `staging/**`, `provision/staging`) and `production` (required reviewers: the maintainer; deployment branches `main`, `provision/production`; no self-review bypass needed for one maintainer), with their secrets and variables; add `deploy-test` to the required checks.
+- [ ] **Step 2: Update `docs/repository-settings.md`:** environments `staging` (deployment branches `main`, `staging/**`, `provision/staging`) and `production` (required reviewers: the maintainer; deployment branches `main`, `provision/production`; no self-review bypass needed for one maintainer), with their secrets and variables; add `deploy-test` to the required checks. (`staging/**` and `provision/*` were removed later, see the note at the top.)
 - [ ] **Step 3: Update `AGENTS.md`:** current state (deployment exists, verification status), the new commands, a short Deployment section replacing the planned one (what happens on merge, how to deploy a branch to staging with `staging/<name>`, how to provision, where the README is).
 - [ ] **Step 4: Format and check.** `pnpm format && pnpm check`. Expected: PASS.
 - [ ] **Step 5: Commit.** `git commit -m "Document deployment and provisioning"`
@@ -296,7 +298,7 @@ test("shows the app version and build", ...); // "App-versie 2027.0.0 (build dev
 
 ### Task 9: First provisioning and deploy to staging (after approval)
 
-- [ ] **Step 1: Inspect.** Push branch `provision/staging` from this branch (plan only) or, once merged, dispatch `Provision` with `apply: false`; also run `--inspect` the same way. Read the real field names, fix `resources.ts` (remove the `UNVERIFIED` marks that are now confirmed) and its tests, commit.
+- [ ] **Step 1: Inspect.** (The `provision/staging` push trigger was removed later, see the note at the top.) Push branch `provision/staging` from this branch (plan only) or, once merged, dispatch `Provision` with `apply: false`; also run `--inspect` the same way. Read the real field names, fix `resources.ts` (remove the `UNVERIFIED` marks that are now confirmed) and its tests, commit.
 - [ ] **Step 2: Ask, then apply staging provisioning.** Expected: the plan lists the creates, apply succeeds, a second plan is all `ok`.
 - [ ] **Step 3: Ask, then deploy staging** by pushing this branch to `staging/first-deploy`. Expected: the `staging` job passes its health check; `https://staging.padvinder.net/app/` loads.
 
