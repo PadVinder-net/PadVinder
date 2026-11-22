@@ -6,7 +6,7 @@ import {
   type Resource,
   type ResourceKind,
 } from "./api.ts";
-import type { DesiredResource } from "./resources.ts";
+import { mainSshUserIdentity, type DesiredResource } from "./resources.ts";
 
 export type PlannedChange = {
   action: "create" | "update" | "ok" | "conflict";
@@ -50,6 +50,27 @@ export function sameValue(actual: unknown, wanted: unknown): boolean {
     return isDeepStrictEqual(sort(actual), sort(wanted));
   }
   return isDeepStrictEqual(actual, wanted);
+}
+
+/**
+ * The id of the account's main SSH user, the SSH user named exactly like the account. Only
+ * reads; throws when there is none or more than one, so provisioning stops before any write.
+ */
+export async function findMainSshUserId(api: AlwaysdataApi, account: string): Promise<number> {
+  const identity = mainSshUserIdentity(account);
+  const matches = (await api.list("ssh")).filter((r) => matchesIdentity(r, identity));
+  const [user] = matches;
+  if (!user) {
+    throw new Error(
+      `No SSH user named ${identity.value} on the account; the services must run as the account's main SSH user.`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `${matches.length} SSH users are named ${identity.value}; expected one, the account's main SSH user, which the services must run as.`,
+    );
+  }
+  return user.id;
 }
 
 /**

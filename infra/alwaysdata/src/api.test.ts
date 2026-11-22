@@ -63,7 +63,7 @@ test("create fails when the resource cannot be found afterwards", async () => {
 test("update sends PATCH with only the given fields", async () => {
   const created = await api.create(
     "service",
-    { annotation: "a", command: "c" },
+    { annotation: "a", command: "c", ssh_user: 1 },
     {
       field: "annotation",
       value: "a",

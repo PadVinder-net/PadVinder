@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { createAlwaysdataApi, matchesIdentity, type AlwaysdataApi, type Resource } from "./api.ts";
-import { applyPlan, planResources } from "./reconcile.ts";
-import { databaseUserPermissions, desiredResources } from "./resources.ts";
+import { applyPlan, findMainSshUserId, planResources } from "./reconcile.ts";
+import { databaseUserPermissions, desiredResources, referencedId } from "./resources.ts";
 import { startFakeAlwaysdata, type FakeAlwaysdata } from "./testing/fake-api.ts";
 
 const password = "p@ss/w+rd";
-const desired = desiredResources("acme", "staging", password);
+const mainSshUserId = 7;
+const desired = desiredResources("acme", "staging", { databasePassword: password, mainSshUserId });
 let fake: FakeAlwaysdata;
 let api: AlwaysdataApi;
 
@@ -44,20 +45,21 @@ test("an empty account plans five creates in order, and no SSH user", async () =
   expect(writes()).toEqual([]);
 });
 
-test("apply creates the resources; the services name no SSH user", async () => {
+test("apply creates the resources; the services run as the main SSH user", async () => {
   await applyPlan(api, desired, await planResources(api, desired));
-  expect(fake.requests.some((r) => r.path.startsWith("/v1/ssh/"))).toBe(false);
+  // The SSH user is never created or changed.
+  expect(writes().some((r) => r.path.startsWith("/v1/ssh/"))).toBe(false);
   const apiService = stored("service", "annotation", "padvinder-api (staging)");
-  expect(apiService).not.toHaveProperty("ssh_user");
   expect(apiService).toMatchObject({
     command: "node --env-file=release.env --env-file=../../.env api/dist/main.js",
     working_directory: "padvinder/staging/current",
     environment: "NODEJS_VERSION=24",
+    ssh_user: mainSshUserId,
   });
   const workerService = stored("service", "annotation", "padvinder-worker (staging)");
-  expect(workerService).not.toHaveProperty("ssh_user");
   expect(workerService).toMatchObject({
     command: "node --env-file=release.env --env-file=../../.env worker/dist/main.js",
+    ssh_user: mainSshUserId,
   });
   expect(stored("database/user", "name", "acme_staging")).toMatchObject({
     password,
@@ -117,10 +119,79 @@ test("a changed service command becomes an update of only that field", async () 
   ]);
 });
 
-test("a service's ssh_user is not managed: whatever the API reports is left alone", async () => {
+test("a service with another ssh_user becomes an update of only that field", async () => {
   await applyPlan(api, desired, await planResources(api, desired));
-  stored("service", "annotation", "padvinder-api (staging)").ssh_user = 999;
+  const service = stored("service", "annotation", "padvinder-api (staging)");
+  service.ssh_user = 999;
+  const plan = await planResources(api, desired);
+  expect(plan.filter((c) => c.action !== "ok")).toEqual([
+    expect.objectContaining({
+      action: "update",
+      kind: "service",
+      identity: "padvinder-api (staging)",
+      fields: ["ssh_user"],
+    }),
+  ]);
+  fake.requests.length = 0;
+  await applyPlan(api, desired, plan);
+  expect(writes()).toEqual([
+    { method: "PATCH", path: `/v1/service/${service.id}/`, body: { ssh_user: mainSshUserId } },
+  ]);
   expect((await planResources(api, desired)).every((c) => c.action === "ok")).toBe(true);
+});
+
+test("a service's ssh_user shown as an object or href of the main user is ok", async () => {
+  await applyPlan(api, desired, await planResources(api, desired));
+  const service = stored("service", "annotation", "padvinder-api (staging)");
+  for (const shown of [
+    { id: mainSshUserId, name: "acme" },
+    { href: `/v1/ssh/${mainSshUserId}/` },
+    `https://api.alwaysdata.com/v1/ssh/${mainSshUserId}/`,
+  ]) {
+    service.ssh_user = shown;
+    expect((await planResources(api, desired)).every((c) => c.action === "ok")).toBe(true);
+  }
+  service.ssh_user = { id: 999 };
+  expect((await planResources(api, desired)).find((c) => c.action !== "ok")).toMatchObject({
+    action: "update",
+    fields: ["ssh_user"],
+    derivedValues: { ssh_user: mainSshUserId },
+  });
+});
+
+test("referencedId reads an id, an object with id or href, or an href", () => {
+  expect(referencedId(12)).toBe(12);
+  expect(referencedId({ id: 12, name: "x" })).toBe(12);
+  expect(referencedId({ href: "/v1/ssh/12/" })).toBe(12);
+  expect(referencedId("/v1/ssh/12/")).toBe(12);
+  expect(referencedId("https://api.alwaysdata.com/v1/ssh/12")).toBe(12);
+  for (const other of [undefined, null, "", "12x/", 1.5, [12], {}, { id: "12" }, true]) {
+    expect(referencedId(other)).toBeUndefined();
+  }
+});
+
+test("findMainSshUserId finds the SSH user named exactly like the account", async () => {
+  fake.resources
+    .get("ssh")
+    ?.push({ id: 3, name: "acme_other" }, { id: 4, name: "acme" }, { id: 5, name: "ACME" });
+  expect(await findMainSshUserId(api, "acme")).toBe(4);
+  expect(writes()).toEqual([]);
+});
+
+test("findMainSshUserId fails without the main SSH user, or with two", async () => {
+  fake.resources.get("ssh")?.push({ id: 3, name: "acme_deploy" });
+  await expect(findMainSshUserId(api, "acme")).rejects.toThrow(
+    "No SSH user named acme on the account; the services must run as the account's main SSH user.",
+  );
+  fake.resources.get("ssh")?.push({ id: 4, name: "acme" }, { id: 5, name: "acme" });
+  await expect(findMainSshUserId(api, "acme")).rejects.toThrow(/2 SSH users are named acme/);
+  expect(writes()).toEqual([]);
+});
+
+test("the fake refuses a service without ssh_user, as the real API does", async () => {
+  await expect(
+    api.create("service", { annotation: "x" }, { field: "annotation", value: "x" }),
+  ).rejects.toThrow(/failed with 400.*ssh_user.*obligatoire/);
 });
 
 test("a database locale mismatch is a conflict, and apply refuses", async () => {
@@ -169,7 +240,11 @@ test("apply refuses a plan that does not belong to the desired resources", async
   const plan = await planResources(api, desired);
   await expect(applyPlan(api, desired, plan.slice(1))).rejects.toThrow(/does not match/);
   await expect(
-    applyPlan(api, desiredResources("acme", "production", password), plan),
+    applyPlan(
+      api,
+      desiredResources("acme", "production", { databasePassword: password, mainSshUserId }),
+      plan,
+    ),
   ).rejects.toThrow(/does not match/);
   expect(writes()).toEqual([]);
 });
@@ -294,7 +369,12 @@ test("databaseUserPermissions: FULL on its own database, NONE on every other lis
 
 test("the account as found on 22 November 2026: only the services are created", async () => {
   // The database and its user exist, the site exists under a name the API chose, and there
-  // are no services. Production's site and database are there too.
+  // are no services. Production's site and database are there too, and the main SSH user.
+  fake.resources.get("ssh")?.push({ id: 40, name: "acme" });
+  const found = desiredResources("acme", "staging", {
+    databasePassword: password,
+    mainSshUserId: await findMainSshUserId(api, "acme"),
+  });
   fake.resources.get("database")?.push(
     {
       id: 10,
@@ -337,7 +417,7 @@ test("the account as found on 22 November 2026: only the services are created", 
     },
   );
 
-  const plan = await planResources(api, desired);
+  const plan = await planResources(api, found);
   expect(plan.map((c) => [c.action, c.kind, c.identity, c.id])).toEqual([
     ["ok", "database", "acme_staging", 11],
     ["ok", "database/user", "acme_staging", 20],
@@ -345,12 +425,13 @@ test("the account as found on 22 November 2026: only the services are created", 
     ["create", "service", "padvinder-api (staging)", undefined],
     ["create", "service", "padvinder-worker (staging)", undefined],
   ]);
-  await applyPlan(api, desired, plan);
-  expect(writes().map((r) => `${r.method} ${r.path}`)).toEqual([
-    "POST /v1/service/",
-    "POST /v1/service/",
+  await applyPlan(api, found, plan);
+  // Each service names the main SSH user: the real API refused them without it.
+  expect(writes().map((r) => [`${r.method} ${r.path}`, (r.body as Resource).ssh_user])).toEqual([
+    ["POST /v1/service/", 40],
+    ["POST /v1/service/", 40],
   ]);
-  expect((await planResources(api, desired)).every((c) => c.action === "ok")).toBe(true);
+  expect((await planResources(api, found)).every((c) => c.action === "ok")).toBe(true);
 });
 
 test("a site with differing managed fields is updated, never created again", async () => {

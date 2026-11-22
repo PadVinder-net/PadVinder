@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Resource, ResourceKind } from "../api.ts";
 
-const kinds: ResourceKind[] = ["site", "database", "database/user", "service"];
+const kinds: ResourceKind[] = ["site", "database", "database/user", "ssh", "service"];
 
 export type FakeAlwaysdata = {
   baseUrl: string;
@@ -18,8 +18,9 @@ export type FakeAlwaysdata = {
 /**
  * In-memory stand-in for the Alwaysdata API. Requires Basic auth; POST answers 201 with no
  * body. Like the real API (22 November 2026) a new site does not keep the `name` it was sent,
- * and a database user's `permissions` list every database of the account, NONE where the user
- * has no rights.
+ * a database user's `permissions` list every database of the account, NONE where the user
+ * has no rights, and a new service without `ssh_user` is refused with 400. SSH users are
+ * seeded by the tests in `resources`.
  */
 export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
   const resources = new Map<ResourceKind, Resource[]>(kinds.map((kind) => [kind, []]));
@@ -62,7 +63,7 @@ export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
     const restart = /^\/v1\/service\/(\d+)\/restart\/$/.exec(path);
     if (restart && method === "POST") return send(204);
 
-    const match = /^\/v1\/(site|database\/user|database|service)\/(?:(\d+)\/)?$/.exec(path);
+    const match = /^\/v1\/(site|database\/user|database|ssh|service)\/(?:(\d+)\/)?$/.exec(path);
     if (!match) return send(404, { detail: "not found" });
     const items = resources.get(match[1] as ResourceKind) ?? [];
     const id = match[2] === undefined ? undefined : Number(match[2]);
@@ -71,6 +72,9 @@ export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
     const shown = (item: Resource) => (kind === "database/user" ? withAllDatabases(item) : item);
     if (id === undefined && method === "GET") return send(200, items.map(shown));
     if (id === undefined && method === "POST") {
+      if (kind === "service" && body.ssh_user === undefined) {
+        return send(400, { ssh_user: ["Ce champ est obligatoire."] });
+      }
       const newId = nextId++;
       // The real API names the site itself; what it chooses is not known, only that it is
       // not the name sent.

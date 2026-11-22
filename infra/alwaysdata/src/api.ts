@@ -2,7 +2,7 @@ import { z } from "zod";
 import { redact } from "./redact.ts";
 
 export type Resource = { id: number; [field: string]: unknown };
-export type ResourceKind = "site" | "database" | "database/user" | "service";
+export type ResourceKind = "site" | "database" | "database/user" | "ssh" | "service";
 
 /** How a resource is found in its list: a field and the value it holds. */
 export type Identity = { field: string; value: string };

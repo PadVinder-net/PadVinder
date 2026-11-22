@@ -11,6 +11,7 @@ import {
   createAlwaysdataApi,
   matchesIdentity,
   type AlwaysdataApi,
+  type Identity,
   type ResourceKind,
 } from "../api.ts";
 import { loadInfraConfig, type InfraConfig } from "../config.ts";
@@ -21,10 +22,10 @@ import {
   sshUser,
   type EnvironmentName,
 } from "../environments.ts";
-import { applyPlan, planResources, type PlannedChange } from "../reconcile.ts";
+import { applyPlan, findMainSshUserId, planResources, type PlannedChange } from "../reconcile.ts";
 import { redactForLog } from "../redact.ts";
 import { createSshRemote, type Remote } from "../remote.ts";
-import { desiredResources, type DesiredResource } from "../resources.ts";
+import { desiredResources, mainSshUserIdentity, type DesiredResource } from "../resources.ts";
 
 export type ProvisionArgs = {
   environment: EnvironmentName;
@@ -108,7 +109,7 @@ export function formatPlan(plan: readonly PlannedChange[]): string[] {
   });
 }
 
-const inspectedKinds: ResourceKind[] = ["database", "database/user", "site", "service"];
+const inspectedKinds: ResourceKind[] = ["ssh", "database", "database/user", "site", "service"];
 const sensitiveFieldPattern = /password|secret|key|token/i;
 
 /** The JSON type of a value, without the value: `string`, `number[]`, `object{id: number}`. */
@@ -146,11 +147,13 @@ function environmentNames(value: unknown): unknown {
  * show field names and value types, never values (their environment, commands and
  * addresses are not ours to publish). Only for our own resources (matched by identity) does
  * it show the values of the fields provisioning manages, without write-only or
- * password-like fields, and with only the variable names of `environment`.
+ * password-like fields, and with only the variable names of `environment`. Of the SSH users
+ * it shows only the main user's `id` and `name`: provisioning reads it, never manages it.
  */
 export async function inspectAccount(
   api: AlwaysdataApi,
   desired: readonly DesiredResource[],
+  mainSshUser: Identity,
 ): Promise<Record<string, { fields: Record<string, string>; ours: Record<string, unknown>[] }>> {
   const result: Record<
     string,
@@ -171,6 +174,13 @@ export async function inspectAccount(
     );
 
     const ours: Record<string, unknown>[] = [];
+    if (kind === "ssh") {
+      for (const resource of resources) {
+        if (matchesIdentity(resource, mainSshUser)) {
+          ours.push({ id: resource.id, name: resource.name });
+        }
+      }
+    }
     for (const want of desired.filter((d) => d.kind === kind)) {
       for (const resource of resources) {
         if (!matchesIdentity(resource, want.identity)) continue;
@@ -229,16 +239,23 @@ export async function runProvision(input: {
 
   try {
     if (args.inspect) {
-      // No password is needed to find our resources; write-only fields are never shown.
-      const desired = desiredResources(config.account, args.environment, "");
-      print(JSON.stringify(await inspectAccount(api, desired), null, 2));
+      // Only the identities and field names of the desired resources are used, so neither
+      // the password nor the SSH user's id is needed; write-only fields are never shown.
+      const desired = desiredResources(config.account, args.environment, {
+        databasePassword: "",
+        mainSshUserId: 0,
+      });
+      const mainSshUser = mainSshUserIdentity(config.account);
+      print(JSON.stringify(await inspectAccount(api, desired, mainSshUser), null, 2));
       return 0;
     }
 
     const databasePassword = config.databasePassword;
     if (databasePassword === undefined) throw new Error("DATABASE_PASSWORD is not set");
     const env = args.environment;
-    const desired = desiredResources(config.account, env, databasePassword);
+    // Read-only, and before anything is written: the services must name the main SSH user.
+    const mainSshUserId = await findMainSshUserId(api, config.account);
+    const desired = desiredResources(config.account, env, { databasePassword, mainSshUserId });
     const plan = await planResources(api, desired, { rotatePassword: args.rotatePassword });
     print(`Plan for ${env}:`);
     for (const line of formatPlan(plan)) print(`  ${line}`);

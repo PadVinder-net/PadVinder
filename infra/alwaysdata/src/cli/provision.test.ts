@@ -69,6 +69,8 @@ const fakeRemote: Remote = {
   },
   upload: async (...callArgs) => void calls.push({ method: "upload", args: callArgs }),
 };
+/** The account's main SSH user, which Alwaysdata creates with the account. */
+const mainSshUserId = 500;
 const restartNotice =
   /services must be restarted.*pnpm infra:services --environment staging --restart/;
 
@@ -86,6 +88,7 @@ afterAll(() => fake.close());
 beforeEach(() => {
   fake.requests.length = 0;
   for (const items of fake.resources.values()) items.length = 0;
+  fake.resources.get("ssh")!.push({ id: mainSshUserId, name: config.account, shell: "BASH" });
   calls = [];
   output = [];
   remoteFiles = new Map();
@@ -129,6 +132,11 @@ test("plan output never contains the password", async () => {
 test("with --apply it creates the resources, then writes the env file and the releases directory", async () => {
   expect(await run(args({ apply: true }))).toBe(0);
   expect(writes().filter((r) => r.method === "POST")).toHaveLength(5);
+  const servicePosts = writes().filter((r) => r.path === "/v1/service/");
+  expect(servicePosts.map((r) => (r.body as { ssh_user?: unknown }).ssh_user)).toEqual([
+    mainSshUserId,
+    mainSshUserId,
+  ]);
   expect(calls).toEqual([
     { method: "exec", args: [databaseUrlCommand] },
     { method: "exec", args: [checksumCommand] },
@@ -288,6 +296,38 @@ test("the first run, without an env file, reads it before the apply and writes i
   expect(output.join("\n")).toMatch(restartNotice);
 });
 
+for (const [situation, sshUsers] of [
+  ["no SSH user named like the account", [{ id: 501, name: "acmecorp_deploy" }]],
+  [
+    "two SSH users named like the account",
+    [
+      { id: 501, name: "acmecorp" },
+      { id: 502, name: "acmecorp" },
+    ],
+  ],
+] as const) {
+  test(`${situation} fails before any write, also with --apply`, async () => {
+    fake.resources.set(
+      "ssh",
+      sshUsers.map((user) => ({ ...user })),
+    );
+    for (const provisionArgs of [args(), args({ apply: true })]) {
+      output = [];
+      expect(await run(provisionArgs)).toBe(1);
+      const text = output.join("\n");
+      expect(text).toMatch(
+        sshUsers.length === 1
+          ? /Provisioning failed: No SSH user named <account> on the account; the services must run as the account's main SSH user\./
+          : /Provisioning failed: 2 SSH users are named <account>; expected one/,
+      );
+      expect(text).not.toMatch(/Plan for/);
+      expectNoSecrets(text);
+    }
+    expect(writes()).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+}
+
 test("a create-only field the API leaves out of the new resource gives a warning", async () => {
   // Stands in for an API that ignores an unknown field on create.
   const dropping: AlwaysdataApi = {
@@ -402,13 +442,24 @@ test("--inspect shows only field types of other resources, and the managed value
     addresses: ["other.example"],
     ip: "2001:db8::1",
   });
+  fake.resources.get("ssh")!.push({ id: 92, name: "other_ssh", password: "ssh-secret-pw" });
+  fake.resources.get("ssh")![0]!.password = "main-secret-pw";
   const ourUser = fake.resources.get("database/user")![0]!;
   ourUser.nested = { api_key: "zzz", ok: true };
 
   expect(await run(args({ inspect: true }))).toBe(0);
   expect(writes()).toEqual([]);
   const text = output.join("\n");
-  for (const value of ["SECRET_X", "abc", "other.example", "2001:db8", "other.js", "zzz"]) {
+  for (const value of [
+    "SECRET_X",
+    "abc",
+    "other.example",
+    "2001:db8",
+    "other.js",
+    "zzz",
+    "other_ssh",
+    "secret-pw",
+  ]) {
     expect(text).not.toContain(value);
   }
   expectNoSecrets(text);
@@ -417,7 +468,15 @@ test("--inspect shows only field types of other resources, and the managed value
     string,
     { fields: Record<string, string>; ours: Record<string, unknown>[] }
   >;
-  expect(Object.keys(inspected)).toEqual(["database", "database/user", "site", "service"]);
+  expect(Object.keys(inspected)).toEqual(["ssh", "database", "database/user", "site", "service"]);
+  // Of the SSH users only the main user's id and name; the others' only as shapes.
+  expect(inspected.ssh?.ours).toEqual([{ id: mainSshUserId, name: "<account>" }]);
+  expect(inspected.ssh?.fields).toEqual({
+    id: "number",
+    name: "string",
+    shell: "string",
+    password: "string",
+  });
   expect(inspected.site?.fields).toMatchObject({
     addresses: "string[]",
     ssl_force: "boolean",
@@ -434,6 +493,7 @@ test("--inspect shows only field types of other resources, and the managed value
       annotation: "padvinder-api (staging)",
       command: "node --env-file=release.env --env-file=../../.env api/dist/main.js",
       environment: "NODEJS_VERSION=<value>",
+      ssh_user: mainSshUserId,
     }),
     expect.objectContaining({ annotation: "padvinder-worker (staging)" }),
   ]);

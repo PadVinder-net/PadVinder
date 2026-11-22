@@ -3,6 +3,7 @@ import {
   databaseName,
   environmentDirectory,
   environments,
+  sshUser,
   type EnvironmentName,
 } from "./environments.ts";
 
@@ -67,6 +68,43 @@ export function databaseUserPermissions(
   };
 }
 
+/**
+ * The account's main SSH user, which Alwaysdata creates with the account and names exactly
+ * like it. Provisioning only reads it, never creates or changes it: both services run as it.
+ */
+export const mainSshUserIdentity = (account: string): Identity => ({
+  field: "name",
+  value: sshUser(account),
+});
+
+/**
+ * The id a reference field of a listed resource points at, such as a service's `ssh_user`.
+ * The API documentation calls it "the id of an SSH user", so a number is expected; an object
+ * with `id` or `href`, or an href such as `/v1/ssh/12/`, is accepted too, as other API
+ * references look like that. Undefined for anything else. UNVERIFIED: which form the API
+ * returns; `--inspect` shows it.
+ */
+export function referencedId(value: unknown): number | undefined {
+  const fromHref = (href: unknown) => {
+    const id = typeof href === "string" ? /\/(\d+)\/?$/.exec(href)?.[1] : undefined;
+    return id === undefined ? undefined : Number(id);
+  };
+  if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
+  if (typeof value === "string") return fromHref(value);
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const { id, href } = value as { id?: unknown; href?: unknown };
+    if (typeof id === "number" && Number.isInteger(id)) return id;
+    return fromHref(href);
+  }
+  return undefined;
+}
+
+export type DesiredResourcesInput = {
+  databasePassword: string;
+  /** The id of the account's main SSH user (see `mainSshUserIdentity`); the services run as it. */
+  mainSshUserId: number;
+};
+
 /** A host as Alwaysdata stores it on a site: with the root path, `example.org/`. */
 export function siteAddress(host: string): string {
   return host.endsWith("/") ? host : `${host}/`;
@@ -75,7 +113,7 @@ export function siteAddress(host: string): string {
 export function desiredResources(
   account: string,
   env: EnvironmentName,
-  databasePassword: string,
+  { databasePassword, mainSshUserId }: DesiredResourcesInput,
 ): DesiredResource[] {
   const environment = environments[env];
   const directory = environmentDirectory(env);
@@ -102,9 +140,15 @@ export function desiredResources(
         // UNVERIFIED: the format of `environment` ("NAME=value" pairs separated by spaces,
         // per the help pages; quoting is not documented).
         environment: "NODEJS_VERSION=24",
-        // No `ssh_user`: provisioning manages no SSH user. UNVERIFIED: that a service without
-        // one runs as the account's main user, the owner of the releases and the env file
-        // (confirm with --inspect and the first deploy's health check).
+        // The API requires `ssh_user` (confirmed 22 November 2026: a service without it is
+        // refused with 400). The services run explicitly as the account's main SSH user, the
+        // owner of the releases and the env file.
+        ssh_user: mainSshUserId,
+      },
+      // A listed `ssh_user` that points at the main user is left as the API shows it, in
+      // whatever form (see `referencedId`); any other value is updated to the id.
+      derived: {
+        ssh_user: (current) => (referencedId(current) === mainSshUserId ? current : mainSshUserId),
       },
     };
   };
