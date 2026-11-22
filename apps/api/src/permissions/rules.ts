@@ -1,5 +1,5 @@
-import type { MembershipRole } from "@padvinder/db";
 import { apiErrorCodes } from "@padvinder/contracts";
+import type { MembershipRole } from "@padvinder/db";
 import { apiError } from "../errors";
 import type { Actor } from "./actor";
 
@@ -31,7 +31,9 @@ export type Decision = "allowed" | "forbidden" | "hidden";
 export function relationTo(actor: Actor, target: WorkingGroupTarget): Relation {
   if (actor.isPlatformAdmin) return "platformAdmin";
   if (actor.adminOfOrganizationIds.includes(target.organizationId)) return "organizationAdmin";
-  const membership = actor.memberships.find((m) => m.workingGroupId === target.workingGroupId);
+  const membership = actor.memberships.find(
+    (m) => m.workingGroupId === target.workingGroupId && m.organizationId === target.organizationId,
+  );
   return membership?.role ?? "outsider";
 }
 
@@ -54,6 +56,11 @@ export function decide(actor: Actor, permission: Permission): Decision {
         return permission.memberRole === "volunteer" ? "allowed" : "forbidden";
       }
       return staff.includes(relation) ? "allowed" : "forbidden";
+    default: {
+      // Adding a Permission without a rule is a type error here, never a silent "allowed".
+      const unreachable: never = permission;
+      throw new Error(`No rule for ${JSON.stringify(unreachable)}`);
+    }
   }
 }
 

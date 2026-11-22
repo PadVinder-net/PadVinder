@@ -1,3 +1,4 @@
+import type { Db } from "@padvinder/db";
 import type { FastifyRequest } from "fastify";
 import { expect, test, vi } from "vitest";
 import { createTestApp, loginAs } from "../testing/login";
@@ -57,15 +58,18 @@ test("the actor carries memberships, admin rows and the platform flag", async ()
   }
 });
 
-test("a session whose user is gone is 401", async () => {
+test("a valid session whose user row is gone is no actor", async () => {
   const ctx = await createTestApp();
   try {
     const noor = await loginAs(ctx, "noor@example.test");
-    await ctx.t.pool.query("delete from users where id = $1", [noor.userId]);
-    const res = await ctx.app.inject({ url: "/api/me", headers: noor.headers });
-    expect(res.statusCode).toBe(401);
+    // The session is valid for Better Auth, but getAccess finds no user: a database that
+    // answers every select with no rows.
+    const empty = { select: () => ({ from: () => ({ where: async () => [] }) }) } as unknown as Db;
+    expect(await loadActor(ctx.app, empty, { headers: noor.headers } as FastifyRequest)).toBeNull();
+    expect(
+      await loadActor(ctx.app, ctx.t.db, { headers: noor.headers } as FastifyRequest),
+    ).not.toBeNull();
   } finally {
-    vi.restoreAllMocks();
     await ctx.close();
   }
 });
