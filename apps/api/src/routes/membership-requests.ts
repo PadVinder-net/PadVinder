@@ -64,6 +64,15 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
       .then(([request, recipients]) => {
         // Withdrawn or decided in the meantime (the applicant deleted their account, for one).
         if (!request || request.status !== "pending") return;
+        if (recipients.length === 0) {
+          // Nobody to tell: the group has no coordinator and its organization no admin. Only the
+          // group's ID, no personal data.
+          log.warn(
+            { mailKind: "new-request", workingGroupId: request.workingGroup.id },
+            "A new request has nobody to mail: no coordinator and no organization admin",
+          );
+          return;
+        }
         sendInBackground(
           mailer,
           log,

@@ -17,7 +17,10 @@ function build(kind: string, to: string, subject: string, paragraphs: string[], 
   return { to, subject, text, html, kind };
 }
 
-/** To a coordinator (or admin): the applicant's name is the only personal data in it. */
+/**
+ * To a coordinator (or admin): the applicant's name is the only personal data in it. A request
+ * sent straight to the API can come before the person gave a name: then the mail says "Iemand".
+ */
 export function buildNewRequestMail(input: {
   to: string;
   applicantName: string;
@@ -26,12 +29,13 @@ export function buildNewRequestMail(input: {
   requestUrl: string;
 }): Mail {
   const group = singleLine(input.workingGroupName);
+  const applicant = singleLine(input.applicantName) || "Iemand";
   return build(
     "new-request",
     input.to,
     `Nieuwe aanmelding bij ${group}`,
     [
-      `${singleLine(input.applicantName)} wil meedoen met werkgroep ${group}.`,
+      `${applicant} wil meedoen met werkgroep ${group}.`,
       "Open PadVinder en ga naar Meer > Aanmeldingen om de aanmelding te bekijken.",
     ],
     input.requestUrl,

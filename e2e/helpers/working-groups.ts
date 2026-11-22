@@ -5,8 +5,9 @@ export type TestWorkingGroup = { id: string; name: string; organizationId: strin
 
 /**
  * A new organization with one working group, named with random letters ("Groep qwhzkepa"), made
- * with the admin tool. The picker lists the groups of every test and workspace, so a test finds
- * its own group by filtering on its name.
+ * with the admin tool. The picker lists every group in the workspace's dev database, where groups
+ * from earlier runs and parallel workers pile up (they are never removed), so a test finds its own
+ * group by filtering on its name.
  */
 export function createWorkingGroup(): TestWorkingGroup {
   const word = randomWord();

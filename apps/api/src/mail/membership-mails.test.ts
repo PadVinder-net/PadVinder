@@ -23,6 +23,19 @@ test("the new-request mail names the applicant and the group and links to the re
   expect(mail.html).toContain("Meer &gt; Aanmeldingen");
 });
 
+test("an applicant without a name is called Iemand", () => {
+  for (const applicantName of ["", "  ", "\n"]) {
+    const mail = buildNewRequestMail({
+      to: "c@example.test",
+      applicantName,
+      workingGroupName: "Boekelo",
+      requestUrl,
+    });
+    expect(mail.text.split("\n\n")[0]).toBe("Iemand wil meedoen met werkgroep Boekelo.");
+    expect(mail.html).toContain("<p>Iemand wil meedoen met werkgroep Boekelo.</p>");
+  }
+});
+
 test("markup in a name is escaped in the html part and left as text in the text part", () => {
   const mail = buildNewRequestMail({
     to: "c@example.test",

@@ -1,4 +1,4 @@
-import { workingGroupMemberships } from "@padvinder/db";
+import { createOrganization, createWorkingGroup, workingGroupMemberships } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance } from "fastify";
 import { Writable } from "node:stream";
@@ -101,6 +101,42 @@ test("without a coordinator it mails the organization's admins", async () => {
   await expect.poll(() => requestMails().length - before).toBe(1);
   expect(requestMails().at(-1)!.to).toBe(cast.members.organizationAdmin.email.toLowerCase());
   expect(requestMails().at(-1)!.subject).toBe("Nieuwe aanmelding bij Cast Andere werkgroep");
+});
+
+test("without a coordinator and without an admin it mails nobody and logs the group's ID", async () => {
+  const system = { kind: "system" } as const;
+  const organization = await createOrganization(t!.db, { name: "Zonder beheer" }, system);
+  const group = await createWorkingGroup(
+    t!.db,
+    { organizationId: organization.id, name: "Verlaten", city: "Nergensdorp" },
+    system,
+  );
+  const name = "Eenzame Aanvrager";
+  const applicant = await newApplicant(name);
+  logLines.length = 0;
+  const before = requestMails().length;
+  expect((await create(applicant, group.id)).statusCode).toBe(201);
+  await expect.poll(() => logLines.join("")).toContain("nobody to mail");
+  const line = logLines.find((entry) => entry.includes("nobody to mail"))!;
+  expect(JSON.parse(line)).toMatchObject({
+    level: 40,
+    mailKind: "new-request",
+    workingGroupId: group.id,
+  });
+  expect(line).not.toContain("example.test");
+  expect(line).not.toContain("Eenzame");
+  await settle();
+  expect(requestMails().length).toBe(before);
+});
+
+test("an applicant without a name is called Iemand in the mail", async () => {
+  const before = requestMails().length;
+  const res = await create(await newApplicant(""), cast.otherGroup.workingGroupId);
+  expect(res.statusCode).toBe(201);
+  await expect.poll(() => requestMails().length - before).toBe(1);
+  expect(requestMails().at(-1)!.text).toContain(
+    "Iemand wil meedoen met werkgroep Cast Andere werkgroep.",
+  );
 });
 
 test("a resend of the same id sends no second mail", async () => {
