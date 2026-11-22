@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMe, updateMe, type GetMeResponse, type UpdateMeData } from "./generated";
+import { logOut } from "./auth-client";
 import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
 
 /**
@@ -35,4 +37,38 @@ export function useUpdateMe() {
     },
     onSuccess: (data) => queryClient.setQueryData(getMeQueryKey(), data),
   });
+}
+
+/**
+ * Logs out. If signing out fails the cookie may still be valid: then the user stays logged in and
+ * `failed` is true. If the session is already gone, we continue as logged out. On success `me`
+ * becomes `null` (the gate watches that query, so it is kept) and every other query and mutation
+ * of the previous user is dropped.
+ */
+export function useLogOut() {
+  const queryClient = useQueryClient();
+  const [failed, setFailed] = useState(false);
+
+  async function handleLogOut() {
+    setFailed(false);
+    const result = await logOut();
+    if (!result.ok) {
+      // The session may already be over (ended on another device): ask the server who we are.
+      const me = await queryClient
+        .fetchQuery({ ...meQueryOptions(), staleTime: 0 })
+        .catch(() => undefined);
+      if (me !== null) {
+        setFailed(true);
+        return;
+      }
+    }
+    const meKey = getMeQueryKey();
+    queryClient.setQueryData(meKey, null);
+    queryClient.removeQueries({
+      predicate: (query) => (query.queryKey[0] as { _id?: string })._id !== meKey[0]._id,
+    });
+    queryClient.getMutationCache().clear();
+  }
+
+  return { logOut: handleLogOut, failed };
 }
