@@ -9,7 +9,7 @@
 //
 // When in doubt, a job runs: an unknown path runs every job that lists no `skip` for it.
 
-export const CI_JOBS = ["visual", "e2e", "release"] as const;
+export const CI_JOBS = ["visual", "e2e", "release", "deploy-test"] as const;
 export type CiJob = (typeof CI_JOBS)[number];
 
 type JobRule =
@@ -70,6 +70,23 @@ export const JOB_RULES: Record<CiJob, JobRule> = {
     ],
     skip: [...NOT_APP_CODE, ".github/", "infra/", "scripts/", "e2e/", "playwright.config.ts"],
   },
+  // The deploy scripts over SSH against a fake host, with the release tarball, and the
+  // credentials action. It deploys what release builds, so it also runs release (jobsFor).
+  "deploy-test": {
+    only: [
+      "infra/",
+      "scripts/build-release.sh",
+      "apps/api/src/migrate.ts",
+      "apps/api/src/main.ts",
+      "apps/worker/src/main.ts",
+      "packages/db/src/migrate.ts",
+      ".github/workflows/deploy.yml",
+      ".github/workflows/provision.yml",
+      ".github/workflows/staging-services.yml",
+      ".github/workflows/build-release.yml",
+      ".github/actions/alwaysdata-credentials/",
+    ],
+  },
 };
 
 export function matches(path: string, pattern: string): boolean {
@@ -91,10 +108,12 @@ function needs(rule: JobRule, path: string): boolean {
 /** Which jobs to run for these changed paths. No paths (nothing known) runs every job. */
 export function jobsFor(changedPaths: readonly string[]): Record<CiJob, boolean> {
   const paths = changedPaths.map((path) => path.trim()).filter((path) => path !== "");
-  return Object.fromEntries(
+  const jobs = Object.fromEntries(
     CI_JOBS.map((job) => [
       job,
       paths.length === 0 || paths.some((path) => needs(JOB_RULES[job], path)),
     ]),
   ) as Record<CiJob, boolean>;
+  if (jobs["deploy-test"]) jobs.release = true;
+  return jobs;
 }

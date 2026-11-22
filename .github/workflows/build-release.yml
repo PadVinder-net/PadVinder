@@ -1,6 +1,6 @@
 # Builds the release tarball, builds a container image from it and smoke-tests that image
-# against a fresh database. Called by CI on every pull request, by Deploy test, and by the
-# deployment.
+# against a fresh database. Called by CI on every pull request (its deploy-test job deploys
+# the tarball to a fake host) and by the deployment.
 name: Build release
 
 on:

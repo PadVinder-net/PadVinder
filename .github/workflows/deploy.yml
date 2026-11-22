@@ -10,6 +10,18 @@ on:
   push:
     branches:
       - main
+    # A merge that changes only these cannot change the release, so it deploys nothing and
+    # asks for no approval; staging and production keep the release they have. Every pattern
+    # must be one that CI's release rule skips too (scripts/lib/ci-jobs.test.ts checks this).
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - "LICENSE"
+      - "**.test.ts"
+      - "**.test.tsx"
+      - "**.stories.tsx"
+      - "packages/ui/src/__screenshots__/**"
+      - "e2e/**"
   # By hand: run it from main (re-runs a deploy). From another branch the deploy jobs skip.
   workflow_dispatch:
 

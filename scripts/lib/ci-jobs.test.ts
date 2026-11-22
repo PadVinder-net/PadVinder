@@ -1,9 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { JOB_RULES, jobsFor, matches } from "./ci-jobs.ts";
+import { CI_JOBS, JOB_RULES, jobsFor, matches } from "./ci-jobs.ts";
 
 const root = join(import.meta.dirname, "../..");
+
+/** The jobs that run for these changed paths. */
+function running(paths: string[]): string[] {
+  const jobs = jobsFor(paths);
+  return CI_JOBS.filter((job) => jobs[job]);
+}
 
 describe("matches", () => {
   test("a directory pattern matches everything below it", () => {
@@ -24,21 +30,30 @@ describe("matches", () => {
 });
 
 describe("jobsFor", () => {
+  test("prints one boolean per job", () => {
+    expect(jobsFor(["docs/a.md"])).toEqual({
+      visual: false,
+      e2e: false,
+      release: false,
+      "deploy-test": false,
+    });
+  });
+
   test("runs every job when no paths are known", () => {
-    expect(jobsFor([])).toEqual({ visual: true, e2e: true, release: true });
-    expect(jobsFor(["", "  "])).toEqual({ visual: true, e2e: true, release: true });
+    expect(running([])).toEqual([...CI_JOBS]);
+    expect(running(["", "  "])).toEqual([...CI_JOBS]);
   });
 
   test("runs only check and scan for documentation", () => {
     expect(
-      jobsFor(["docs/superpowers/plans/2026-11-22-login.md", "AGENTS.md", "README.md"]),
-    ).toEqual({ visual: false, e2e: false, release: false });
+      running(["docs/superpowers/plans/2026-11-22-login.md", "AGENTS.md", "README.md"]),
+    ).toEqual([]);
   });
 
   test("skips the visual tests when packages/ui is untouched", () => {
     // The files of pull request 14.
     expect(
-      jobsFor([
+      running([
         "AGENTS.md",
         "apps/api/src/realtime/notification-hub.test.ts",
         "docker-compose.yml",
@@ -47,76 +62,67 @@ describe("jobsFor", () => {
         "packages/db/src/testing.ts",
         "scripts/teardown-workspace.sh",
       ]),
-    ).toEqual({ visual: false, e2e: true, release: true });
+    ).toEqual(["e2e", "release"]);
   });
 
   test("runs only the visual tests for a story or a screenshot", () => {
-    expect(jobsFor(["packages/ui/src/components/health-status.stories.tsx"])).toEqual({
-      visual: true,
-      e2e: false,
-      release: false,
-    });
+    expect(running(["packages/ui/src/components/health-status.stories.tsx"])).toEqual(["visual"]);
     expect(
-      jobsFor(["packages/ui/src/__screenshots__/stories.visual.test.tsx/a-chromium-linux.png"]),
-    ).toEqual({ visual: true, e2e: false, release: false });
+      running(["packages/ui/src/__screenshots__/stories.visual.test.tsx/a-chromium-linux.png"]),
+    ).toEqual(["visual"]);
   });
 
-  test("runs every job for a UI component", () => {
-    expect(jobsFor(["packages/ui/src/components/health-status.tsx"])).toEqual({
-      visual: true,
-      e2e: true,
-      release: true,
-    });
+  test("runs visual, e2e and release for a UI component", () => {
+    expect(running(["packages/ui/src/components/health-status.tsx"])).toEqual([
+      "visual",
+      "e2e",
+      "release",
+    ]);
   });
 
   test("runs the visual tests for a contract, which the stories render", () => {
-    expect(jobsFor(["packages/contracts/src/health.ts"]).visual).toBe(true);
+    expect(running(["packages/contracts/src/health.ts"])).toContain("visual");
   });
 
   test("skips everything but check and scan for unit tests", () => {
-    expect(jobsFor(["apps/api/src/routes/health.test.ts", "scripts/lib/a.test.ts"])).toEqual({
-      visual: false,
-      e2e: false,
-      release: false,
-    });
+    expect(running(["apps/api/src/routes/health.test.ts", "scripts/lib/a.test.ts"])).toEqual([]);
   });
 
   test("runs the e2e tests, not the release, for an end-to-end test", () => {
-    expect(jobsFor(["e2e/mobile-system-status.spec.ts"])).toEqual({
-      visual: false,
-      e2e: true,
-      release: false,
-    });
-    expect(jobsFor(["playwright.config.ts"]).e2e).toBe(true);
+    expect(running(["e2e/mobile-system-status.spec.ts"])).toEqual(["e2e"]);
+    expect(running(["playwright.config.ts"])).toEqual(["e2e"]);
   });
 
-  test("runs the release, not the e2e tests, for the release build", () => {
+  test("runs the release, not the e2e tests, for the image smoke test", () => {
+    expect(running(["scripts/smoke-test-image.sh"])).toEqual(["release"]);
+  });
+
+  test("runs e2e and release for the env loader, which the release build and Playwright import", () => {
+    expect(running(["scripts/load-env.ts"])).toEqual(["e2e", "release"]);
+  });
+
+  test("runs the deploy test, with the release it deploys, for the deploy path", () => {
     for (const path of [
-      ".github/workflows/build-release.yml",
+      "infra/alwaysdata/src/deploy.ts",
       "infra/container/Dockerfile",
       "scripts/build-release.sh",
-      "scripts/smoke-test-image.sh",
+      ".github/workflows/deploy.yml",
+      ".github/workflows/build-release.yml",
+      ".github/actions/alwaysdata-credentials/action.yml",
     ]) {
-      expect(jobsFor([path]), path).toEqual({ visual: false, e2e: false, release: true });
+      expect(running([path]), path).toEqual(["release", "deploy-test"]);
     }
   });
 
-  test("runs both for the env loader, which the release build and Playwright import", () => {
-    expect(jobsFor(["scripts/load-env.ts"])).toEqual({
-      visual: false,
-      e2e: true,
-      release: true,
-    });
-  });
-
-  test("leaves the deploy scripts to the Deploy test workflow", () => {
-    expect(
-      jobsFor([
-        "infra/alwaysdata/src/deploy.ts",
-        ".github/workflows/deploy.yml",
-        ".github/actions/alwaysdata-credentials/action.yml",
-      ]),
-    ).toEqual({ visual: false, e2e: false, release: false });
+  test("runs the deploy test for the entry points the server starts", () => {
+    for (const path of [
+      "apps/api/src/migrate.ts",
+      "apps/api/src/main.ts",
+      "apps/worker/src/main.ts",
+      "packages/db/src/migrate.ts",
+    ]) {
+      expect(running([path]), path).toEqual(["e2e", "release", "deploy-test"]);
+    }
   });
 
   test("runs every job for the dependencies, the tool chain and CI itself", () => {
@@ -129,21 +135,13 @@ describe("jobsFor", () => {
       ".github/actions/setup/action.yml",
       "scripts/lib/ci-jobs.ts",
     ]) {
-      expect(jobsFor([path]), path).toEqual({ visual: true, e2e: true, release: true });
+      expect(running([path]), path).toEqual([...CI_JOBS]);
     }
   });
 
-  test("runs every job for a path no rule knows, except the visual tests", () => {
-    expect(jobsFor(["apps/worker/src/new-job.ts"])).toEqual({
-      visual: false,
-      e2e: true,
-      release: true,
-    });
-    expect(jobsFor(["some-new-config.json"])).toEqual({
-      visual: false,
-      e2e: true,
-      release: true,
-    });
+  test("runs e2e and release for a path no rule knows", () => {
+    expect(running(["apps/worker/src/new-job.ts"])).toEqual(["e2e", "release"]);
+    expect(running(["some-new-config.json"])).toEqual(["e2e", "release"]);
   });
 });
 
@@ -165,5 +163,18 @@ test("the visual tests run for every workspace package that packages/ui depends 
   for (const name of workspacePackages) {
     const dir = `packages/${name.replace("@padvinder/", "")}/`;
     expect(rule.only, `${name} (${dir})`).toContain(dir);
+  }
+});
+
+test("Deploy ignores only paths that cannot change the release", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/deploy.yml"), "utf8");
+  const items = /^ {4}paths-ignore:\n((?: {6}- .*\n)+)/m.exec(workflow)?.[1];
+  if (!items) throw new Error("deploy.yml has no paths-ignore under push.");
+  const patterns = [...items.matchAll(/- "([^"]+)"/g)].map((m) => m[1] ?? "");
+  expect(patterns.length).toBeGreaterThan(0);
+  for (const pattern of patterns) {
+    // A made-up path that the GitHub pattern matches, in a subdirectory where it can be.
+    const example = pattern.replace("/**", "/a/b.ts").replace("**", "apps/api/src/x");
+    expect(jobsFor([example]).release, `${pattern} (${example})`).toBe(false);
   }
 });
