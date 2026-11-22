@@ -138,21 +138,21 @@ The account name and the known-hosts line are secrets too, not variables: GitHub
 
 ### Making each value
 
-Run these on your own machine, not on a shared one, and in a temporary directory outside the repository: `cd "$(mktemp -d)"` first. The private key and the known-hosts file would otherwise sit in the repository as untracked files that are easy to commit by accident. Delete the directory when you are done (`rm -r` it), and keep the private key in a password manager if you want to keep it. `gh secret set` reads the value from stdin or prompt for it, so it never lands in your shell history. Replace `OWNER/REPO`.
+Run these on your own machine, not on a shared one, and in a temporary directory outside the repository: `cd "$(mktemp -d)"` first. The private key and the known-hosts file would otherwise sit in the repository as untracked files that are easy to commit by accident. Delete the directory when you are done (`rm -r` it), and keep the private key in a password manager if you want to keep it. `gh secret set` reads the value from stdin or prompt for it, so it never lands in your shell history.
 
 **API token.** In the Alwaysdata panel: Profile, then Tokens. Creating a token needs two-factor authentication on the profile. Give it a name per environment (`padvinder-staging`, `padvinder-production`). Leave "allowed IPs" empty: GitHub's runners have changing addresses. The key is shown once:
 
 ```sh
-gh secret set ALWAYSDATA_API_KEY --env staging --repo OWNER/REPO      # paste at the prompt
-gh secret set ALWAYSDATA_API_KEY --env production --repo OWNER/REPO
+gh secret set ALWAYSDATA_API_KEY --env staging --repo PadVinder-net/PadVinder      # paste at the prompt
+gh secret set ALWAYSDATA_API_KEY --env production --repo PadVinder-net/PadVinder
 ```
 
 **Deploy key.** One key pair for the account's main SSH user `<account>`; both environments log in as that user, so the same private key serves both.
 
 ```sh
 ssh-keygen -t ed25519 -N "" -C padvinder-deploy -f padvinder-deploy
-gh secret set DEPLOY_SSH_KEY --env staging --repo OWNER/REPO < padvinder-deploy
-gh secret set DEPLOY_SSH_KEY --env production --repo OWNER/REPO < padvinder-deploy
+gh secret set DEPLOY_SSH_KEY --env staging --repo PadVinder-net/PadVinder < padvinder-deploy
+gh secret set DEPLOY_SSH_KEY --env production --repo PadVinder-net/PadVinder < padvinder-deploy
 ```
 
 The public key `padvinder-deploy.pub` goes into the Alwaysdata panel (Remote access, SSH, the user `<account>`, keys), before the first apply. That user exists since the account was made; provisioning creates no SSH user. The API has no field for SSH keys, so this is a manual step. Then delete `padvinder-deploy`, or keep it in a password manager. For running the scripts locally, you can make your own key pair the same way and add its public key to the same user.
@@ -160,8 +160,8 @@ The public key `padvinder-deploy.pub` goes into the Alwaysdata panel (Remote acc
 **Database passwords.** A different one per environment, sent straight to GitHub:
 
 ```sh
-openssl rand -hex 32 | gh secret set DATABASE_PASSWORD --env staging --repo OWNER/REPO
-openssl rand -hex 32 | gh secret set DATABASE_PASSWORD --env production --repo OWNER/REPO
+openssl rand -hex 32 | gh secret set DATABASE_PASSWORD --env staging --repo PadVinder-net/PadVinder
+openssl rand -hex 32 | gh secret set DATABASE_PASSWORD --env production --repo PadVinder-net/PadVinder
 ```
 
 GitHub cannot show a secret again. The password also stands in the env file on the server, and a lost one is replaced by rotating it (below).
@@ -169,13 +169,13 @@ GitHub cannot show a secret again. The password also stands in the env file on t
 **Account and known hosts.**
 
 ```sh
-gh secret set ALWAYSDATA_ACCOUNT --env staging --repo OWNER/REPO      # paste the account name at the prompt
-gh secret set ALWAYSDATA_ACCOUNT --env production --repo OWNER/REPO
+gh secret set ALWAYSDATA_ACCOUNT --env staging --repo PadVinder-net/PadVinder      # paste the account name at the prompt
+gh secret set ALWAYSDATA_ACCOUNT --env production --repo PadVinder-net/PadVinder
 
 ssh-keyscan -t ed25519 ssh-<account>.alwaysdata.net > known_hosts
 ssh-keygen -lf known_hosts   # compare this fingerprint with the one the Alwaysdata panel shows
-gh secret set SSH_KNOWN_HOSTS --env staging --repo OWNER/REPO < known_hosts
-gh secret set SSH_KNOWN_HOSTS --env production --repo OWNER/REPO < known_hosts
+gh secret set SSH_KNOWN_HOSTS --env staging --repo PadVinder-net/PadVinder < known_hosts
+gh secret set SSH_KNOWN_HOSTS --env production --repo PadVinder-net/PadVinder < known_hosts
 ```
 
 Only store the known hosts after the fingerprint matches; with a wrong one the deploys trust the wrong server.
