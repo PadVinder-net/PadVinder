@@ -40,7 +40,9 @@ runs:
 
         socket="$RUNNER_TEMP/ssh-agent.sock"
         rm -f "$socket"
-        agent_env="$(ssh-agent -s -a "$socket")"
+        # Without the secrets in its environment: the agent outlives this step, and a process's
+        # environment is readable in /proc/<pid>/environ for as long as it runs.
+        agent_env="$(env -u DEPLOY_SSH_KEY -u SSH_KNOWN_HOSTS ssh-agent -s -a "$socket")"
         pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9][0-9]*\);.*/\1/p' <<<"$agent_env")"
         if [[ -z "$pid" ]]; then
           echo "::error::ssh-agent did not start."
@@ -54,10 +56,12 @@ runs:
         } >>"$GITHUB_ENV"
         export SSH_AUTH_SOCK="$socket"
 
-        # Over stdin, so the key is never written to a file. ssh-add refuses a key without a
-        # final newline, and a pasted secret often lacks one. The lifetime outlasts the
-        # longest job (35 minutes); the final step stops the agent sooner.
-        if ! printf '%s\n' "$DEPLOY_SSH_KEY" | SSH_ASKPASS_REQUIRE=never ssh-add -q -t 3600 -; then
+        # Over stdin, so the key is never written to a file and is in no environment but this
+        # step's. ssh-add refuses a key without a final newline, and a pasted secret often lacks
+        # one. The lifetime outlasts the longest job (35 minutes); the final step stops the
+        # agent sooner.
+        if ! printf '%s\n' "$DEPLOY_SSH_KEY" |
+          env -u DEPLOY_SSH_KEY -u SSH_KNOWN_HOSTS SSH_ASKPASS_REQUIRE=never ssh-add -q -t 3600 -; then
           echo "::error::Could not load DEPLOY_SSH_KEY into ssh-agent. It must be the whole private key file, without a passphrase."
           exit 1
         fi
