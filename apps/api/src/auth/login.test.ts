@@ -1,8 +1,8 @@
 import { Writable } from "node:stream";
 import { sessions, users, verifications } from "@padvinder/db";
 import { createTestDatabase } from "@padvinder/db/testing";
-import { eq, sql } from "drizzle-orm";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { sql } from "drizzle-orm";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
 import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
@@ -203,17 +203,64 @@ test("the client cannot set the phone number", async () => {
   });
   expect(res.statusCode).toBe(400);
   expect(await ctx.t.db.select().from(users)).toHaveLength(0);
+});
 
-  const { userId, headers } = await loginAs(ctx, "sam@example.test", { phone: null });
-  const update = await ctx.app.inject({
+test("a name and picture sent with the first sign-in are ignored", async () => {
+  await requestCode(ctx, "noor@example.test");
+  const res = await ctx.app.inject({
     method: "POST",
-    url: "/api/auth/update-user",
-    headers: { ...headers, origin: testEnv.PUBLIC_ORIGIN },
-    payload: { phone: "0612345678" },
+    url: "/api/auth/sign-in/email-otp",
+    payload: {
+      email: "noor@example.test",
+      otp: codeFor(ctx, "noor@example.test"),
+      name: "X",
+      image: "https://evil.example/x.png",
+    },
   });
-  expect(update.statusCode).toBe(400);
-  const [row] = await ctx.t.db.select().from(users).where(eq(users.id, userId));
-  expect(row!.phone).toBeNull();
+  expect(res.statusCode).toBe(200);
+  expect(await ctx.t.db.select({ name: users.name, image: users.image }).from(users)).toEqual([
+    { name: "", image: null },
+  ]);
+});
+
+test.each(["forget-password", "email-verification", "change-email", undefined])(
+  "asking for a code of type %s is refused",
+  async (type) => {
+    await loginAs(ctx, "noor@example.test");
+    const sentBefore = ctx.mailer.sent.length;
+    const res = await ctx.app.inject({
+      method: "POST",
+      url: "/api/auth/email-otp/send-verification-otp",
+      payload: { email: "noor@example.test", type },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: "INVALID_OTP_TYPE" });
+    expect(await ctx.t.db.select().from(verifications)).toHaveLength(0);
+    expect(ctx.mailer.sent).toHaveLength(sentBefore);
+  },
+);
+
+test.each([
+  ["POST", "/api/auth/update-user"],
+  ["POST", "/api/auth/email-otp/reset-password"],
+  ["POST", "/api/auth/email-otp/request-password-reset"],
+  ["POST", "/api/auth/forget-password/email-otp"],
+  ["POST", "/api/auth/email-otp/verify-email"],
+  ["POST", "/api/auth/email-otp/check-verification-otp"],
+  ["GET", "/api/auth/list-sessions"],
+  ["POST", "/api/auth/revoke-sessions"],
+  ["GET", "/api/auth/get-session"],
+  ["POST", "/api/auth/sign-in/email-otp/"],
+] as const)("Better Auth's %s %s is not mounted", async (method, url) => {
+  const { headers } = await loginAs(ctx, "noor@example.test");
+  const res = await ctx.app.inject({
+    method,
+    url,
+    headers: { ...headers, origin: testEnv.PUBLIC_ORIGIN },
+    ...(method === "POST" && { payload: { email: "noor@example.test", name: "X" } }),
+  });
+  expect(res.statusCode).toBe(404);
+  expect(res.json()).toMatchObject({ code: "not_found" });
 });
 
 test("a failing mailer does not fail the request", async () => {
@@ -221,8 +268,12 @@ test("a failing mailer does not fail the request", async () => {
   expect((await requestCode(ctx, "a@example.test")).statusCode).toBe(200);
 });
 
-test("the code never appears in the log", async () => {
+test("the code never appears in the log, and Better Auth logs only through ours", async () => {
   await ctx.close();
+  // Better Auth's own logger writes to the console; everything must go through our logger.
+  const consoleSpies = (["log", "info", "warn", "error", "debug"] as const).map((method) =>
+    vi.spyOn(console, method).mockImplementation(() => {}),
+  );
   const lines: string[] = [];
   const logStream = new Writable({
     write(chunk, _encoding, callback) {
@@ -256,11 +307,33 @@ test("the code never appears in the log", async () => {
   // A failing mail is logged too, without the code or the address.
   mailer.failWith(new Error(`could not send ${code} to noor@example.test`));
   await requestCode(ctx, "noor@example.test");
-  await new Promise((resolve) => setImmediate(resolve));
+  // The failed mail is logged once its promise settles, after the response.
+  await expect.poll(() => lines.join("")).toContain("login code mail");
+  // A refusal from a Better Auth middleware (no Origin with a cookie), and an unexpected error
+  // (a stored code that cannot be decrypted).
+  const signedIn = await signIn(ctx, "sam@example.test", "000000");
+  expect(signedIn.statusCode).toBe(400);
+  expect(
+    (
+      await ctx.app.inject({
+        method: "POST",
+        url: "/api/auth/sign-out",
+        headers: { cookie: "padvinder.session_token=x" },
+      })
+    ).statusCode,
+  ).toBe(403);
+  await requestCode(ctx, "sam@example.test");
+  await ctx.t.db.update(verifications).set({ value: "broken:0" });
+  const broken = await signIn(ctx, "sam@example.test", "123456");
+  expect(broken.statusCode).toBe(500);
+  expect(broken.json()).toMatchObject({ code: "internal_error" });
 
   const log = lines.join("");
-  expect(log).not.toBe("");
-  expect(log).toContain("login code mail");
+  for (const spy of consoleSpies) {
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  }
+  expect(log).toContain("Better Auth: Unexpected error");
   expect(log).not.toContain(code);
   expect(log).not.toContain("noor@example.test");
 });
@@ -300,9 +373,8 @@ test("signing out ends the session", async () => {
 
 test("a session cookie gives access to the session", async () => {
   const { userId, headers } = await loginAs(ctx, "noor@example.test", { name: "Noor" });
-  const res = await ctx.app.inject({ url: "/api/auth/get-session", headers });
-  expect(res.statusCode).toBe(200);
-  expect(res.json()).toMatchObject({ user: { id: userId, name: "Noor" } });
+  const session = await ctx.app.auth.api.getSession({ headers: new Headers(headers) });
+  expect(session).toMatchObject({ user: { id: userId, name: "Noor" } });
 });
 
 test("the auth routes are not in the OpenAPI description", async () => {

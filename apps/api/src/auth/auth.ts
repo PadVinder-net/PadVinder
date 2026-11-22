@@ -1,7 +1,7 @@
 import { accounts, rateLimits, sessions, users, verifications, type Db } from "@padvinder/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
@@ -26,7 +26,7 @@ const scrub = (text: string) => text.replace(EMAIL_LIKE, "[email]");
  * they go to `debug`. Arguments are reduced to error names and messages: a database error can
  * carry the row (with an email address) in its details.
  */
-function forwardLog(log: FastifyBaseLogger) {
+export function forwardLog(log: FastifyBaseLogger) {
   return (level: "debug" | "info" | "warn" | "error", message: string, ...args: unknown[]) => {
     const errors = args
       .filter((arg): arg is Error => arg instanceof Error)
@@ -91,23 +91,45 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
       database: { generateId: "uuid" },
     },
     hooks: {
-      // Before every endpoint: the address is trimmed and lowercased before Better Auth looks at it.
       before: createAuthMiddleware(async (ctx) => {
         const body: unknown = ctx.body;
-        if (body === null || typeof body !== "object" || !("email" in body)) return;
-        if (typeof body.email !== "string") return;
+        if (body === null || typeof body !== "object") return;
+        // Only login codes. Other kinds (password reset, email verification) would store codes
+        // for flows we do not offer.
+        if (
+          ctx.path === "/email-otp/send-verification-otp" &&
+          (!("type" in body) || body.type !== "sign-in")
+        ) {
+          throw APIError.from("BAD_REQUEST", {
+            code: "INVALID_OTP_TYPE",
+            message: "Only sign-in codes can be requested",
+          });
+        }
+        // The address is trimmed and lowercased before Better Auth looks at it.
+        if (!("email" in body) || typeof body.email !== "string") return;
         return { context: { body: { ...body, email: normalizeEmail(body.email) } } };
       }),
     },
     databaseHooks: {
       user: {
         create: {
-          // A second guard: whatever path creates a user, the stored address is normalized.
-          before: async (user) => ({ data: { ...user, email: normalizeEmail(user.email) } }),
+          // Whatever the sign-in body says, a new account starts without a name or picture (the
+          // app asks for the name through our own profile endpoint), and the stored address is
+          // normalized as a second guard.
+          before: async (user) => ({
+            data: { ...user, email: normalizeEmail(user.email), name: "", image: null },
+          }),
         },
       },
     },
     logger: { level: env.LOG_LEVEL, log: forwardLog(log) },
+    onAPIError: {
+      // Rethrow instead of logging: Better Auth would log a refusal through the console, and
+      // better-call writes an unexpected error to the console itself, both past our logger and
+      // its scrubbing. A refusal still gets Better Auth's answer; an unexpected error reaches
+      // `authRoutes`, which logs it through `forwardLog`.
+      throw: true,
+    },
     telemetry: { enabled: false },
     plugins: [
       emailOTP({
@@ -120,7 +142,7 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         disableSignUp: false,
         // Not awaited: the answer must not wait for (or reveal anything through) the mail server.
         async sendVerificationOTP({ email, otp, type }) {
-          if (type !== "sign-in") return;
+          if (type !== "sign-in") return; // Refused before it gets here (hooks.before).
           mailer.send(buildLoginCodeMail({ to: email, code: otp })).catch((error: unknown) => {
             log.error(
               { mailError: describeMailError(error) },

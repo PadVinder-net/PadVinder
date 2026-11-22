@@ -27,6 +27,7 @@ export async function startApi(env: ApiEnv): Promise<RunningApi> {
   const stop = async () => {
     await app?.close();
     await notifications?.close();
+    // A login code mail still in flight (sent without waiting) can be lost; no retries by design.
     mailer.close();
     await pool.end();
   };

@@ -2,6 +2,7 @@ import { updateUserProfile } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../app";
+import { normalizeEmail } from "../auth/auth";
 import type { ApiEnv } from "../env";
 import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
@@ -56,11 +57,11 @@ export function requestCode(
   });
 }
 
-const normalized = (email: string) => email.trim().toLowerCase();
-
 /** The code from the subject of the newest mail to that address. */
 export function codeFor(ctx: TestApp, email: string): string {
-  const mail = ctx.mailer.sent.findLast((sent) => normalized(sent.to) === normalized(email));
+  const mail = ctx.mailer.sent.findLast(
+    (sent) => normalizeEmail(sent.to) === normalizeEmail(email),
+  );
   if (!mail) throw new Error(`No mail was sent to ${email}`);
   const code = /^(\d{6}) /.exec(mail.subject)?.[1];
   if (!code) throw new Error(`No code in the subject "${mail.subject}"`);
