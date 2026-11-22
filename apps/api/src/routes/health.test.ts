@@ -57,7 +57,7 @@ test("200 ok with a fresh heartbeat", async () => {
   });
   expect(body.database.postgresVersion).toMatch(/^\d+\.\d+$/);
   expect(body.database.postgisVersion).toMatch(/^3\./);
-  expect(body.database.latestMigration?.name).toContain("worker_heartbeats");
+  expect(body.database.latestMigration?.name).toMatch(/^\d{14}_\w+$/);
 });
 
 test("503 with reachable:false when the database is down, within 5 s", async () => {

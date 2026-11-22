@@ -1,0 +1,96 @@
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+// The tables of Better Auth 1.7.27 (user, session, account, verification, rate limit), with
+// plural snake_case names and `timestamptz`. Better Auth is configured with
+// `advanced.database.generateId: "uuid"`; the id default below is the one it expects.
+// Keep the columns in line with Better Auth: do not rename or drop one without checking it.
+
+const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+const id = () =>
+  uuid("id")
+    .default(sql`gen_random_uuid()`)
+    .primaryKey();
+
+export const users = pgTable("users", {
+  id: id(),
+  // Empty string for a new account until the volunteer fills in a name.
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  createdAt: timestamptz("created_at").notNull().defaultNow(),
+  updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  // Ours, not Better Auth's. Optional.
+  phone: text("phone"),
+});
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: id(),
+    expiresAt: timestamptz("expires_at").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("sessions_user_id_idx").on(table.userId)],
+);
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: id(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamptz("access_token_expires_at"),
+    refreshTokenExpiresAt: timestamptz("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("accounts_user_id_idx").on(table.userId)],
+);
+
+// Also holds the one-time login codes of the email OTP plugin.
+export const verifications = pgTable(
+  "verifications",
+  {
+    id: id(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamptz("expires_at").notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("verifications_identifier_idx").on(table.identifier)],
+);
+
+export const rateLimits = pgTable("rate_limits", {
+  id: id(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  // Milliseconds since the epoch (Date.now()), not a timestamp: Better Auth stores a number.
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+});
