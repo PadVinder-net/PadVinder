@@ -33,6 +33,20 @@ export type HealthResponseInput = {
     };
 };
 
+export type MeResponseInput = {
+    user: {
+        id: string;
+        name: string;
+        email: string;
+        phone: string | null;
+    };
+};
+
+export type UpdateMeRequestInput = {
+    name?: string;
+    phone?: string | null;
+};
+
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
@@ -65,6 +79,20 @@ export type HealthResponse = {
     worker: {
         lastHeartbeatAt: string | null;
     };
+};
+
+export type MeResponse = {
+    user: {
+        id: string;
+        name: string;
+        email: string;
+        phone: string | null;
+    };
+};
+
+export type UpdateMeRequest = {
+    name?: string;
+    phone?: unknown;
 };
 
 export type VersionResponse = {
@@ -112,3 +140,57 @@ export type GetVersionResponses = {
 };
 
 export type GetVersionResponse = GetVersionResponses[keyof GetVersionResponses];
+
+export type GetMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/me';
+};
+
+export type GetMeErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+};
+
+export type GetMeError = GetMeErrors[keyof GetMeErrors];
+
+export type GetMeResponses = {
+    /**
+     * Default Response
+     */
+    200: MeResponse;
+};
+
+export type GetMeResponse = GetMeResponses[keyof GetMeResponses];
+
+export type UpdateMeData = {
+    body: UpdateMeRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/me';
+};
+
+export type UpdateMeErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+};
+
+export type UpdateMeError = UpdateMeErrors[keyof UpdateMeErrors];
+
+export type UpdateMeResponses = {
+    /**
+     * Default Response
+     */
+    200: MeResponse;
+};
+
+export type UpdateMeResponse = UpdateMeResponses[keyof UpdateMeResponses];

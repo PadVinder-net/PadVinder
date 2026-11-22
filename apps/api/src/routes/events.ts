@@ -20,40 +20,43 @@ export const eventsRoutes: FastifyPluginAsyncZod<{ notifications: NotificationHu
     for (const raw of open) raw.end();
   });
 
-  // Public and unscoped: fine for worker heartbeats only. Before any other event is added, this
-  // stream must authenticate the session and filter events by `organizationId` (and working
-  // group where relevant), like every other query.
-  app.get("/events", { schema: { hide: true } }, async (request, reply) => {
-    reply.hijack();
-    const raw = reply.raw;
-    raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    open.add(raw);
+  // Needs a login (401 before the stream opens). Not yet filtered per audience: that comes with
+  // the first event that is not a worker heartbeat (the design, "Live events").
+  app.get(
+    "/events",
+    { preHandler: app.requireActor, schema: { hide: true } },
+    async (request, reply) => {
+      reply.hijack();
+      const raw = reply.raw;
+      raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      open.add(raw);
 
-    const write = (chunk: string) => {
-      if (!raw.writable || raw.writableEnded) return;
-      raw.write(chunk);
-    };
+      const write = (chunk: string) => {
+        if (!raw.writable || raw.writableEnded) return;
+        raw.write(chunk);
+      };
 
-    // The hub has already validated the event against the channel's schema.
-    const unsubscribe = notifications.subscribe(liveEventsChannel, (event) => {
-      write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-    });
-    const keepalive = setInterval(() => write(": keepalive\n\n"), SSE_KEEPALIVE_MS);
+      // The hub has already validated the event against the channel's schema.
+      const unsubscribe = notifications.subscribe(liveEventsChannel, (event) => {
+        write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      });
+      const keepalive = setInterval(() => write(": keepalive\n\n"), SSE_KEEPALIVE_MS);
 
-    const cleanup = () => {
-      clearInterval(keepalive);
-      unsubscribe();
-      open.delete(raw);
-    };
-    request.raw.on("close", cleanup);
-    // A write to a dead socket emits 'error'; without a listener that would crash the process.
-    raw.on("error", cleanup);
+      const cleanup = () => {
+        clearInterval(keepalive);
+        unsubscribe();
+        open.delete(raw);
+      };
+      request.raw.on("close", cleanup);
+      // A write to a dead socket emits 'error'; without a listener that would crash the process.
+      raw.on("error", cleanup);
 
-    write(`retry: ${SSE_RETRY_MS}\n\n`);
-  });
+      write(`retry: ${SSE_RETRY_MS}\n\n`);
+    },
+  );
 };

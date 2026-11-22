@@ -11,9 +11,23 @@ export type EventsClient = {
 };
 
 /** Opens `GET /api/events` and parses the stream. Test helper only. */
-export async function openEvents(baseUrl: string): Promise<EventsClient> {
+export async function openEvents(
+  baseUrl: string,
+  headers: Record<string, string> = {},
+): Promise<EventsClient> {
   const controller = new AbortController();
-  const res = await fetch(`${baseUrl}/api/events`, { signal: controller.signal });
+  const res = await fetch(`${baseUrl}/api/events`, { headers, signal: controller.signal });
+  if (!res.ok) {
+    // An error answer is a plain JSON body, not a stream.
+    const body = (await res.text()) as string;
+    return {
+      status: res.status,
+      headers: res.headers,
+      received: () => body,
+      close: () => controller.abort(),
+      nextEvent: () => Promise.reject(new Error(`No stream: status ${res.status}`)),
+    };
+  }
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

@@ -9,6 +9,7 @@ import {
 } from "fastify-type-provider-zod";
 import { createAuth, type Auth } from "./auth/auth";
 import { authRoutes } from "./auth/auth-routes";
+import { addActorLoading } from "./permissions/actor";
 import type { ApiEnv } from "./env";
 import { addErrorHandling } from "./errors";
 import type { Mailer } from "./mail/mailer";
@@ -17,6 +18,7 @@ import { registerStaticApps } from "./plugins/static-apps";
 import type { NotificationHub } from "./realtime/notification-hub";
 import { eventsRoutes } from "./routes/events";
 import { healthRoutes } from "./routes/health";
+import { meRoutes } from "./routes/me";
 import { versionRoutes } from "./routes/version";
 
 export type AppDeps = {
@@ -67,12 +69,14 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   const auth = createAuth({ env, db: deps.db, mailer: deps.mailer, log: app.log });
   app.decorate("auth", auth);
+  addActorLoading(app);
 
   await app.register(
     async (api) => {
       await api.register(authRoutes, { auth, origin: env.PUBLIC_ORIGIN });
       await api.register(healthRoutes, { env, db: deps.db });
       await api.register(versionRoutes, { env });
+      await api.register(meRoutes, { db: deps.db });
       await api.register(eventsRoutes, { notifications: deps.notifications });
     },
     { prefix: "/api" },

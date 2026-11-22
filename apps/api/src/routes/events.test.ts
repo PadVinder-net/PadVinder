@@ -6,12 +6,14 @@ import { buildApp } from "../app";
 import { createMemoryMailer } from "../mail/mailer";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
+import { loginAs, type TestApp } from "../testing/login";
 import { openEvents } from "../test-open-events";
 
 let t: TestDatabase | undefined;
 let hub: NotificationHub | undefined;
 let app: FastifyInstance | undefined;
 let baseUrl = "";
+let cookie: Record<string, string> = {};
 
 beforeAll(async () => {
   t = await createTestDatabase();
@@ -21,12 +23,10 @@ beforeAll(async () => {
     channels: [liveEventsChannel],
     logger,
   });
-  app = await buildApp({
-    env: testEnv,
-    db: t.db,
-    notifications: hub,
-    mailer: createMemoryMailer(),
-  });
+  const mailer = createMemoryMailer();
+  app = await buildApp({ env: testEnv, db: t.db, notifications: hub, mailer });
+  const ctx: TestApp = { app, mailer, t, close: async () => {} };
+  cookie = (await loginAs(ctx, "events@example.test")).headers;
   baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
 });
 afterAll(async () => {
@@ -35,8 +35,33 @@ afterAll(async () => {
   await t?.drop();
 });
 
-test("forwards a heartbeat as an SSE event", async () => {
+test("401 without a login, before the stream opens", async () => {
   const stream = await openEvents(baseUrl);
+  expect(stream.status).toBe(401);
+  expect(stream.headers.get("content-type")).not.toContain("text/event-stream");
+  expect(JSON.parse(stream.received())).toMatchObject({ statusCode: 401, code: "not_logged_in" });
+  await expect.poll(() => hub!.listenerCount(liveEventsChannel)).toBe(0);
+});
+
+test("401 with a cookie that is not a session", async () => {
+  const stream = await openEvents(baseUrl, { cookie: "padvinder.session_token=nonsense.value" });
+  expect(stream.status).toBe(401);
+});
+
+test("a logged-in user receives the heartbeat", async () => {
+  const stream = await openEvents(baseUrl, cookie);
+  expect(stream.status).toBe(200);
+  const beatAt = "2027-03-01T19:30:00.000Z";
+  await expect.poll(() => hub!.listenerCount(liveEventsChannel)).toBe(1);
+  await t!.db.transaction((tx) =>
+    notify(tx, liveEventsChannel, { type: "worker-heartbeat", beatAt }),
+  );
+  await expect(stream.nextEvent()).resolves.toMatchObject({ event: "worker-heartbeat" });
+  stream.close();
+});
+
+test("forwards a heartbeat as an SSE event", async () => {
+  const stream = await openEvents(baseUrl, cookie);
   const at = await recordHeartbeat(t!.db);
   await expect(stream.nextEvent()).resolves.toEqual({
     event: "worker-heartbeat",
@@ -46,7 +71,7 @@ test("forwards a heartbeat as an SSE event", async () => {
 });
 
 test("forwards any event on the channel under its type as the SSE event name", async () => {
-  const stream = await openEvents(baseUrl);
+  const stream = await openEvents(baseUrl, cookie);
   const beatAt = "2027-03-01T19:30:00.000Z";
   await t!.db.transaction((tx) =>
     notify(tx, liveEventsChannel, { type: "worker-heartbeat", beatAt }),
@@ -59,7 +84,7 @@ test("forwards any event on the channel under its type as the SSE event name", a
 });
 
 test("sends no-buffering headers and an explicit retry", async () => {
-  const stream = await openEvents(baseUrl);
+  const stream = await openEvents(baseUrl, cookie);
   expect(stream.status).toBe(200);
   expect(stream.headers.get("content-type")).toContain("text/event-stream");
   expect(stream.headers.get("x-accel-buffering")).toBe("no");
@@ -69,7 +94,7 @@ test("sends no-buffering headers and an explicit retry", async () => {
 });
 
 test("unsubscribes when the client disconnects", async () => {
-  const stream = await openEvents(baseUrl);
+  const stream = await openEvents(baseUrl, cookie);
   await expect.poll(() => hub!.listenerCount(liveEventsChannel)).toBe(1);
   stream.close();
   await expect.poll(() => hub!.listenerCount(liveEventsChannel)).toBe(0);
@@ -86,14 +111,12 @@ test("app.close() ends open streams promptly", async () => {
     channels: [liveEventsChannel],
     logger: app!.log,
   });
-  const app2 = await buildApp({
-    env: testEnv,
-    db: t2.db,
-    notifications: hub2,
-    mailer: createMemoryMailer(),
-  });
+  const mailer2 = createMemoryMailer();
+  const app2 = await buildApp({ env: testEnv, db: t2.db, notifications: hub2, mailer: mailer2 });
   const url = await app2.listen({ port: 0, host: "127.0.0.1" });
-  const stream = await openEvents(url);
+  const ctx2: TestApp = { app: app2, mailer: mailer2, t: t2, close: async () => {} };
+  const login2 = await loginAs(ctx2, "events2@example.test");
+  const stream = await openEvents(url, login2.headers);
   await expect.poll(() => hub2.listenerCount(liveEventsChannel)).toBe(1);
   const started = Date.now();
   await app2.close();
