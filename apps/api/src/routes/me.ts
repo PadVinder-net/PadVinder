@@ -8,7 +8,7 @@ import { getMeRoles, updateUserProfile, type Db, type UserProfile } from "@padvi
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { Actor } from "../permissions/actor";
 import { apiError, errorResponses } from "../errors";
-import { toMembershipRequest } from "./membership-requests";
+import { toMembershipRequest } from "../serializers/membership-requests";
 
 export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
   /** The profile and the platform flag come from the actor, read with the session. */

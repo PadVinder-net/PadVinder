@@ -33,3 +33,26 @@ export const membershipRequestSchema = z
   })
   .meta({ id: "MembershipRequest" });
 export type MembershipRequest = z.infer<typeof membershipRequestSchema>;
+
+/**
+ * A request as a reviewer sees it: a coordinator of the group, an admin of its organization or a
+ * platform admin. Only they may see the applicant's contact details; nobody else gets this shape.
+ */
+export const membershipRequestForReviewSchema = membershipRequestSchema
+  .extend({
+    applicant: z.object({
+      id: z.string(),
+      /** Empty when the person has not given it yet. */
+      name: z.string(),
+      email: z.string(),
+      phone: z.string().nullable(),
+    }),
+  })
+  .meta({ id: "MembershipRequestForReview" });
+export type MembershipRequestForReview = z.infer<typeof membershipRequestForReviewSchema>;
+
+/** The pending requests of one working group, oldest first. */
+export const membershipRequestListResponseSchema = z
+  .object({ membershipRequests: z.array(membershipRequestForReviewSchema) })
+  .meta({ id: "MembershipRequestListResponse" });
+export type MembershipRequestListResponse = z.infer<typeof membershipRequestListResponseSchema>;

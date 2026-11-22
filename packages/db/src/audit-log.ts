@@ -11,7 +11,9 @@ export type AuditAction =
   | "role.organization_admin_granted"
   | "role.organization_admin_revoked"
   | "role.coordinator_granted"
-  | "role.coordinator_revoked";
+  | "role.coordinator_revoked"
+  | "membership_request.approved"
+  | "membership_request.rejected";
 
 export type AuditSubject = {
   type: "user" | "organization" | "working_group" | "membership" | "membership_request";
@@ -29,12 +31,17 @@ export type AuditEntry = {
   details?: AuditDetails;
 };
 
-const PERSONAL_KEYS = new Set(["name", "email", "phone"]);
+/**
+ * A details key that contains one of these, in any case, is refused: `fullName`, `emailAddress`
+ * and `phoneNumber` as much as `name`. Choose keys without them (`workingGroupId`, `role`).
+ */
+const PERSONAL_KEY_PARTS = ["name", "mail", "phone"];
 
 function assertNoPersonalData(details: AuditDetails): void {
   for (const [key, value] of Object.entries(details)) {
+    const lowerKey = key.toLowerCase();
     if (
-      PERSONAL_KEYS.has(key.toLowerCase()) ||
+      PERSONAL_KEY_PARTS.some((part) => lowerKey.includes(part)) ||
       (typeof value === "string" && value.includes("@"))
     ) {
       throw new Error(

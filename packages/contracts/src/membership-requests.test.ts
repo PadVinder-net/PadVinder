@@ -1,6 +1,8 @@
 import { expect, test } from "vitest";
 import {
   createMembershipRequestSchema,
+  membershipRequestForReviewSchema,
+  membershipRequestListResponseSchema,
   membershipRequestSchema,
   membershipRequestStatusSchema,
 } from "./membership-requests";
@@ -9,6 +11,7 @@ import {
   pendingRequestFixture,
   rejectedMeFixture,
   rejectedRequestFixture,
+  requestsForReviewFixture,
   waitingMeFixture,
 } from "./fixtures";
 
@@ -55,4 +58,29 @@ test("the waiting and rejected me fixtures parse and have no membership", () => 
   }
   expect(pendingRequestFixture.decidedAt).toBeNull();
   expect(rejectedRequestFixture.decidedAt).not.toBeNull();
+});
+
+test("the review fixture has three pending requests in two groups, with made-up contacts", () => {
+  const list = { membershipRequests: requestsForReviewFixture };
+  expect(membershipRequestListResponseSchema.parse(list)).toEqual(list);
+  expect(requestsForReviewFixture).toHaveLength(3);
+  expect(new Set(requestsForReviewFixture.map((r) => r.workingGroup.id)).size).toBe(2);
+  for (const request of requestsForReviewFixture) {
+    expect(request.status).toBe("pending");
+    expect(request.applicant.email).toMatch(/@example\.test$/);
+  }
+  // One applicant has no phone number.
+  expect(requestsForReviewFixture.some((r) => r.applicant.phone === null)).toBe(true);
+});
+
+test("a request for review needs the applicant; their phone may be null", () => {
+  const [first] = requestsForReviewFixture;
+  const { applicant: _applicant, ...withoutApplicant } = first!;
+  expect(membershipRequestForReviewSchema.safeParse(withoutApplicant).success).toBe(false);
+  expect(
+    membershipRequestForReviewSchema.parse({
+      ...first,
+      applicant: { ...first!.applicant, phone: null },
+    }).applicant.phone,
+  ).toBeNull();
 });

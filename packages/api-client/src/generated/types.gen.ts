@@ -64,6 +64,24 @@ export type MembershipRequestInput = {
     workingGroup: WorkingGroupSummaryInput;
 };
 
+export type MembershipRequestForReviewInput = {
+    id: string;
+    status: MembershipRequestStatusInput;
+    requestedAt: string;
+    decidedAt: string | null;
+    workingGroup: WorkingGroupSummaryInput;
+    applicant: {
+        id: string;
+        name: string;
+        email: string;
+        phone: string | null;
+    };
+};
+
+export type MembershipRequestListResponseInput = {
+    membershipRequests: Array<MembershipRequestForReviewInput>;
+};
+
 export type MeResponseInput = {
     user: {
         id: string;
@@ -152,6 +170,24 @@ export type MembershipRequest = {
     requestedAt: string;
     decidedAt: string | null;
     workingGroup: WorkingGroupSummary;
+};
+
+export type MembershipRequestForReview = {
+    id: string;
+    status: MembershipRequestStatus;
+    requestedAt: string;
+    decidedAt: string | null;
+    workingGroup: WorkingGroupSummary;
+    applicant: {
+        id: string;
+        name: string;
+        email: string;
+        phone: string | null;
+    };
+};
+
+export type MembershipRequestListResponse = {
+    membershipRequests: Array<MembershipRequestForReview>;
 };
 
 export type MeResponse = {
@@ -304,6 +340,45 @@ export type ListWorkingGroupsResponses = {
 
 export type ListWorkingGroupsResponse = ListWorkingGroupsResponses[keyof ListWorkingGroupsResponses];
 
+export type ListMembershipRequestsData = {
+    body?: never;
+    path: {
+        workingGroupId: string;
+    };
+    query?: never;
+    url: '/api/working-groups/{workingGroupId}/membership-requests';
+};
+
+export type ListMembershipRequestsErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type ListMembershipRequestsError = ListMembershipRequestsErrors[keyof ListMembershipRequestsErrors];
+
+export type ListMembershipRequestsResponses = {
+    /**
+     * Default Response
+     */
+    200: MembershipRequestListResponse;
+};
+
+export type ListMembershipRequestsResponse = ListMembershipRequestsResponses[keyof ListMembershipRequestsResponses];
+
 export type CreateMembershipRequestData = {
     body: CreateMembershipRequestInput;
     path?: never;
@@ -387,3 +462,128 @@ export type WithdrawMembershipRequestResponses = {
 };
 
 export type WithdrawMembershipRequestResponse = WithdrawMembershipRequestResponses[keyof WithdrawMembershipRequestResponses];
+
+export type GetMembershipRequestData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/membership-requests/{id}';
+};
+
+export type GetMembershipRequestErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type GetMembershipRequestError = GetMembershipRequestErrors[keyof GetMembershipRequestErrors];
+
+export type GetMembershipRequestResponses = {
+    /**
+     * Default Response
+     */
+    200: MembershipRequestForReview;
+};
+
+export type GetMembershipRequestResponse = GetMembershipRequestResponses[keyof GetMembershipRequestResponses];
+
+export type ApproveMembershipRequestData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/membership-requests/{id}/approve';
+};
+
+export type ApproveMembershipRequestErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type ApproveMembershipRequestError = ApproveMembershipRequestErrors[keyof ApproveMembershipRequestErrors];
+
+export type ApproveMembershipRequestResponses = {
+    /**
+     * Default Response
+     */
+    200: MembershipRequestForReview;
+};
+
+export type ApproveMembershipRequestResponse = ApproveMembershipRequestResponses[keyof ApproveMembershipRequestResponses];
+
+export type RejectMembershipRequestData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/membership-requests/{id}/reject';
+};
+
+export type RejectMembershipRequestErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type RejectMembershipRequestError = RejectMembershipRequestErrors[keyof RejectMembershipRequestErrors];
+
+export type RejectMembershipRequestResponses = {
+    /**
+     * Default Response
+     */
+    200: MembershipRequestForReview;
+};
+
+export type RejectMembershipRequestResponse = RejectMembershipRequestResponses[keyof RejectMembershipRequestResponses];

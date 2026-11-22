@@ -1,10 +1,12 @@
 import type { MembershipRequestStatus, WorkingGroupSummary } from "@padvinder/contracts";
-import { and, count, desc, eq, gte, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, sql, type SQL } from "drizzle-orm";
 import type { Db, DbTransaction } from "./client";
+import { recordAudit } from "./audit-log";
 import { notifyAccessChanged, notifyMembershipRequestsChanged } from "./notifications";
 import {
   membershipRequests,
   organizations,
+  users,
   workingGroupMemberships,
   workingGroups,
 } from "./schema";
@@ -44,6 +46,19 @@ export type CreateMembershipRequestResult =
 
 export type WithdrawMembershipRequestResult =
   | { outcome: "withdrawn" | "unchanged"; request: MembershipRequestRecord }
+  | { outcome: "not_found" | "already_decided" };
+
+/**
+ * A request as a reviewer sees it, with the applicant's contact details. Only for a coordinator of
+ * the group, an admin of its organization or a platform admin: the route decides that.
+ */
+export type MembershipRequestReviewRecord = MembershipRequestRecord & {
+  applicant: { id: string; name: string; email: string; phone: string | null };
+  organizationId: string;
+};
+
+export type DecideMembershipRequestResult =
+  | { outcome: "decided" | "unchanged"; request: MembershipRequestReviewRecord }
   | { outcome: "not_found" | "already_decided" };
 
 /** The requests with their working group and organization, filtered by `where`, newest first. */
@@ -99,6 +114,69 @@ function withoutOrganizationId({
   ...request
 }: MembershipRequestRecord & { organizationId: string }): MembershipRequestRecord {
   return request;
+}
+
+/**
+ * The requests with their working group, organization and applicant, filtered by `where`. The
+ * applicant's contact details are only for reviewers.
+ */
+async function selectRequestsForReview(
+  db: Db | DbTransaction,
+  where: SQL | undefined,
+  options: { order?: "oldest" | "newest"; forUpdate?: boolean } = {},
+): Promise<MembershipRequestReviewRecord[]> {
+  const order =
+    options.order === "oldest"
+      ? [asc(membershipRequests.receivedAt), asc(membershipRequests.id)]
+      : [desc(membershipRequests.receivedAt), desc(membershipRequests.id)];
+  let query = db
+    .select({
+      id: membershipRequests.id,
+      userId: membershipRequests.userId,
+      status: membershipRequests.status,
+      requestedAt: membershipRequests.requestedAt,
+      receivedAt: membershipRequests.receivedAt,
+      decidedAt: membershipRequests.decidedAt,
+      groupId: workingGroups.id,
+      groupName: workingGroups.name,
+      city: workingGroups.city,
+      organizationId: organizations.id,
+      organizationName: organizations.name,
+      applicantName: users.name,
+      applicantEmail: users.email,
+      applicantPhone: users.phone,
+    })
+    .from(membershipRequests)
+    .innerJoin(workingGroups, eq(workingGroups.id, membershipRequests.workingGroupId))
+    .innerJoin(organizations, eq(organizations.id, workingGroups.organizationId))
+    .innerJoin(users, eq(users.id, membershipRequests.userId))
+    .where(where)
+    .orderBy(...order)
+    .$dynamic();
+  // Locks the request row only; the group, organization and user stay free.
+  if (options.forUpdate) query = query.for("update", { of: membershipRequests });
+  const rows = await query;
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    status: row.status,
+    requestedAt: row.requestedAt,
+    receivedAt: row.receivedAt,
+    decidedAt: row.decidedAt,
+    organizationId: row.organizationId,
+    workingGroup: {
+      id: row.groupId,
+      name: row.groupName,
+      city: row.city,
+      organization: { id: row.organizationId, name: row.organizationName },
+    },
+    applicant: {
+      id: row.userId,
+      name: row.applicantName,
+      email: row.applicantEmail,
+      phone: row.applicantPhone,
+    },
+  }));
 }
 
 /** True for PostgreSQL's unique_violation (23505), also when Drizzle wrapped it in a cause. */
@@ -214,7 +292,8 @@ function tryCreateMembershipRequest(
 /**
  * The applicant withdraws their own pending request. Withdrawing a withdrawn request again is
  * `unchanged`; an approved or rejected one is `already_decided`; a request of someone else is
- * `not_found`, as if it did not exist. No audit entry: it is the person's own act.
+ * `not_found`, as if it did not exist. No audit entry: it is the person's own act. The request row
+ * is locked, as in `decideMembershipRequest`, so a withdrawal and a decision never both win.
  */
 export async function withdrawMembershipRequest(
   db: Db,
@@ -267,4 +346,90 @@ export async function getCurrentMembershipRequest(
   if (pending) return withoutOrganizationId(pending);
   const [newest] = await selectRequests(db, ofUser, { limit: 1 });
   return newest?.status === "rejected" ? withoutOrganizationId(newest) : null;
+}
+
+/** One request with its applicant, any status, for the reviewer's screen; `null` when unknown. */
+export async function getMembershipRequestForReview(
+  db: Db,
+  id: string,
+): Promise<MembershipRequestReviewRecord | null> {
+  const [request] = await selectRequestsForReview(db, eq(membershipRequests.id, id));
+  return request ?? null;
+}
+
+/** The pending requests of one working group, with their applicants, oldest first. */
+export async function listPendingMembershipRequests(
+  db: Db,
+  workingGroupId: string,
+): Promise<MembershipRequestReviewRecord[]> {
+  return selectRequestsForReview(
+    db,
+    and(
+      eq(membershipRequests.workingGroupId, workingGroupId),
+      eq(membershipRequests.status, "pending"),
+    ),
+    { order: "oldest" },
+  );
+}
+
+/**
+ * A coordinator or admin approves or rejects a request. May they? The caller decides that first.
+ * In one transaction, with the request row locked (`withdrawMembershipRequest` takes the same
+ * lock, so a withdrawal and a decision at the same moment never both win):
+ *
+ * - `pending`: sets the status, `decided_at` and `decided_by_user_id`. Approving adds a membership
+ *   as a volunteer (`isCoordinator` false), or keeps the one the user has already. Writes the
+ *   audit entry and sends `membership-requests-changed` and `access-changed`: `decided`.
+ * - The same decision was made before: `unchanged`; nothing is written or sent.
+ * - Any other status (the opposite decision, or withdrawn): `already_decided`.
+ * - No such request: `not_found`.
+ */
+export async function decideMembershipRequest(
+  db: Db,
+  input: { id: string; decision: "approved" | "rejected"; decidedBy: string; now: Date },
+): Promise<DecideMembershipRequestResult> {
+  return db.transaction(async (tx): Promise<DecideMembershipRequestResult> => {
+    const [stored] = await selectRequestsForReview(tx, eq(membershipRequests.id, input.id), {
+      forUpdate: true,
+    });
+    if (!stored) return { outcome: "not_found" };
+    if (stored.status === input.decision) return { outcome: "unchanged", request: stored };
+    if (stored.status !== "pending") return { outcome: "already_decided" };
+
+    await tx
+      .update(membershipRequests)
+      .set({ status: input.decision, decidedAt: input.now, decidedByUserId: input.decidedBy })
+      .where(eq(membershipRequests.id, input.id));
+    if (input.decision === "approved") {
+      await tx
+        .insert(workingGroupMemberships)
+        .values({
+          userId: stored.userId,
+          workingGroupId: stored.workingGroup.id,
+          isCoordinator: false,
+        })
+        .onConflictDoNothing({
+          target: [workingGroupMemberships.userId, workingGroupMemberships.workingGroupId],
+        });
+    }
+    await recordAudit(tx, {
+      actor: { kind: "user", userId: input.decidedBy },
+      organizationId: stored.organizationId,
+      action:
+        input.decision === "approved"
+          ? "membership_request.approved"
+          : "membership_request.rejected",
+      subject: { type: "membership_request", id: input.id },
+      details: { workingGroupId: stored.workingGroup.id },
+    });
+    await notifyMembershipRequestsChanged(tx, {
+      workingGroupId: stored.workingGroup.id,
+      organizationId: stored.organizationId,
+    });
+    await notifyAccessChanged(tx, stored.userId);
+    return {
+      outcome: "decided",
+      request: { ...stored, status: input.decision, decidedAt: input.now },
+    };
+  });
 }

@@ -92,10 +92,28 @@ test.each<[AuditDetails]>([
   [{ email: "x" }],
   [{ phone: "06" }],
   [{ note: "noor@example.test" }],
+  // Any key that holds "name", "mail" or "phone", in any case.
+  [{ fullName: "Noor" }],
+  [{ NAME: "Noor" }],
+  [{ emailAddress: "x" }],
+  [{ mailTo: "x" }],
+  [{ phoneNumber: "06" }],
+  [{ mobilePhone: "06" }],
+  [{ applicant_name: "Noor" }],
 ])("refuses personal data in details: %j", async (details) => {
   const before = await count();
   await expect(t!.db.transaction((tx) => recordAudit(tx, { ...entry, details }))).rejects.toThrow(
     /personal data/,
   );
   expect(await count()).toBe(before);
+});
+
+test.each<[AuditDetails]>([
+  [{ workingGroupId: "0192f0a0-0000-7000-8000-000000000002" }],
+  [{ role: "volunteer", status: "approved" }],
+  [{ source: "cli", count: 3, active: true, previous: null }],
+])("accepts IDs and non-personal values: %j", async (details) => {
+  await t!.db.transaction((tx) => recordAudit(tx, { ...entry, details }));
+  const rows = await t!.db.select().from(auditLogEntries);
+  expect(rows.map((row) => row.details)).toContainEqual(details);
 });

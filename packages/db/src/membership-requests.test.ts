@@ -6,7 +6,10 @@ import { createOrganization, createWorkingGroup } from "./admin";
 import { getMeRoles } from "./me";
 import {
   createMembershipRequest,
+  decideMembershipRequest,
   getCurrentMembershipRequest,
+  getMembershipRequestForReview,
+  listPendingMembershipRequests,
   MEMBERSHIP_REQUESTS_PER_DAY,
   withdrawMembershipRequest,
   type CreateMembershipRequestResult,
@@ -14,7 +17,13 @@ import {
   type WithdrawMembershipRequestResult,
 } from "./membership-requests";
 import { liveEventsChannel, notify } from "./notifications";
-import { membershipRequests, users, workingGroupMemberships, workingGroups } from "./schema";
+import {
+  auditLogEntries,
+  membershipRequests,
+  users,
+  workingGroupMemberships,
+  workingGroups,
+} from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 let t: TestDatabase | undefined;
@@ -524,4 +533,295 @@ test("getMeRoles has the current request, or null", async () => {
     decidedAt: null,
     workingGroup: summary(groups[0]!, "Noord"),
   });
+});
+
+// Reviewing: the coordinator's view of a request, and the decision.
+
+const decidedAt = new Date("2027-01-12T08:30:00Z");
+
+async function newApplicant(phone: string | null = "06 12345678") {
+  const n = userCount++;
+  const email = `aanvrager-${n}@example.test`;
+  const [row] = await db()
+    .insert(users)
+    .values({ name: `Noor ${n}`, email, emailVerified: true, phone })
+    .returning({ id: users.id });
+  return { id: row!.id, name: `Noor ${n}`, email, phone };
+}
+
+/** A fresh group, so a list holds only the requests of the test. */
+async function newGroup(name: string): Promise<string> {
+  return (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system))
+    .id;
+}
+
+const decide = (id: string, decision: "approved" | "rejected", decidedBy: string, at = decidedAt) =>
+  decideMembershipRequest(db(), { id, decision, decidedBy, now: at });
+
+const membershipsOf = (userId: string) =>
+  db().select().from(workingGroupMemberships).where(eq(workingGroupMemberships.userId, userId));
+
+const auditOf = (requestId: string) =>
+  db().select().from(auditLogEntries).where(eq(auditLogEntries.subjectId, requestId));
+
+test("a request for review has the applicant's name, email address and phone number", async () => {
+  const applicant = await newApplicant();
+  const id = uuidv7();
+  await create(applicant.id, groups[0]!, { id });
+  expect(await getMembershipRequestForReview(db(), id)).toEqual({
+    id,
+    userId: applicant.id,
+    status: "pending",
+    requestedAt,
+    receivedAt: now,
+    decidedAt: null,
+    workingGroup: summary(groups[0]!, "Noord"),
+    organizationId,
+    applicant,
+  });
+  expect(await getMembershipRequestForReview(db(), uuidv7())).toBeNull();
+});
+
+test("the pending list of a group holds only its pending requests, oldest first", async () => {
+  const group = await newGroup("Lijst");
+  const other = await newGroup("Lijst andere");
+  const [a, b, c, d, e] = await Promise.all([1, 2, 3, 4, 5].map(() => newApplicant(null)));
+  const at = (seconds: number) => new Date(now.getTime() + seconds * 1000);
+  const ids = { a: uuidv7(), b: uuidv7(), c: uuidv7(), d: uuidv7(), e: uuidv7() };
+  await create(b!.id, group, { id: ids.b, now: at(2) });
+  await create(a!.id, group, { id: ids.a, now: at(1) });
+  await create(c!.id, group, { id: ids.c, now: at(3) });
+  await create(d!.id, other, { id: ids.d, now: at(0) });
+  await create(e!.id, group, { id: ids.e, now: at(0) });
+  await withdrawMembershipRequest(db(), { id: ids.c, userId: c!.id, now: at(4) });
+  await decide(ids.e, "rejected", a!.id);
+
+  const list = await listPendingMembershipRequests(db(), group);
+  expect(list.map((r) => r.id)).toEqual([ids.a, ids.b]);
+  expect(list[0]).toMatchObject({ status: "pending", organizationId, applicant: a });
+  expect(await listPendingMembershipRequests(db(), other)).toHaveLength(1);
+  expect(await listPendingMembershipRequests(db(), "0192f3c0-0000-7000-8000-00000000dead")).toEqual(
+    [],
+  );
+});
+
+test("approving sets approved, adds a volunteer membership, one audit entry and both events", async () => {
+  const applicant = await newApplicant();
+  const reviewer = await newUser();
+  const id = uuidv7();
+  await create(applicant.id, groups[0]!, { id });
+  const events = await listenForLiveEvents();
+  try {
+    const result = await decide(id, "approved", reviewer);
+    expect(result).toEqual({
+      outcome: "decided",
+      request: {
+        id,
+        userId: applicant.id,
+        status: "approved",
+        requestedAt,
+        receivedAt: now,
+        decidedAt,
+        workingGroup: summary(groups[0]!, "Noord"),
+        organizationId,
+        applicant,
+      },
+    });
+    expect(await events.drain()).toEqual([
+      { type: "membership-requests-changed", workingGroupId: groups[0]!, organizationId },
+      { type: "access-changed", userId: applicant.id },
+    ]);
+  } finally {
+    await events.close();
+  }
+  const [row] = await rowsOf(applicant.id);
+  expect(row).toMatchObject({ status: "approved", decidedAt, decidedByUserId: reviewer });
+  expect(await membershipsOf(applicant.id)).toMatchObject([
+    { workingGroupId: groups[0]!, isCoordinator: false },
+  ]);
+  const entries = await auditOf(id);
+  expect(entries).toMatchObject([
+    {
+      actorKind: "user",
+      actorUserId: reviewer,
+      organizationId,
+      action: "membership_request.approved",
+      subjectType: "membership_request",
+      subjectId: id,
+      details: { workingGroupId: groups[0]! },
+    },
+  ]);
+  expect(JSON.stringify(entries)).not.toMatch(/example\.test|Noor|0612345678|06 1234/);
+});
+
+test("rejecting sets rejected, adds no membership, and writes one audit entry", async () => {
+  const applicant = await newApplicant();
+  const reviewer = await newUser();
+  const id = uuidv7();
+  await create(applicant.id, groups[0]!, { id });
+  const result = await decide(id, "rejected", reviewer);
+  expect(result).toMatchObject({ outcome: "decided", request: { status: "rejected", decidedAt } });
+  expect(await membershipsOf(applicant.id)).toEqual([]);
+  expect(await auditOf(id)).toMatchObject([
+    { action: "membership_request.rejected", actorUserId: reviewer, organizationId },
+  ]);
+});
+
+test("the same decision again is unchanged and writes nothing; the opposite is already_decided", async () => {
+  for (const [decision, opposite] of [
+    ["approved", "rejected"],
+    ["rejected", "approved"],
+  ] as const) {
+    const applicant = await newApplicant();
+    const reviewer = await newUser();
+    const id = uuidv7();
+    await create(applicant.id, groups[0]!, { id });
+    const first = await decide(id, decision, reviewer);
+    const events = await listenForLiveEvents();
+    try {
+      const again = await decide(id, decision, await newUser(), new Date("2027-01-13T08:00:00Z"));
+      expect(again).toEqual({
+        outcome: "unchanged",
+        request: (first as { request: unknown }).request,
+      });
+      expect(await decide(id, opposite, reviewer)).toEqual({ outcome: "already_decided" });
+      expect(await events.drain()).toEqual([]);
+    } finally {
+      await events.close();
+    }
+    expect(await auditOf(id)).toHaveLength(1);
+    expect(await membershipsOf(applicant.id)).toHaveLength(decision === "approved" ? 1 : 0);
+    expect((await rowsOf(applicant.id))[0]).toMatchObject({ status: decision, decidedAt });
+  }
+});
+
+test("a withdrawn request is already_decided; an unknown one not_found", async () => {
+  const applicant = await newApplicant();
+  const reviewer = await newUser();
+  const id = uuidv7();
+  await create(applicant.id, groups[0]!, { id });
+  await withdrawMembershipRequest(db(), { id, userId: applicant.id, now });
+  for (const decision of ["approved", "rejected"] as const) {
+    expect(await decide(id, decision, reviewer)).toEqual({ outcome: "already_decided" });
+  }
+  expect(await decide(uuidv7(), "approved", reviewer)).toEqual({ outcome: "not_found" });
+  expect(await membershipsOf(applicant.id)).toEqual([]);
+  expect(await auditOf(id)).toEqual([]);
+});
+
+test("approving someone who is a member already keeps their membership as it is", async () => {
+  const applicant = await newApplicant();
+  const reviewer = await newUser();
+  const id = uuidv7();
+  await create(applicant.id, groups[0]!, { id });
+  // Made a coordinator through another way while the request was pending.
+  await db()
+    .insert(workingGroupMemberships)
+    .values({ userId: applicant.id, workingGroupId: groups[0]!, isCoordinator: true });
+  expect((await decide(id, "approved", reviewer)).outcome).toBe("decided");
+  expect(await membershipsOf(applicant.id)).toMatchObject([{ isCoordinator: true }]);
+});
+
+test("two opposite decisions at the same moment: one decided, one already_decided", async () => {
+  for (let i = 0; i < 5; i++) {
+    const applicant = await newApplicant();
+    const reviewer = await newUser();
+    const id = uuidv7();
+    await create(applicant.id, groups[0]!, { id });
+    const answers = await Promise.all([
+      decide(id, "approved", reviewer),
+      decide(id, "rejected", reviewer),
+    ]);
+    expect(answers.map((a) => a.outcome).sort()).toEqual(["already_decided", "decided"]);
+    const won = answers.find((a) => a.outcome === "decided") as { request: { status: string } };
+    expect(await membershipsOf(applicant.id)).toHaveLength(
+      won.request.status === "approved" ? 1 : 0,
+    );
+    expect(await auditOf(id)).toHaveLength(1);
+  }
+});
+
+test("withdrawing and approving at the same moment: exactly one wins", async () => {
+  for (let i = 0; i < 5; i++) {
+    const applicant = await newApplicant();
+    const reviewer = await newUser();
+    const id = uuidv7();
+    await create(applicant.id, groups[0]!, { id });
+    const [withdrawn, approved] = await Promise.all([
+      withdrawMembershipRequest(db(), { id, userId: applicant.id, now }),
+      decide(id, "approved", reviewer),
+    ]);
+    const [row] = await rowsOf(applicant.id);
+    if (row!.status === "withdrawn") {
+      expect([withdrawn.outcome, approved.outcome]).toEqual(["withdrawn", "already_decided"]);
+      expect(await membershipsOf(applicant.id)).toEqual([]);
+    } else {
+      expect([withdrawn.outcome, approved.outcome]).toEqual(["already_decided", "decided"]);
+      expect(await membershipsOf(applicant.id)).toHaveLength(1);
+    }
+  }
+});
+
+/**
+ * Locks the request row in a transaction that stays open, changes its status there, and commits
+ * only once another connection waits on the row. A call that reads the row without the lock
+ * would see the old status and fail the test.
+ */
+async function holdRowAndSetStatus(id: string, status: "approved" | "withdrawn") {
+  let commit!: () => void;
+  const released = new Promise<void>((resolve) => (commit = resolve));
+  let locked!: () => void;
+  const ready = new Promise<void>((resolve) => (locked = resolve));
+  const done = db().transaction(async (tx) => {
+    await tx.execute(sql`select id from membership_requests where id = ${id} for update`);
+    await tx
+      .update(membershipRequests)
+      .set({ status, decidedAt: now })
+      .where(eq(membershipRequests.id, id));
+    locked();
+    await released;
+  });
+  await ready;
+  return {
+    async commitWhenBlocked() {
+      let sawBlocked = false;
+      for (let i = 0; i < 100 && !sawBlocked; i++) {
+        const [blocked] = await db()
+          .execute<{ n: number }>(
+            sql`select count(*)::int as n from pg_stat_activity
+              where datname = current_database() and wait_event_type = 'Lock'`,
+          )
+          .then((r) => r.rows);
+        sawBlocked = blocked!.n > 0;
+        if (!sawBlocked) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      commit();
+      await done;
+      if (!sawBlocked) throw new Error("No connection waited on the locked row");
+    },
+  };
+}
+
+test("a decision waits for a withdrawal that holds the row, then sees it", async () => {
+  const applicant = await newApplicant();
+  const reviewer = await newUser();
+  const id = uuidv7();
+  await create(applicant.id, groups[0]!, { id });
+  const held = await holdRowAndSetStatus(id, "withdrawn");
+  const answer = decide(id, "approved", reviewer);
+  await held.commitWhenBlocked();
+  expect(await answer).toEqual({ outcome: "already_decided" });
+  expect(await membershipsOf(applicant.id)).toEqual([]);
+  expect((await rowsOf(applicant.id))[0]!.status).toBe("withdrawn");
+});
+
+test("a withdrawal waits for a decision that holds the row, then sees it", async () => {
+  const applicant = await newApplicant();
+  const id = uuidv7();
+  await create(applicant.id, groups[0]!, { id });
+  const held = await holdRowAndSetStatus(id, "approved");
+  const answer = withdrawMembershipRequest(db(), { id, userId: applicant.id, now });
+  await held.commitWhenBlocked();
+  expect(await answer).toEqual({ outcome: "already_decided" });
+  expect((await rowsOf(applicant.id))[0]!.status).toBe("approved");
 });
