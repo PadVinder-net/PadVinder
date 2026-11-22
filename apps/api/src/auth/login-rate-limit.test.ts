@@ -1,4 +1,4 @@
-import { countLoginCodeRequests, rateLimits, sessions } from "@padvinder/db";
+import { countLoginCodeRequests, loginCodeRequests, rateLimits, sessions } from "@padvinder/db";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { codeFor, createTestApp, requestCode, type TestApp } from "../testing/login";
 import { checkLoginCodeRequest, IP_LIMITS, LOGIN_CODE_LIMITS } from "./login-rate-limit";
@@ -49,6 +49,44 @@ describe("with the limits on", () => {
     expect(ctx.mailer.sent).toHaveLength(3);
     // The refused request is not counted.
     expect(await countLoginCodeRequests(ctx.t.db, "a@example.test", new Date(0))).toBe(3);
+  });
+
+  test("five requests at once for one address give exactly three codes", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => requestCode(ctx, "a@example.test", ip("10.0.0.1"))),
+    );
+    expect(results.map((res) => res.statusCode).sort()).toEqual([200, 200, 200, 429, 429]);
+    expect(ctx.mailer.sent).toHaveLength(3);
+    expect(await ctx.t.db.select().from(loginCodeRequests)).toHaveLength(3);
+  });
+
+  test.each([
+    ["a malformed address", "not-an-email"],
+    ["300 characters without an @", "a".repeat(300)],
+    ["an address longer than 254 characters", `${"a".repeat(290)}@example.test`],
+    ["an address of 3000 characters", `${"a".repeat(3000)}@example.test`],
+  ])("%s is refused with 400 and not recorded", async (_name, email) => {
+    const res = await requestCode(ctx, email, ip("10.0.0.1"));
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ code: "INVALID_EMAIL", message: "Invalid email" });
+    expect(ctx.mailer.sent).toHaveLength(0);
+    expect(await ctx.t.db.select().from(loginCodeRequests)).toHaveLength(0);
+  });
+
+  test("an address of exactly 254 characters is accepted", async () => {
+    const email = `${"a".repeat(254 - "@example.test".length)}@example.test`;
+    expect((await requestCode(ctx, email, ip("10.0.0.1"))).statusCode).toBe(200);
+  });
+
+  test("a refused request also prunes rows older than 24 hours", async () => {
+    const now = new Date();
+    for (let i = 0; i < 3; i++) await checkLoginCodeRequest(ctx.t.db, "a@example.test", now);
+    await ctx.t.db.insert(loginCodeRequests).values({
+      email: "old@example.test",
+      requestedAt: new Date(now.getTime() - 25 * HOUR_MS),
+    });
+    expect(await checkLoginCodeRequest(ctx.t.db, "a@example.test", now)).toBe("limited");
+    expect(await countLoginCodeRequests(ctx.t.db, "old@example.test", new Date(0))).toBe(0);
   });
 
   test("another address is not affected", async () => {
@@ -115,7 +153,10 @@ describe("with the limits on", () => {
         const res = await signInFrom("10.0.0.9", `p${i}@example.test`, "000000");
         expect(res.statusCode).not.toBe(429);
       }
-      expect((await signInFrom("10.0.0.9", "p60@example.test", "000000")).statusCode).toBe(429);
+      const refused = await signInFrom("10.0.0.9", "p60@example.test", "000000");
+      expect(refused.statusCode).toBe(429);
+      expect(refused.json()).toEqual({ message: "Too many requests. Please try again later." });
+      expect(Number(refused.headers["x-retry-after"])).toBeGreaterThan(0);
       expect((await signInFrom("10.0.0.10", "p60@example.test", "000000")).statusCode).not.toBe(
         429,
       );

@@ -7,7 +7,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail } from "../mail/login-code-mail";
 import type { Mailer } from "../mail/mailer";
-import { checkLoginCodeRequest, IP_LIMITS } from "./login-rate-limit";
+import { checkLoginCodeRequest, IP_LIMITS, isValidLoginAddress } from "./login-rate-limit";
 
 export type AuthDeps = { env: ApiEnv; db: Db; mailer: Mailer; log: FastifyBaseLogger };
 
@@ -129,17 +129,20 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         // The address is trimmed and lowercased before Better Auth looks at it.
         if (!("email" in body) || typeof body.email !== "string") return;
         const email = normalizeEmail(body.email);
-        // Per address, which Better Auth does not offer. Here and not in `sendVerificationOTP`:
-        // Better Auth swallows what that throws and answers 200. Refused before a code is made.
-        if (
-          limitsOn &&
-          ctx.path === "/email-otp/send-verification-otp" &&
-          (await checkLoginCodeRequest(db, email, new Date())) === "limited"
-        ) {
-          throw APIError.from("TOO_MANY_REQUESTS", {
-            code: "TOO_MANY_REQUESTS",
-            message: "Too many login codes requested for this address",
-          });
+        if (ctx.path === "/email-otp/send-verification-otp") {
+          // Better Auth accepts an address of any length; ours stops at 254 characters. Refused
+          // with Better Auth's own answer for a malformed address, and before it is counted.
+          if (!isValidLoginAddress(email)) {
+            throw APIError.from("BAD_REQUEST", { code: "INVALID_EMAIL", message: "Invalid email" });
+          }
+          // Per address, which Better Auth does not offer. Here and not in `sendVerificationOTP`:
+          // Better Auth swallows what that throws and answers 200. Refused before a code is made.
+          if (limitsOn && (await checkLoginCodeRequest(db, email, new Date())) === "limited") {
+            throw APIError.from("TOO_MANY_REQUESTS", {
+              code: "TOO_MANY_REQUESTS",
+              message: "Too many login codes requested for this address",
+            });
+          }
         }
         return { context: { body: { ...body, email } } };
       }),
