@@ -61,70 +61,18 @@ export type DecideMembershipRequestResult =
   | { outcome: "decided" | "unchanged"; request: MembershipRequestReviewRecord }
   | { outcome: "not_found" | "already_decided" };
 
-/** The requests with their working group and organization, filtered by `where`, newest first. */
-async function selectRequests(
-  db: Db | DbTransaction,
-  where: SQL | undefined,
-  options: { limit?: number; forUpdate?: boolean } = {},
-): Promise<(MembershipRequestRecord & { organizationId: string })[]> {
-  let query = db
-    .select({
-      id: membershipRequests.id,
-      userId: membershipRequests.userId,
-      status: membershipRequests.status,
-      requestedAt: membershipRequests.requestedAt,
-      receivedAt: membershipRequests.receivedAt,
-      decidedAt: membershipRequests.decidedAt,
-      groupId: workingGroups.id,
-      groupName: workingGroups.name,
-      city: workingGroups.city,
-      organizationId: organizations.id,
-      organizationName: organizations.name,
-    })
-    .from(membershipRequests)
-    .innerJoin(workingGroups, eq(workingGroups.id, membershipRequests.workingGroupId))
-    .innerJoin(organizations, eq(organizations.id, workingGroups.organizationId))
-    .where(where)
-    // The id breaks a tie: two requests that arrived in the same microsecond.
-    .orderBy(desc(membershipRequests.receivedAt), desc(membershipRequests.id))
-    .$dynamic();
-  if (options.limit !== undefined) query = query.limit(options.limit);
-  // Locks the request row only; the working group and organization stay free.
-  if (options.forUpdate) query = query.for("update", { of: membershipRequests });
-  const rows = await query;
-  return rows.map((row) => ({
-    id: row.id,
-    userId: row.userId,
-    status: row.status,
-    requestedAt: row.requestedAt,
-    receivedAt: row.receivedAt,
-    decidedAt: row.decidedAt,
-    organizationId: row.organizationId,
-    workingGroup: {
-      id: row.groupId,
-      name: row.groupName,
-      city: row.city,
-      organization: { id: row.organizationId, name: row.organizationName },
-    },
-  }));
-}
-
-function withoutOrganizationId({
-  organizationId: _organizationId,
-  ...request
-}: MembershipRequestRecord & { organizationId: string }): MembershipRequestRecord {
-  return request;
-}
-
 /**
- * The requests with their working group, organization and applicant, filtered by `where`. The
- * applicant's contact details are only for reviewers.
+ * The one query for requests: with their working group, organization and applicant, filtered by
+ * `where`, newest first by default. Every read of a request goes through here, so the decision
+ * and the withdrawal take the same row lock. The applicant's contact details are only for
+ * reviewers; `selectRequests` drops them for everyone else.
  */
 async function selectRequestsForReview(
   db: Db | DbTransaction,
   where: SQL | undefined,
-  options: { order?: "oldest" | "newest"; forUpdate?: boolean } = {},
+  options: { order?: "oldest" | "newest"; limit?: number; forUpdate?: boolean } = {},
 ): Promise<MembershipRequestReviewRecord[]> {
+  // The id breaks a tie: two requests that arrived in the same microsecond.
   const order =
     options.order === "oldest"
       ? [asc(membershipRequests.receivedAt), asc(membershipRequests.id)]
@@ -149,10 +97,12 @@ async function selectRequestsForReview(
     .from(membershipRequests)
     .innerJoin(workingGroups, eq(workingGroups.id, membershipRequests.workingGroupId))
     .innerJoin(organizations, eq(organizations.id, workingGroups.organizationId))
+    // Never drops a request: deleting a user row deletes their requests (on delete cascade).
     .innerJoin(users, eq(users.id, membershipRequests.userId))
     .where(where)
     .orderBy(...order)
     .$dynamic();
+  if (options.limit !== undefined) query = query.limit(options.limit);
   // Locks the request row only; the group, organization and user stay free.
   if (options.forUpdate) query = query.for("update", { of: membershipRequests });
   const rows = await query;
@@ -177,6 +127,23 @@ async function selectRequestsForReview(
       phone: row.applicantPhone,
     },
   }));
+}
+
+/** The same query as `selectRequestsForReview`, without the applicant's contact details. */
+async function selectRequests(
+  db: Db | DbTransaction,
+  where: SQL | undefined,
+  options: { limit?: number; forUpdate?: boolean } = {},
+): Promise<(MembershipRequestRecord & { organizationId: string })[]> {
+  const requests = await selectRequestsForReview(db, where, options);
+  return requests.map(({ applicant: _applicant, ...request }) => request);
+}
+
+function withoutOrganizationId({
+  organizationId: _organizationId,
+  ...request
+}: MembershipRequestRecord & { organizationId: string }): MembershipRequestRecord {
+  return request;
 }
 
 /** True for PostgreSQL's unique_violation (23505), also when Drizzle wrapped it in a cause. */
@@ -362,6 +329,8 @@ export async function listPendingMembershipRequests(
   db: Db,
   workingGroupId: string,
 ): Promise<MembershipRequestReviewRecord[]> {
+  // In order of arrival at the server: the review queue is first come, first served, and the
+  // app's clock (requested_at) may be wrong.
   return selectRequestsForReview(
     db,
     and(

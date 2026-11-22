@@ -192,6 +192,7 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{ db: Db }> = async 
       },
       async (request): Promise<MembershipRequestForReview> => {
         // A request never moves to another group, so the check may come before the transaction.
+        // An admin may decide their own request: the spec allows it, and they hold those rights.
         const record = await getMembershipRequestForReview(db, request.params.id);
         if (!record) throw apiError(404, apiErrorCodes.notFound, "Not found");
         authorize(request.actor!, {
