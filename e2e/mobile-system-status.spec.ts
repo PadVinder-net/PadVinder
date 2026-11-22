@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { runAdmin } from "./helpers/admin.ts";
 import { newAddress } from "./helpers/mailpit.ts";
 import { createSession } from "./helpers/session.ts";
+import { createWorkingGroup, makeVolunteer } from "./helpers/working-groups.ts";
 
 test("a platform admin sees a working system on the Meer tab", async ({ page, context }) => {
   const address = newAddress("admin");
@@ -17,8 +18,9 @@ test("a platform admin sees a working system on the Meer tab", async ({ page, co
 });
 
 test("a volunteer does not see the system status", async ({ page, context }) => {
-  // A fresh account holds no role at all; for this screen it is the same as a volunteer.
-  await createSession(context, newAddress("volunteer"));
+  const address = newAddress("volunteer");
+  makeVolunteer(address, createWorkingGroup().id);
+  await createSession(context, address);
   await page.goto("/app/more");
   // The tab renders after /api/me has loaded, so the status would be there by now.
   await expect(page.getByRole("button", { name: "Log uit" })).toBeVisible();

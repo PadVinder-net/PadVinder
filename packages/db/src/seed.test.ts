@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { listOrganizations } from "./admin";
-import { auditLogEntries, users, workingGroupMemberships } from "./schema";
-import { assertLocalSeed, seed } from "./seed";
+import { eq } from "drizzle-orm";
+import {
+  auditLogEntries,
+  membershipRequests,
+  users,
+  workingGroupMemberships,
+  workingGroups,
+} from "./schema";
+import { assertLocalSeed, seed, SEED_MEMBERSHIP_REQUEST_ID } from "./seed";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 let t: TestDatabase | undefined;
@@ -28,8 +35,42 @@ test("running it twice changes nothing", async () => {
   await seed(t!.db);
   expect(await t!.db.select().from(users)).toHaveLength(6);
   expect(await t!.db.select().from(workingGroupMemberships)).toHaveLength(4);
+  expect(await t!.db.select().from(membershipRequests)).toHaveLength(1);
   expect(await t!.db.select().from(auditLogEntries)).toHaveLength(audit.length);
   expect(await listOrganizations(t!.db)).toHaveLength(2);
+});
+
+test("the applicant has a pending request for Zuid", async () => {
+  await seed(t!.db);
+  const rows = await t!.db
+    .select({
+      id: membershipRequests.id,
+      status: membershipRequests.status,
+      email: users.email,
+      group: workingGroups.name,
+    })
+    .from(membershipRequests)
+    .innerJoin(users, eq(users.id, membershipRequests.userId))
+    .innerJoin(workingGroups, eq(workingGroups.id, membershipRequests.workingGroupId));
+  expect(rows).toEqual([
+    {
+      id: SEED_MEMBERSHIP_REQUEST_ID,
+      status: "pending",
+      email: "aanmelder@example.test",
+      group: "Zuid",
+    },
+  ]);
+});
+
+test("a second run keeps a request the developer decided", async () => {
+  await seed(t!.db);
+  await t!.db
+    .update(membershipRequests)
+    .set({ status: "withdrawn", decidedAt: new Date() })
+    .where(eq(membershipRequests.id, SEED_MEMBERSHIP_REQUEST_ID));
+  await seed(t!.db);
+  const rows = await t!.db.select().from(membershipRequests);
+  expect(rows.map((row) => row.status)).toEqual(["withdrawn"]);
 });
 
 test("every address ends in @example.test and every person has a name", async () => {

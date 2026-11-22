@@ -23,7 +23,7 @@ const directory = { workingGroups: workingGroupsFixture };
 const membersPath = `/api/working-groups/${noord.id}/members`;
 const [anna, bram, cigdem] = membersWithContactFixture;
 
-test("a volunteer sees the names and roles, and cannot open a member", async () => {
+test("a volunteer sees the names and who is coordinator, and cannot open a member", async () => {
   mockFetch({
     "/api/me": meFixture,
     "/api/working-groups": directory,
