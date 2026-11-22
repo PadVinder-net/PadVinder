@@ -11,9 +11,7 @@ async function askForCode(page: Page, address: string): Promise<void> {
 
 test("a new volunteer logs in with a code from the mail", async ({ page }) => {
   const address = newAddress("noor");
-  await page.goto("/app/");
-  await page.getByLabel("E-mailadres").fill(address);
-  await page.getByRole("button", { name: "Stuur code" }).click();
+  await askForCode(page, address);
   await page.getByLabel("Code").fill(await readLoginCode(address));
   await expect(page.getByRole("heading", { name: "Hoe heet je?" })).toBeVisible();
   await page.getByLabel("Naam").fill("Noor de Vries");

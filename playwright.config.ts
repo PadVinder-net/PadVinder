@@ -20,7 +20,9 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Pixel 7"] } }],
   webServer: {
     command: "pnpm dev",
-    url: `http://localhost:${mobilePort}/app/`,
+    // The API through the mobile dev server's proxy: ready only when both listen (the proxy
+    // answers 502 while the API is down). Tests post to /api at once, so /app/ alone is too early.
+    url: `http://localhost:${mobilePort}/api/version`,
     reuseExistingServer: true,
     timeout: 120_000,
   },

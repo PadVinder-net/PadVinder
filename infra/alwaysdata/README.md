@@ -242,18 +242,30 @@ The workflows reach the environments only from `main`, so the first runs happen 
 
 ## Rolling out login
 
-The login pull request makes the API refuse to start without `PUBLIC_ORIGIN`, `AUTH_SECRET`, `SMTP_HOST`, `SMTP_PORT` and `MAIL_FROM`, which only a Provision run of that pull request's code writes. The worker does not need them. Provision runs from `main` only, so merging comes first, and the Deploy run the merge starts cannot succeed yet. Order, once:
+The login pull request makes the API refuse to start without `PUBLIC_ORIGIN`, `AUTH_SECRET`, `SMTP_HOST`, `SMTP_PORT` and `MAIL_FROM`, which only that pull request's provisioning code writes to the env file. The worker does not need them. The Provision workflow runs from `main` only, so there are two orders. The first one keeps every deploy green; the second one is the fallback.
+
+Both start the same:
 
 1. **Secrets:** `AUTH_SECRET`, `SMTP_USER` and `SMTP_PASSWORD` in both environments (see "Making each value"). Until they are set, Provision stops with `Set these environment variables: AUTH_SECRET, SMTP_USER, SMTP_PASSWORD` and changes nothing.
 2. **Mailbox** `noreply@padvinder.net` on the account, with the password of `SMTP_PASSWORD` (see "Mail").
 3. **DNS:** the SPF, DKIM and DMARC records at the registrar (see "DNS"). They may take a while; login works without them, but mail is likely to land in spam until they are in place.
-4. **Merge** the pull request. Its Deploy run fails safely on staging, unless you cancel it while it is still at `release / build`. What you see: the migrations run (they only add tables, so the old release keeps working on them), `current` switches, the services restart, and the new API exits at once with `Invalid API environment: AUTH_SECRET: ...; PUBLIC_ORIGIN: ...; SMTP_HOST: ...; SMTP_PORT: ...; MAIL_FROM: ...` in its service log (`admin/logs/services/`). The health check gives up after 3 minutes, the deploy switches back to the previous release, restarts, and fails with `Deploy of <commit> failed its health check and was rolled back to <previous release>. ... The rollback to <commit> passed its health check.` Staging keeps running the old release. The production job does not start, because it needs the staging job.
+
+**Safer order: provision from the branch before merging.**
+
+4. On your machine, check out the login pull request's branch and run `pnpm infra:provision --environment staging --apply` with the settings of "Running locally" (including `AUTH_SECRET`, `SMTP_USER` and `SMTP_PASSWORD`, the same values as the GitHub secrets). The plan is `ok` for every resource; it rewrites `padvinder/staging/.env` with the login lines. Do not restart: the running API ignores variables it does not know, so it keeps working on the new file. Do the same for `production` if you want to approve production right after the merge.
+5. **Merge.** Do not run the Provision workflow from `main` between step 4 and the merge: `main`'s code would write the env file without the login lines again.
+6. The Deploy run of the merge now passes on staging. When its production job asks for approval, approve it if step 4 covered production; otherwise reject it, provision production (Provision workflow, `apply` on) and run Deploy from `main` again.
+7. **Check staging:** log in on `https://staging.padvinder.net/app/` with an address of your own, and work through the login rows in "Verification".
+
+**Fallback: if the merge's Deploy ran before provisioning.**
+
+4. **Merge** without step 4 above. Its Deploy run fails safely on staging, unless you cancel it while it is still at `release / build`. What you see: the migrations run (they only add tables, so the old release keeps working on them), `current` switches, the services restart, and the new API exits at once with `Invalid API environment: AUTH_SECRET: ...; PUBLIC_ORIGIN: ...; SMTP_HOST: ...; SMTP_PORT: ...; MAIL_FROM: ...` in its service log (`admin/logs/services/`). The health check gives up after 3 minutes, the deploy switches back to the previous release, restarts, and fails with `Deploy of <commit> failed its health check and was rolled back to <previous release>. ... The rollback to <commit> passed its health check.` Staging keeps running the old release. The production job does not start, because it needs the staging job.
 5. **Provision staging:** Actions, Provision, environment `staging`, `apply` on. The plan is `ok` for every resource; it rewrites `padvinder/staging/.env` with the login lines and says the services must be restarted. No restart needed now: the next step restarts them.
 6. **Deploy to staging:** re-run the failed Deploy run (Re-run failed jobs), or run Deploy from `main`. When its production job asks for approval, reject it for now (a deploy waiting in `deploy-production` gets in the way of provisioning production, see "Operating notes").
-7. **Check staging:** log in on `https://staging.padvinder.net/app/` with an address of your own, and work through the login rows in "Verification".
+7. **Check staging:** as in step 7 above.
 8. **Production:** Provision `production` with `apply` on (it waits for your approval), then run Deploy from `main` again, and approve its production job.
 
-If production has not been provisioned at all yet, step 8 is its first run ("First run", step 8); the secrets of step 1 are then already in place.
+If production has not been provisioned at all yet, provisioning it is its first run ("First run", step 8); the secrets of step 1 are then already in place.
 
 ## Running locally
 

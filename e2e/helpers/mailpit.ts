@@ -27,7 +27,7 @@ async function newestMailTo(address: string): Promise<MailpitMessage | undefined
   const url = new URL("/api/v1/search", mailpitUrl());
   url.searchParams.set("query", `to:"${address}"`);
   url.searchParams.set("limit", "50");
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
   if (!response.ok) throw new Error(`Mailpit answered ${response.status} on ${url.pathname}`);
   const { messages } = (await response.json()) as { messages: MailpitMessage[] };
   // The search matches parts of addresses too, so keep only exact matches.
