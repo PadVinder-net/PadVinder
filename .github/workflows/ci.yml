@@ -1,4 +1,7 @@
 # The checks on every pull request. The job names are the required status checks.
+# check and scan always run. visual, e2e, release and deploy-test run only when the pull
+# request changes something they test (scripts/lib/ci-jobs.ts decides); a skipped job reports
+# as passed.
 name: CI
 
 on:
@@ -13,6 +16,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Which of visual, e2e, release and deploy-test this pull request needs. If this job fails,
+  # they all run: their conditions skip a job only on an explicit "false". By hand
+  # (workflow_dispatch), everything runs.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      visual: ${{ steps.jobs.outputs.visual }}
+      e2e: ${{ steps.jobs.outputs.e2e }}
+      release: ${{ steps.jobs.outputs.release }}
+      deploy-test: ${{ steps.jobs.outputs.deploy-test }}
+    steps:
+      # For a pull request, HEAD is the merge commit and HEAD^1 the tip of the base branch,
+      # so two commits are enough to see what the pull request changes.
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - if: github.event_name == 'pull_request'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - if: github.event_name == 'pull_request'
+        id: jobs
+        shell: bash
+        run: |
+          git diff --name-only HEAD^1 HEAD >"$RUNNER_TEMP/changed-paths"
+          echo "Changed paths:"
+          cat "$RUNNER_TEMP/changed-paths"
+          node scripts/ci-changes.ts <"$RUNNER_TEMP/changed-paths" | tee -a "$GITHUB_OUTPUT"
+
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -42,6 +77,8 @@ jobs:
       - run: pnpm check
 
   visual:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.visual != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # The reference screenshots were made in this image. Keep the tag equal to @playwright/test.
@@ -61,6 +98,8 @@ jobs:
           if-no-files-found: ignore
 
   e2e:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.e2e != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container: mcr.microsoft.com/playwright:v1.65.1-noble
@@ -112,5 +151,122 @@ jobs:
       - run: scripts/scan-secrets.sh
       - run: scripts/lint-workflows.sh
 
+  # Skipped inside the called workflow, not here: a skipped caller job reports as "release",
+  # and the required check "release / build" would never report.
   release:
+    needs: changes
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/build-release.yml
+    with:
+      skip: ${{ needs.changes.outputs.release == 'false' }}
+
+  # The deploy scripts over SSH against a fake host container, with the tarball that release
+  # built, and the credentials action with a throwaway key. Only when the pull request touches
+  # the deploy path; then release runs too. Migrations run against the PostGIS service,
+  # reached from the fake host container through host.docker.internal, hence the published
+  # port.
+  deploy-test:
+    needs: [changes, release]
+    if: ${{ !cancelled() && needs.changes.outputs.deploy-test != 'false' && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: imresamu/postgis:18-3.6-bookworm
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: padvinder
+          POSTGRES_PASSWORD: padvinder
+          POSTGRES_DB: padvinder
+          POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=builtin --locale=C.UTF-8"
+        options: >-
+          --health-cmd "pg_isready -U padvinder"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://padvinder:padvinder@localhost:5432/padvinder
+      TEST_DATABASE_URL: postgres://padvinder:padvinder@localhost:5432/padvinder_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Into the repository root, where the test looks for padvinder-release.tar.gz.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.release.outputs.artifact-name }}
+      - run: pnpm test:fake-host
+
+      # The credentials action as the deploy jobs run it, with a throwaway key and a made-up
+      # host key. The key file is removed in the same step; only the output carries the key.
+      - name: Make a throwaway key
+        id: throwaway
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/throwaway"
+          mkdir -m 700 "$dir"
+          ssh-keygen -q -t ed25519 -N "" -C throwaway -f "$dir/key"
+          ssh-keygen -q -t ed25519 -N "" -C throwaway-host -f "$dir/host"
+          # Not a secret, but the log of the next step would print it as an input.
+          while IFS= read -r line; do echo "::add-mask::$line"; done <"$dir/key"
+          {
+            echo "ssh-key<<THROWAWAY_KEY_END"
+            cat "$dir/key"
+            echo "THROWAWAY_KEY_END"
+            echo "known-hosts=[127.0.0.1]:2222 $(cut -d " " -f 1,2 "$dir/host.pub")"
+          } >>"$GITHUB_OUTPUT"
+          rm -rf "$dir"
+      - uses: ./.github/actions/alwaysdata-credentials
+        with:
+          ssh-key: ${{ steps.throwaway.outputs.ssh-key }}
+          known-hosts: ${{ steps.throwaway.outputs.known-hosts }}
+      # The pattern is written as PRIVATE[ ]KEY so this step's own script does not match it.
+      - name: Check the SSH agent and the disk
+        run: |
+          set -euo pipefail
+          keys="$(SSH_AUTH_SOCK="$DEPLOY_SSH_AGENT_SOCK" ssh-add -l)"
+          if [[ "$(wc -l <<<"$keys")" -ne 1 ]]; then
+            echo "::error::The agent holds $(wc -l <<<"$keys") keys, not one."
+            exit 1
+          fi
+          if [[ -n "${SSH_AUTH_SOCK:-}" || -n "${SSH_AGENT_PID:-}" ]]; then
+            echo "::error::The action exported SSH_AUTH_SOCK or SSH_AGENT_PID."
+            exit 1
+          fi
+          # The agent outlives the action's step: the key must not be in its environment.
+          # ssh-agent makes /proc/<pid>/environ readable for root only.
+          if sudo grep -q "PRIVATE[ ]KEY" "/proc/$DEPLOY_SSH_AGENT_PID/environ"; then
+            echo "::error::The agent's environment holds the private key."
+            exit 1
+          fi
+          # _runner_file_commands holds this job's own step output that carries the throwaway
+          # key into the action. Real deploys have no such file: their key comes from a secret,
+          # which the runner does not write to a file-command file.
+          status=0
+          found="$(grep -rl -D skip --exclude-dir=_runner_file_commands "PRIVATE[ ]KEY" "$RUNNER_TEMP")" ||
+            status=$?
+          if [[ -n "$found" ]]; then
+            echo "::error::A private key is on disk: $found"
+            exit 1
+          fi
+          if ((status > 1)); then
+            echo "::warning::grep could not read every file under RUNNER_TEMP."
+          fi
+      - name: Stop the SSH agent
+        if: always()
+        run: |
+          if [[ -n "${DEPLOY_SSH_AGENT_PID:-}" ]]; then
+            SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k >/dev/null 2>&1 ||
+              echo "The SSH agent had already stopped."
+            for _ in 1 2 3 4 5 6 7 8 9 10; do
+              kill -0 "$DEPLOY_SSH_AGENT_PID" 2>/dev/null || break
+              sleep 0.5
+            done
+            if kill -0 "$DEPLOY_SSH_AGENT_PID" 2>/dev/null; then
+              echo "::error::The SSH agent still runs after ssh-agent -k."
+              exit 1
+            fi
+          fi
+          rm -f "$RUNNER_TEMP/ssh-agent.sock"
