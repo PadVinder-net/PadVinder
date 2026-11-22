@@ -1,5 +1,5 @@
 import { Writable } from "node:stream";
-import { sessions, users, verifications } from "@padvinder/db";
+import { grantPlatformAdmin, sessions, users, verifications } from "@padvinder/db";
 import { createTestDatabase } from "@padvinder/db/testing";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -428,4 +428,17 @@ test("every Better Auth table makes its ids with uuidv7()", async () => {
   expect(result.rows.map((row) => row.column_default)).toEqual(
     Array.from({ length: 5 }, () => "uuidv7()"),
   );
+});
+
+test("an account made by a grant is the one that logs in with that address", async () => {
+  const granted = await grantPlatformAdmin(
+    ctx.t.db,
+    { email: "Eerste@Example.test" },
+    { kind: "system" },
+  );
+  const { userId } = await loginAs(ctx, "eerste@example.test");
+  expect(userId).toBe(granted.userId);
+  expect(await ctx.t.db.select().from(users)).toMatchObject([
+    { id: granted.userId, isPlatformAdmin: true },
+  ]);
 });

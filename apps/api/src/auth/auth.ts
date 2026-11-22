@@ -1,4 +1,12 @@
-import { accounts, rateLimits, sessions, users, verifications, type Db } from "@padvinder/db";
+import {
+  accounts,
+  normalizeEmail,
+  rateLimits,
+  sessions,
+  users,
+  verifications,
+  type Db,
+} from "@padvinder/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
@@ -12,11 +20,6 @@ import { checkLoginCodeRequest, IP_LIMITS, isValidLoginAddress } from "./login-r
 export type AuthDeps = { env: ApiEnv; db: Db; mailer: Mailer; log: FastifyBaseLogger };
 
 const DAY_SECONDS = 24 * 60 * 60;
-
-/** Trimmed and lowercase, so sloppy typing reaches the same account. */
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
 
 // Anything that looks like an email address, to keep addresses out of Better Auth's log lines.
 const EMAIL_LIKE = /[^\s@<>"'(),;:]+@[^\s@<>"'(),;:]+/g;

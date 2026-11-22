@@ -1,8 +1,7 @@
-import { updateUserProfile } from "@padvinder/db";
+import { normalizeEmail, updateUserProfile } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../app";
-import { normalizeEmail } from "../auth/auth";
 import type { ApiEnv } from "../env";
 import { createMemoryMailer } from "../mail/mailer";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
