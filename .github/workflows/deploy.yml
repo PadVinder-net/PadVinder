@@ -1,14 +1,16 @@
-# Builds the release once and deploys that same tarball: to staging on every push to main
-# or to a staging/** branch, then to production for main only, after a required reviewer of
-# the production environment approves. The secrets live in the GitHub environments staging
-# and production; the release job has no environment and sees none of them.
+# Builds the release once and deploys that same tarball: to staging on every push to main,
+# then to production after a required reviewer of the production environment approves.
+# Only main deploys: one Alwaysdata account holds both environments, so the staging
+# credentials reach production too, and only reviewed code may hold them. Both GitHub
+# environments allow the branch main only. The secrets live in those environments; the
+# release job has no environment and sees none of them.
 name: Deploy
 
 on:
   push:
     branches:
       - main
-      - "staging/**"
+  # By hand: run it from main (re-runs a deploy). From another branch the deploy jobs skip.
   workflow_dispatch:
 
 permissions:
@@ -27,6 +29,7 @@ jobs:
 
   staging:
     needs: release
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # Worst case: setup, upload, migrations (at most 10 minutes), restart and health check,
     # then a rollback with its own restart and health check. Room for all of it.
