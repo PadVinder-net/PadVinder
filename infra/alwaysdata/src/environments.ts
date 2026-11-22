@@ -35,4 +35,10 @@ export const databaseHost = (account: string) => `postgresql-${account}.alwaysda
 /** PostgreSQL directly; pgBouncer on 5433 breaks LISTEN/NOTIFY. */
 export const databasePort = 5432;
 export const sshHost = (account: string) => `ssh-${account}.alwaysdata.net`;
-export const sshUserName = (account: string) => `${account}_deploy`;
+/**
+ * The SSH login for provisioning and deploys: the account's main SSH user, which Alwaysdata
+ * creates with the account and names after it. Provisioning creates no SSH user of its own:
+ * SSH users are not chrooted (each reaches the whole account), and several of them cause
+ * file-rights problems, so releases and env files belong to the main user like everything else.
+ */
+export const sshUser = (account: string) => account;

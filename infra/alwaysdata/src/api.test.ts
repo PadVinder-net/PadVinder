@@ -55,9 +55,9 @@ test("create returns the new resource even when POST has no body", async () => {
 });
 
 test("create fails when the resource cannot be found afterwards", async () => {
-  await expect(api.create("ssh", { name: "x" }, { field: "name", value: "other" })).rejects.toThrow(
-    /did not find it/,
-  );
+  await expect(
+    api.create("site", { name: "x" }, { field: "name", value: "other" }),
+  ).rejects.toThrow(/did not find it/);
 });
 
 test("update sends PATCH with only the given fields", async () => {
@@ -138,14 +138,14 @@ test("a retried create does not make a second resource", async () => {
 
 test("create retries a POST that was not stored", async () => {
   fake.failNext(503);
-  await api.create("ssh", { name: "u" }, { field: "name", value: "u" });
+  await api.create("site", { name: "u" }, { field: "name", value: "u" });
   expect(fake.requests.filter((r) => r.method === "POST")).toHaveLength(2);
-  expect(fake.resources.get("ssh")).toHaveLength(1);
+  expect(fake.resources.get("site")).toHaveLength(1);
 });
 
 test("create throws when two resources share the identity", async () => {
-  fake.resources.get("ssh")?.push({ id: 91, name: "u" }, { id: 92, name: "u" });
-  await expect(api.create("ssh", { name: "u" }, { field: "name", value: "u" })).rejects.toThrow(
+  fake.resources.get("site")?.push({ id: 91, name: "u" }, { id: 92, name: "u" });
+  await expect(api.create("site", { name: "u" }, { field: "name", value: "u" })).rejects.toThrow(
     /expected one/,
   );
 });
@@ -177,10 +177,10 @@ test("a network error is retried for GET and wrapped without secrets", async () 
     },
   });
   const error = (await down
-    .create("ssh", { name: "u" }, { field: "name", value: "u" })
+    .create("site", { name: "u" }, { field: "name", value: "u" })
     .catch((e: unknown) => e)) as Error;
   expect(calls).toBe(100);
-  expect(error.message).toMatch(/POST \/v1\/ssh\/ failed with 0: network error/);
+  expect(error.message).toMatch(/POST \/v1\/site\/ failed with 0: network error/);
   expect(error.message).not.toContain(apiKey);
 });
 

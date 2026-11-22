@@ -17,7 +17,7 @@ test("loadInfraConfig reads every variable and derives the SSH host and user", (
     databasePassword: "database-password-value",
     ssh: {
       host: "ssh-acme.alwaysdata.net",
-      user: "acme_deploy",
+      user: "acme",
       identity: { agent: "/tmp/ssh-agent.sock" },
       knownHostsFile: "/tmp/known_hosts",
     },

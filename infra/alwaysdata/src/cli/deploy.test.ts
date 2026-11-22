@@ -20,7 +20,7 @@ const config: InfraConfig = {
   apiKey,
   ssh: {
     host: "ssh-acmecorp.alwaysdata.net",
-    user: "acmecorp_deploy",
+    user: "acmecorp",
     identity: { agent: "/nonexistent/agent.sock" },
     knownHostsFile: "/nonexistent/known_hosts",
   },
@@ -37,7 +37,7 @@ const remote: Remote = {
   exec: async (command) => {
     remoteCalls.push(command);
     throw new Error(
-      `Permission denied for ${config.account}_deploy (key ${apiKey}) from 192.0.2.10 via 2001:db8::1`,
+      `Permission denied for ${config.account} (key ${apiKey}) from 192.0.2.10 via 2001:db8::1`,
     );
   },
   writeFile: async () => {
@@ -124,7 +124,7 @@ test("output never contains the API key, the account or an IP address", async ()
   const tarball = await makeTarball(commit);
   expect(await deployWith(args(tarball))).toBe(1);
   const text = output.join("\n");
-  expect(text).toMatch(/Permission denied for <account>_deploy/);
+  expect(text).toMatch(/Permission denied for <account>/);
   expect(text).not.toContain(apiKey);
   expect(text).not.toContain(config.account);
   expect(text).toContain("from <ip> via <ip>");

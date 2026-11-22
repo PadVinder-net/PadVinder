@@ -3,7 +3,6 @@ import {
   databaseName,
   environmentDirectory,
   environments,
-  sshUserName,
   type EnvironmentName,
 } from "./environments.ts";
 
@@ -29,23 +28,6 @@ export const serviceAnnotation = (program: ServiceProgram, env: EnvironmentName)
  */
 export const serviceDisabledField = "is_disabled";
 
-const referenceTag = Symbol("reference");
-
-/** A field value that is the id of another resource, known once that resource exists. */
-export type ResourceReference = {
-  readonly [referenceTag]: true;
-  kind: ResourceKind;
-  identity: Identity;
-};
-
-export function idOf(kind: ResourceKind, identity: Identity): ResourceReference {
-  return { [referenceTag]: true, kind, identity };
-}
-
-export function isReference(value: unknown): value is ResourceReference {
-  return typeof value === "object" && value !== null && referenceTag in value;
-}
-
 export type DesiredResource = {
   kind: ResourceKind;
   /** The field that finds the resource in the list; it is in `fields` too. */
@@ -65,7 +47,6 @@ export function desiredResources(
   const environment = environments[env];
   const directory = environmentDirectory(env);
   const database = databaseName(account, env);
-  const sshUser: Identity = { field: "name", value: sshUserName(account) };
 
   const service = (program: ServiceProgram): DesiredResource => {
     const annotation = serviceAnnotation(program, env);
@@ -82,28 +63,14 @@ export function desiredResources(
         // UNVERIFIED: the format of `environment` ("NAME=value" pairs separated by spaces,
         // per the help pages; quoting is not documented).
         environment: "NODEJS_VERSION=24",
-        // UNVERIFIED: whether a listed service shows `ssh_user` as an id (assumed) or an object.
-        ssh_user: idOf("ssh", sshUser),
+        // No `ssh_user`: provisioning manages no SSH user. UNVERIFIED: that a service without
+        // one runs as the account's main user, the owner of the releases and the env file
+        // (confirm with --inspect and the first deploy's health check).
       },
     };
   };
 
   return [
-    {
-      // One SSH user per account, shared by both environments; the maintainer adds its
-      // public key in the Alwaysdata panel.
-      kind: "ssh",
-      identity: sshUser,
-      fields: {
-        name: sshUser.value,
-        // UNVERIFIED: the value's spelling; the API documentation lists BASH, ZSH, ... as choices.
-        shell: "BASH",
-        can_use_password: false,
-        // UNVERIFIED: that "" means the account root `/home/<account>`, so the server paths
-        // `padvinder/<env>/...` are relative to it; the API may report it as "/" instead.
-        home_directory: "",
-      },
-    },
     {
       kind: "database",
       identity: { field: "name", value: database },

@@ -13,7 +13,7 @@ import { renderEnvFile } from "../env-file.ts";
 import {
   environmentDirectory,
   isEnvironmentName,
-  sshUserName,
+  sshUser,
   type EnvironmentName,
 } from "../environments.ts";
 import { applyPlan, planResources, type PlannedChange } from "../reconcile.ts";
@@ -103,7 +103,7 @@ export function formatPlan(plan: readonly PlannedChange[]): string[] {
   });
 }
 
-const inspectedKinds: ResourceKind[] = ["ssh", "database", "database/user", "site", "service"];
+const inspectedKinds: ResourceKind[] = ["database", "database/user", "site", "service"];
 const sensitiveFieldPattern = /password|secret|key|token/i;
 
 /** The JSON type of a value, without the value: `string`, `number[]`, `object{id: number}`. */
@@ -249,68 +249,47 @@ export async function runProvision(input: {
 
     const directory = environmentDirectory(env);
     const content = renderEnvFile({ account: config.account, env, databasePassword });
-    const sshHint = (verb: "read" | "write") =>
-      print(
-        `Could not ${verb} ${directory}/.env over SSH. On the first run, add the deploy public key to SSH user ${sshUserName(config.account)} in the Alwaysdata panel, then run again with --apply.`,
-      );
-    let remote: Remote | undefined;
+
+    // Read the env file before changing anything, so neither a failing SSH login nor a
+    // mismatching password leaves a database password changed without the env file that
+    // goes with it. The main SSH user exists from the start, so this works on the first run
+    // too, when there is no env file yet.
+    let remote: Remote;
     let existingDatabaseUrl: string | undefined;
     let before: string | undefined;
-    /** Reads the env file's DATABASE_URL and checksum on the server; hints when SSH fails. */
-    const readRemote = async (): Promise<Remote> => {
-      try {
-        const connected = input.remote();
-        existingDatabaseUrl = await remoteDatabaseUrl(connected, `${directory}/.env`);
-        before = await remoteChecksum(connected, `${directory}/.env`);
-        return connected;
-      } catch (error) {
-        sshHint("read");
-        throw error;
-      }
-    };
+    try {
+      remote = input.remote();
+      existingDatabaseUrl = await remoteDatabaseUrl(remote, `${directory}/.env`);
+      before = await remoteChecksum(remote, `${directory}/.env`);
+    } catch (error) {
+      print(
+        `Could not read ${directory}/.env over SSH. Nothing was changed through the API. Check that the deploy public key is on the main SSH user ${sshUser(config.account)} in the Alwaysdata panel, then run again with --apply.`,
+      );
+      throw error;
+    }
     // Without --rotate-password the existing database user keeps its old password, so a new
     // password in the env file would break the next restart, and the rollback with it.
-    const passwordMismatch = () =>
+    if (
       !args.rotatePassword &&
       existingDatabaseUrl !== undefined &&
-      existingDatabaseUrl !== databaseUrlOf(content);
-
-    // When the SSH user exists, read the env file before changing anything, so neither a
-    // failing SSH login nor a mismatching password leaves a database password changed
-    // without the env file that goes with it. A new SSH user cannot log in before the
-    // maintainer adds its key, so on the first run the env file is read after the apply.
-    const sshUserExists = plan.some(
-      (change) => change.kind === "ssh" && change.action !== "create",
-    );
-    if (sshUserExists) {
-      try {
-        remote = await readRemote();
-      } catch (error) {
-        print("Nothing was changed through the API.");
-        throw error;
-      }
-      if (passwordMismatch()) {
-        print(passwordMismatchMessage);
-        print("Nothing was changed.");
-        return 1;
-      }
+      existingDatabaseUrl !== databaseUrlOf(content)
+    ) {
+      print(passwordMismatchMessage);
+      print("Nothing was changed.");
+      return 1;
     }
 
     await applyPlan(api, desired, plan, { warn: (message) => print(`Warning: ${message}`) });
     print("Applied the plan.");
-    if (remote === undefined) {
-      remote = await readRemote();
-      if (passwordMismatch()) {
-        print(passwordMismatchMessage);
-        return 1;
-      }
-    }
     const envFileChanged = before !== createHash("sha256").update(content).digest("hex");
     try {
       await remote.writeFile(`${directory}/.env`, content, 0o600);
       await remote.exec(`mkdir -p -- ${directory}/releases`);
     } catch (error) {
-      sshHint("write");
+      // SSH worked a moment ago, so the key is in place; the plan is applied either way.
+      print(
+        `Could not write ${directory}/.env over SSH after applying the plan. Fix the cause below, then run again with --apply.`,
+      );
       throw error;
     }
     print(`Wrote ${directory}/.env and created ${directory}/releases on the server.`);

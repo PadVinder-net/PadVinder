@@ -1,6 +1,7 @@
 # A stand-in for the Alwaysdata SSH host in tests (see src/testing/fake-host.ts): Debian 12
-# with OpenSSH, rsync, Node.js 24 and psql. One user, `padvinder`, logs in with the key in
-# the AUTHORIZED_KEY environment variable; passwords are off.
+# with OpenSSH, rsync, Node.js 24 and psql. One user, `padvinder`, stands in for the account's
+# main SSH user, which is named like the account and lives in `/home/<account>`. It logs in
+# with the key in the AUTHORIZED_KEY environment variable; passwords are off.
 FROM node:24-bookworm-slim
 
 RUN apt-get update \

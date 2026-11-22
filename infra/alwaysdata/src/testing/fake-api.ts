@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Resource, ResourceKind } from "../api.ts";
 
-const kinds: ResourceKind[] = ["site", "database", "database/user", "ssh", "service"];
+const kinds: ResourceKind[] = ["site", "database", "database/user", "service"];
 
 export type FakeAlwaysdata = {
   baseUrl: string;
@@ -47,7 +47,7 @@ export async function startFakeAlwaysdata(): Promise<FakeAlwaysdata> {
     const restart = /^\/v1\/service\/(\d+)\/restart\/$/.exec(path);
     if (restart && method === "POST") return send(204);
 
-    const match = /^\/v1\/(site|database\/user|database|ssh|service)\/(?:(\d+)\/)?$/.exec(path);
+    const match = /^\/v1\/(site|database\/user|database|service)\/(?:(\d+)\/)?$/.exec(path);
     if (!match) return send(404, { detail: "not found" });
     const items = resources.get(match[1] as ResourceKind) ?? [];
     const id = match[2] === undefined ? undefined : Number(match[2]);

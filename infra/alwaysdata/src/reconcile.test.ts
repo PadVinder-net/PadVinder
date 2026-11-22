@@ -32,10 +32,9 @@ const stored = (kind: Parameters<AlwaysdataApi["list"]>[0], field: string, value
   return found;
 };
 
-test("an empty account plans six creates in dependency order", async () => {
+test("an empty account plans five creates in order, and no SSH user", async () => {
   const plan = await planResources(api, desired);
   expect(plan.map((c) => [c.action, c.kind, c.identity])).toEqual([
-    ["create", "ssh", "acme_deploy"],
     ["create", "database", "acme_staging"],
     ["create", "database/user", "acme_staging"],
     ["create", "site", "padvinder-staging"],
@@ -45,20 +44,19 @@ test("an empty account plans six creates in dependency order", async () => {
   expect(writes()).toEqual([]);
 });
 
-test("apply creates the resources and points the services at the SSH user", async () => {
+test("apply creates the resources; the services name no SSH user", async () => {
   await applyPlan(api, desired, await planResources(api, desired));
-  const sshUser = stored("ssh", "name", "acme_deploy");
-  expect(sshUser).toMatchObject({ can_use_password: false });
-  expect(sshUser).not.toHaveProperty("password");
+  expect(fake.requests.some((r) => r.path.startsWith("/v1/ssh/"))).toBe(false);
   const apiService = stored("service", "annotation", "padvinder-api (staging)");
+  expect(apiService).not.toHaveProperty("ssh_user");
   expect(apiService).toMatchObject({
-    ssh_user: sshUser.id,
     command: "node --env-file=release.env --env-file=../../.env api/dist/main.js",
     working_directory: "padvinder/staging/current",
     environment: "NODEJS_VERSION=24",
   });
-  expect(stored("service", "annotation", "padvinder-worker (staging)")).toMatchObject({
-    ssh_user: sshUser.id,
+  const workerService = stored("service", "annotation", "padvinder-worker (staging)");
+  expect(workerService).not.toHaveProperty("ssh_user");
+  expect(workerService).toMatchObject({
     command: "node --env-file=release.env --env-file=../../.env worker/dist/main.js",
   });
   expect(stored("database/user", "name", "acme_staging")).toMatchObject({
@@ -106,17 +104,10 @@ test("a changed service command becomes an update of only that field", async () 
   ]);
 });
 
-test("a service with another SSH user is pointed back at the deploy user", async () => {
+test("a service's ssh_user is not managed: whatever the API reports is left alone", async () => {
   await applyPlan(api, desired, await planResources(api, desired));
-  const sshUser = stored("ssh", "name", "acme_deploy");
-  const apiService = stored("service", "annotation", "padvinder-api (staging)");
-  apiService.ssh_user = 999;
-  const plan = await planResources(api, desired);
-  expect(plan.filter((c) => c.action !== "ok")).toEqual([
-    expect.objectContaining({ action: "update", fields: ["ssh_user"] }),
-  ]);
-  await applyPlan(api, desired, plan);
-  expect(apiService.ssh_user).toBe(sshUser.id);
+  stored("service", "annotation", "padvinder-api (staging)").ssh_user = 999;
+  expect((await planResources(api, desired)).every((c) => c.action === "ok")).toBe(true);
 });
 
 test("a database locale mismatch is a conflict, and apply refuses", async () => {
@@ -134,10 +125,10 @@ test("a database locale mismatch is a conflict, and apply refuses", async () => 
 
 test("two resources with the same identity are a conflict", async () => {
   fake.resources
-    .get("ssh")
-    ?.push({ id: 101, name: "acme_deploy" }, { id: 102, name: "acme_deploy" });
+    .get("database")
+    ?.push({ id: 101, name: "acme_staging" }, { id: 102, name: "acme_staging" });
   const plan = await planResources(api, desired);
-  expect(plan[0]).toMatchObject({ action: "conflict", kind: "ssh" });
+  expect(plan[0]).toMatchObject({ action: "conflict", kind: "database" });
   expect(plan[0]?.reason).toMatch(/2/);
 });
 
@@ -180,10 +171,7 @@ test("a create-only field stored differently stops apply right after that create
   await expect(applyPlan(normalizing, desired, await planResources(api, desired))).rejects.toThrow(
     /locale "C" instead of "C.UTF-8"/,
   );
-  expect(writes().map((r) => `${r.method} ${r.path}`)).toEqual([
-    "POST /v1/ssh/",
-    "POST /v1/database/",
-  ]);
+  expect(writes().map((r) => `${r.method} ${r.path}`)).toEqual(["POST /v1/database/"]);
 });
 
 test("a create-only field the API does not return gives a warning, not a conflict", async () => {
@@ -203,7 +191,7 @@ test("a create-only field the API does not return gives a warning, not a conflic
   ]);
   const plan = await planResources(api, desired);
   expect(plan.every((c) => c.action === "ok")).toBe(true);
-  expect(plan[1]).toMatchObject({ kind: "database", unverified: ["extensions"] });
+  expect(plan[0]).toMatchObject({ kind: "database", unverified: ["extensions"] });
 });
 
 test("addresses in another order are the same addresses", async () => {

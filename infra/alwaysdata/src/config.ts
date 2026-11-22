@@ -1,4 +1,4 @@
-import { sshHost, sshUserName, type EnvironmentName } from "./environments.ts";
+import { sshHost, sshUser, type EnvironmentName } from "./environments.ts";
 import type { SshIdentity } from "./remote.ts";
 
 export type InfraConfig = {
@@ -56,7 +56,7 @@ export function loadInfraConfig(
   if (wantSsh) {
     config.ssh = {
       host: sshHost(account),
-      user: sshUserName(account),
+      user: sshUser(account),
       identity: keyFile === "" ? { agent: agentSocket } : { keyFile },
       knownHostsFile: value("SSH_KNOWN_HOSTS_FILE"),
     };

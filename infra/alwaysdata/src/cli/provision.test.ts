@@ -23,7 +23,7 @@ const config: InfraConfig = {
   databasePassword: password,
   ssh: {
     host: "ssh-acmecorp.alwaysdata.net",
-    user: "acmecorp_deploy",
+    user: "acmecorp",
     identity: { agent: "/nonexistent/agent.sock" },
     knownHostsFile: "/nonexistent/known_hosts",
   },
@@ -126,7 +126,7 @@ test("plan output never contains the password", async () => {
 
 test("with --apply it creates the resources, then writes the env file and the releases directory", async () => {
   expect(await run(args({ apply: true }))).toBe(0);
-  expect(writes().filter((r) => r.method === "POST")).toHaveLength(6);
+  expect(writes().filter((r) => r.method === "POST")).toHaveLength(5);
   expect(calls).toEqual([
     { method: "exec", args: [databaseUrlCommand] },
     { method: "exec", args: [checksumCommand] },
@@ -201,7 +201,7 @@ test("--apply refuses a password that differs from the env file's, unless --rota
   expect(output.join("\n")).not.toContain(oldPassword);
 });
 
-test("an existing SSH user: a password mismatch stops before any change through the API", async () => {
+test("a password mismatch stops before any change through the API", async () => {
   expect(await run(args({ apply: true }))).toBe(0);
   remoteFiles.set(
     "padvinder/staging/.env",
@@ -220,33 +220,44 @@ test("an existing SSH user: a password mismatch stops before any change through 
   expect(calls.map((call) => call.args[0])).toEqual([databaseUrlCommand, checksumCommand]);
 });
 
-test("an existing SSH user: an SSH failure stops before the password is rotated", async () => {
-  expect(await run(args({ apply: true }))).toBe(0);
-  fake.requests.length = 0;
-  output = [];
+test("an SSH failure stops before any change through the API, also on the first run", async () => {
   const unreachable: Remote = {
     ...fakeRemote,
     exec: async () => {
-      throw new Error(`Permission denied for ${config.account}_deploy`);
+      throw new Error(`Permission denied for ${config.account}`);
     },
   };
-  const code = await runProvision({
-    args: args({ apply: true, rotatePassword: true }),
-    config,
-    api,
-    remote: () => unreachable,
-    print: (line) => output.push(line),
-  });
-  expect(code).toBe(1);
+  const runUnreachable = (provisionArgs: ProvisionArgs) =>
+    runProvision({
+      args: provisionArgs,
+      config,
+      api,
+      remote: () => unreachable,
+      print: (line) => output.push(line),
+    });
+
+  // The first run: nothing exists yet, and nothing is created.
+  expect(await runUnreachable(args({ apply: true }))).toBe(1);
   expect(writes()).toEqual([]);
   const text = output.join("\n");
   expect(text).toMatch(/Could not read padvinder\/staging\/\.env over SSH/);
   expect(text).toMatch(/Nothing was changed through the API/);
-  expect(text).toMatch(/Permission denied for <account>_deploy/);
+  expect(text).toMatch(
+    /the deploy public key is on the main SSH user <account> in the Alwaysdata panel/,
+  );
+  expect(text).toMatch(/Permission denied for <account>/);
   expectNoSecrets(text);
+
+  // Later: the password is not rotated either.
+  expect(await run(args({ apply: true }))).toBe(0);
+  fake.requests.length = 0;
+  output = [];
+  expect(await runUnreachable(args({ apply: true, rotatePassword: true }))).toBe(1);
+  expect(writes()).toEqual([]);
+  expect(output.join("\n")).toMatch(/Nothing was changed through the API/);
 });
 
-test("the first run (new SSH user) applies, then reads and writes the env file", async () => {
+test("the first run, without an env file, reads it before the apply and writes it after", async () => {
   // How many resources were created when each SSH command ran.
   const createdAtExec: number[] = [];
   const counting: Remote = {
@@ -264,9 +275,15 @@ test("the first run (new SSH user) applies, then reads and writes the env file",
     print: (line) => output.push(line),
   });
   expect(code).toBe(0);
-  expect(createdAtExec).toEqual([6, 6, 6]);
-  expect(calls[0]).toEqual({ method: "exec", args: [databaseUrlCommand] });
+  // Both reads before the first create, the releases directory after the last.
+  expect(createdAtExec).toEqual([0, 0, 5]);
+  expect(calls.slice(0, 2)).toEqual([
+    { method: "exec", args: [databaseUrlCommand] },
+    { method: "exec", args: [checksumCommand] },
+  ]);
+  expect(calls[2]?.method).toBe("writeFile");
   expect(output.join("\n")).toMatch(/Applied the plan\.\nWrote padvinder\/staging\/\.env/);
+  expect(output.join("\n")).toMatch(restartNotice);
 });
 
 test("a create-only field the API leaves out of the new resource gives a warning", async () => {
@@ -316,11 +333,11 @@ test("a conflict exits 1 and changes nothing", async () => {
   expect(output.join("\n")).toMatch(/locale/);
 });
 
-test("an SSH failure after apply exits 1 and says how to add the deploy key", async () => {
+test("an SSH failure while writing after the apply exits 1 and says to run again", async () => {
   const failing: Remote = {
     ...fakeRemote,
     writeFile: async () => {
-      throw new Error(`Permission denied for ${config.account}_deploy`);
+      throw new Error(`Permission denied for ${config.account}`);
     },
   };
   const code = await runProvision({
@@ -332,8 +349,11 @@ test("an SSH failure after apply exits 1 and says how to add the deploy key", as
   });
   expect(code).toBe(1);
   const text = output.join("\n");
-  expect(text).toMatch(/add the deploy public key to SSH user <account>_deploy/);
-  expect(text).toMatch(/Permission denied for <account>_deploy/);
+  expect(text).toMatch(/Applied the plan/);
+  expect(text).toMatch(
+    /Could not write padvinder\/staging\/\.env over SSH after applying the plan\..*run again with --apply/,
+  );
+  expect(text).toMatch(/Permission denied for <account>/);
   expectNoSecrets(text);
 });
 
@@ -395,7 +415,7 @@ test("--inspect shows only field types of other resources, and the managed value
     string,
     { fields: Record<string, string>; ours: Record<string, unknown>[] }
   >;
-  expect(Object.keys(inspected)).toEqual(["ssh", "database", "database/user", "site", "service"]);
+  expect(Object.keys(inspected)).toEqual(["database", "database/user", "site", "service"]);
   expect(inspected.site?.fields).toMatchObject({
     addresses: "string[]",
     ssl_force: "boolean",
@@ -414,9 +434,6 @@ test("--inspect shows only field types of other resources, and the managed value
       environment: "NODEJS_VERSION=<value>",
     }),
     expect.objectContaining({ annotation: "padvinder-worker (staging)" }),
-  ]);
-  expect(inspected.ssh?.ours).toEqual([
-    expect.objectContaining({ name: "<account>_deploy", can_use_password: false }),
   ]);
   expect(inspected["database/user"]?.ours).toEqual([
     {

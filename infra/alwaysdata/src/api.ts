@@ -2,7 +2,7 @@ import { z } from "zod";
 import { redact } from "./redact.ts";
 
 export type Resource = { id: number; [field: string]: unknown };
-export type ResourceKind = "site" | "database" | "database/user" | "ssh" | "service";
+export type ResourceKind = "site" | "database" | "database/user" | "service";
 
 export interface AlwaysdataApi {
   list(kind: ResourceKind): Promise<Resource[]>;

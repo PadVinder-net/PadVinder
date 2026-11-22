@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { AlwaysdataApi, Resource, ResourceKind } from "./api.ts";
-import { isReference, type DesiredResource, type ResourceReference } from "./resources.ts";
+import type { DesiredResource } from "./resources.ts";
 
 export type PlannedChange = {
   action: "create" | "update" | "ok" | "conflict";
@@ -41,12 +41,6 @@ export function sameValue(actual: unknown, wanted: unknown): boolean {
   return isDeepStrictEqual(actual, wanted);
 }
 
-/** Whether a listed field value points at the resource with this id. */
-function refersTo(actual: unknown, id: number): boolean {
-  if (actual === id) return true;
-  return typeof actual === "object" && actual !== null && (actual as { id?: unknown }).id === id;
-}
-
 /**
  * Compares the desired resources with what the account holds. Each kind is listed once,
  * and only the desired fields are compared. Changes nothing.
@@ -57,22 +51,12 @@ export async function planResources(
   options: { rotatePassword?: boolean } = {},
 ): Promise<PlannedChange[]> {
   const lists = new Map<ResourceKind, Resource[]>();
-  const kinds = new Set<ResourceKind>();
-  for (const resource of desired) {
-    kinds.add(resource.kind);
-    for (const value of Object.values(resource.fields)) {
-      if (isReference(value)) kinds.add(value.kind);
-    }
+  for (const kind of new Set(desired.map((resource) => resource.kind))) {
+    lists.set(kind, await api.list(kind));
   }
-  for (const kind of kinds) lists.set(kind, await api.list(kind));
 
   const find = (kind: ResourceKind, identity: { field: string; value: string }) =>
     (lists.get(kind) ?? []).filter((r) => r[identity.field] === identity.value);
-  // Undefined when the referenced resource does not exist yet (or is ambiguous).
-  const resolve = (reference: ResourceReference) => {
-    const matches = find(reference.kind, reference.identity);
-    return matches.length === 1 ? matches[0]?.id : undefined;
-  };
 
   return desired.map((resource): PlannedChange => {
     const base = { kind: resource.kind, identity: resource.identity.value };
@@ -91,14 +75,7 @@ export async function planResources(
 
     const createOnly = resource.createOnly ?? [];
     const writeOnly = resource.writeOnly ?? [];
-    const differs = (field: string) => {
-      const wanted = resource.fields[field];
-      if (isReference(wanted)) {
-        const id = resolve(wanted);
-        return id === undefined || !refersTo(existing[field], id);
-      }
-      return !sameValue(existing[field], wanted);
-    };
+    const differs = (field: string) => !sameValue(existing[field], resource.fields[field]);
 
     // A create-only field the API does not report cannot be checked; see checkCreateOnlyFields.
     const unverified = createOnly.filter((field) => !(field in existing));
@@ -155,43 +132,23 @@ export async function applyPlan(
     );
   }
 
-  // Ids of the resources handled so far; references only point backwards in the list.
-  const ids = new Map<string, number>();
-  const resolveFields = (fields: Record<string, unknown>, names: readonly string[]) =>
-    Object.fromEntries(
-      names.map((name) => {
-        const value = fields[name];
-        if (!isReference(value)) return [name, value];
-        const id = ids.get(key(value.kind, value.identity));
-        if (id === undefined) {
-          throw new Error(
-            `${name} refers to ${key(value.kind, value.identity)}, which does not come before it`,
-          );
-        }
-        return [name, id];
-      }),
-    );
+  const pick = (fields: Record<string, unknown>, names: readonly string[]) =>
+    Object.fromEntries(names.map((name) => [name, fields[name]]));
 
   for (const [i, change] of plan.entries()) {
     const resource = desired[i];
     if (!resource) continue;
-    const resourceKey = key(resource.kind, resource.identity);
     if (change.action === "create") {
-      const body = resolveFields(resource.fields, Object.keys(resource.fields));
-      const created = await api.create(resource.kind, body, resource.identity);
-      ids.set(resourceKey, created.id);
+      const created = await api.create(resource.kind, resource.fields, resource.identity);
       checkCreateOnlyFields(resource, created, warn);
       continue;
     }
-    if (change.id === undefined) throw new Error(`The plan has no id for ${resourceKey}`);
-    if (change.action === "update") {
-      await api.update(
-        resource.kind,
-        change.id,
-        resolveFields(resource.fields, change.fields ?? []),
-      );
+    if (change.id === undefined) {
+      throw new Error(`The plan has no id for ${key(resource.kind, resource.identity)}`);
     }
-    ids.set(resourceKey, change.id);
+    if (change.action === "update") {
+      await api.update(resource.kind, change.id, pick(resource.fields, change.fields ?? []));
+    }
   }
 }
 
