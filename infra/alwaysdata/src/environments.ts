@@ -57,3 +57,5 @@ export const smtpHost = (account: string) => `smtp-${account}.alwaysdata.net`;
 export const smtpPort = 465;
 /** The sender of every mail, in both environments: the mailbox SMTP_USER logs in as. */
 export const mailFrom = "PadVinder <noreply@padvinder.net>";
+/** The address inside `mailFrom`. */
+export const mailFromAddress = /<([^>]+)>/.exec(mailFrom)?.[1] ?? mailFrom;

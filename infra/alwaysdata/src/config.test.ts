@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { loadInfraConfig } from "./config.ts";
+import { loadInfraConfig, senderDiffersFromMailbox } from "./config.ts";
 
 const complete = {
   ALWAYSDATA_ACCOUNT: "acme",
@@ -150,4 +150,28 @@ test("loadInfraConfig refuses secrets the env file cannot carry, naming the vari
       expect(message).not.toContain(value);
     }
   }
+});
+
+test("loadInfraConfig refuses an SMTP_USER other than the sender's mailbox, without values", () => {
+  const other = "someone-else@padvinder.net";
+  let message = "";
+  try {
+    loadInfraConfig({ ...complete, SMTP_USER: other }, "staging");
+  } catch (error) {
+    message = (error as Error).message;
+  }
+  expect(message).toMatch(/^SMTP_USER must be the mailbox address in mailFrom/);
+  expect(message).not.toContain(other);
+  expect(message).not.toContain("noreply@padvinder.net");
+  // The same address in other letter case is the same mailbox.
+  expect(() =>
+    loadInfraConfig({ ...complete, SMTP_USER: "NoReply@PadVinder.net" }, "staging"),
+  ).not.toThrow();
+});
+
+test("senderDiffersFromMailbox checks only Alwaysdata's SMTP server", () => {
+  expect(senderDiffersFromMailbox("smtp-acme.alwaysdata.net", "other@padvinder.net")).toBe(true);
+  expect(senderDiffersFromMailbox("smtp-acme.alwaysdata.net", "noreply@padvinder.net")).toBe(false);
+  // Another mail service's login need not be an address.
+  expect(senderDiffersFromMailbox("smtp.mail-service.example", "api-login-id")).toBe(false);
 });

@@ -1,5 +1,11 @@
 import type { LoginSecrets } from "./env-file.ts";
-import { sshHost, sshUser, type EnvironmentName } from "./environments.ts";
+import {
+  mailFromAddress,
+  smtpHost,
+  sshHost,
+  sshUser,
+  type EnvironmentName,
+} from "./environments.ts";
 import type { SshIdentity } from "./remote.ts";
 
 export type InfraConfig = {
@@ -26,6 +32,16 @@ const authSecretMinLength = 32;
  */
 const envFileValuePattern = /^[\x21-\x7e]+$/;
 const envFileUnsafePattern = /["#'\\`]/;
+
+/**
+ * Whether SMTP_USER cannot send as `mailFrom`: Alwaysdata's SMTP server sends only as the
+ * mailbox it logs in as. Another mail service may use a login that is not an address.
+ */
+export function senderDiffersFromMailbox(host: string, smtpUser: string): boolean {
+  return (
+    host.endsWith(".alwaysdata.net") && smtpUser.toLowerCase() !== mailFromAddress.toLowerCase()
+  );
+}
 
 /**
  * Reads the infrastructure settings from environment variables, under the same names as the
@@ -80,6 +96,11 @@ export function loadInfraConfig(
     if (value("AUTH_SECRET").length < authSecretMinLength) {
       throw new Error(
         `AUTH_SECRET must have at least ${authSecretMinLength} characters, or the API does not start; make one with openssl rand -hex 32`,
+      );
+    }
+    if (senderDiffersFromMailbox(smtpHost(account), value("SMTP_USER"))) {
+      throw new Error(
+        "SMTP_USER must be the mailbox address in mailFrom (src/environments.ts): Alwaysdata's SMTP server sends only as the mailbox it logs in as",
       );
     }
     config.databasePassword = value("DATABASE_PASSWORD");

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-// The API's own parser of its environment: the env file must pass it, or the API does not start.
+// Deliberate contract test across packages: the API's own parser must accept the env file.
 import { loadApiEnv } from "../../../apps/api/src/env.ts";
 import { renderEnvFile, type LoginSecrets } from "./env-file.ts";
 import { environmentNames, environments } from "./environments.ts";

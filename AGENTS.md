@@ -366,6 +366,6 @@ Do not assume an answer to these; ask or leave a clear note. Settled by the skel
 - Whether pg-boss, long-lived SSE connections and `LISTEN`/`NOTIFY` work reliably on Alwaysdata, and whether four processes fit in 1 GB. (pg-boss runs locally with a heartbeat job, and SSE and `LISTEN`/`NOTIFY` work locally; Alwaysdata behavior is unverified.)
 - Terra Draw for drawing lines.
 - Whether Oxfmt sorts Tailwind classes, and whether type-aware linting is worth its cost in CI.
-- The OpenStreetMap tile provider, the second backup location, and the transactional mail service.
+- The OpenStreetMap tile provider, the second backup location, and whether Alwaysdata's SMTP delivers well enough; otherwise Lettermint or Brevo.
 - The format and coordinate system of the municipality's drain data (GeoJSON, GeoPackage or CSV), which determine the importer.
 - Accessibility requirements (possibly WCAG), and the visual identity (red, white and a little black; exact colors, logo and typography not yet set).
