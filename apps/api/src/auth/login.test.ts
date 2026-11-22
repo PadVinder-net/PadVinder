@@ -205,6 +205,27 @@ test("the client cannot set the phone number", async () => {
   expect(await ctx.t.db.select().from(users)).toHaveLength(0);
 });
 
+test("the client cannot make itself a platform admin", async () => {
+  await requestCode(ctx, "noor@example.test");
+  const res = await ctx.app.inject({
+    method: "POST",
+    url: "/api/auth/sign-in/email-otp",
+    payload: {
+      email: "noor@example.test",
+      otp: codeFor(ctx, "noor@example.test"),
+      isPlatformAdmin: true,
+    },
+  });
+  // Whether Better Auth refuses or ignores the field, the account is not an admin.
+  expect([200, 400]).toContain(res.statusCode);
+  if (res.statusCode === 400) {
+    await signIn(ctx, "noor@example.test", codeFor(ctx, "noor@example.test"));
+  }
+  expect(await ctx.t.db.select({ admin: users.isPlatformAdmin }).from(users)).toEqual([
+    { admin: false },
+  ]);
+});
+
 test("a name and picture sent with the first sign-in are ignored", async () => {
   await requestCode(ctx, "noor@example.test");
   const res = await ctx.app.inject({

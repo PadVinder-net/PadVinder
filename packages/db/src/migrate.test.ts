@@ -96,6 +96,46 @@ test("migrates a database that already holds data in the old shape", async () =>
   }
 });
 
+test("the migration applies to a database that already holds users and sessions", async () => {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  try {
+    const all = join(import.meta.dirname, "..", "drizzle");
+    const names = (await readdir(all, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    // Everything except the migration that adds the access tables.
+    for (const name of names.filter((n) => !n.endsWith("_access_tables")))
+      await cp(join(all, name), join(folder, name), { recursive: true });
+    await old.db.execute(sql`drop schema if exists drizzle cascade`);
+    await old.db.execute(sql`drop schema public cascade`);
+    await old.db.execute(sql`create schema public`);
+    await runMigrations(old.url, folder);
+    const user = await old.pool.query(
+      "insert into users (name, email, email_verified) values ('', 'old@example.test', true) returning id",
+    );
+    await old.pool.query(
+      "insert into sessions (expires_at, token, user_id) values ('2027-06-01T00:00:00Z', 'tok', $1)",
+      [user.rows[0].id],
+    );
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query(
+      "select u.is_platform_admin, (select count(*)::int from sessions) as sessions from users u",
+    );
+    expect(rows.rows).toEqual([{ is_platform_admin: false, sessions: 1 }]);
+    const tables = await old.pool.query(
+      "select table_name from information_schema.tables where table_schema = 'public' and table_name in ('organizations', 'working_groups', 'working_group_memberships', 'organization_admins')",
+    );
+    expect(tables.rows).toHaveLength(4);
+  } finally {
+    await rm(folder, { recursive: true });
+    await old.drop();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.

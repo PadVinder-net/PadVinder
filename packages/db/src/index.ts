@@ -1,3 +1,4 @@
+export * from "./access";
 export * from "./client";
 export * from "./diagnostics";
 export * from "./heartbeats";

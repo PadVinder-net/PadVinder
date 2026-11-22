@@ -1,0 +1,761 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "281b130c-58ff-4da2-902e-39e2cf103a2e",
+  "prevIds": [
+    "db420bf9-f7b1-4310-9814-cebb298a19d5"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "membership_role"
+      ],
+      "writes": [
+        "s|enum|public.membership_role",
+        "n|enum|public.membership_role",
+        "e|enum|public.membership_role",
+        "n|type|public.membership_role"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "organization_admins"
+      ],
+      "writes": [
+        "s|tbl|public.organization_admins",
+        "n|tbl|public.organization_admins",
+        "e|tbl|public.organization_admins",
+        "n|rel|public.organization_admins",
+        "n|type|public.organization_admins",
+        "n|rel|public.organization_admins_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "organizations"
+      ],
+      "writes": [
+        "s|tbl|public.organizations",
+        "n|tbl|public.organizations",
+        "e|tbl|public.organizations",
+        "n|rel|public.organizations",
+        "n|type|public.organizations",
+        "n|rel|public.organizations_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_group_memberships"
+      ],
+      "writes": [
+        "s|tbl|public.working_group_memberships",
+        "n|tbl|public.working_group_memberships",
+        "e|tbl|public.working_group_memberships",
+        "n|rel|public.working_group_memberships",
+        "n|type|public.working_group_memberships",
+        "n|rel|public.working_group_memberships_pkey",
+        "n|rel|public.working_group_memberships_user_id_working_group_id_key"
+      ],
+      "reads": [
+        "n|sch|public",
+        "n|enum|public.membership_role"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_groups"
+      ],
+      "writes": [
+        "s|tbl|public.working_groups",
+        "n|tbl|public.working_groups",
+        "e|tbl|public.working_groups",
+        "n|rel|public.working_groups",
+        "n|type|public.working_groups",
+        "n|rel|public.working_groups_pkey",
+        "n|rel|public.working_groups_organization_id_name_key"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "users",
+        "is_platform_admin"
+      ],
+      "writes": [
+        "s|col|public.users.is_platform_admin",
+        "n|col|public.users.is_platform_admin",
+        "e|col|public.users.is_platform_admin"
+      ],
+      "reads": [
+        "n|tbl|public.users",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "organization_admins"
+      ],
+      "writes": [
+        "s|fk|public.organization_admins.organization_admins_user_id_users_id_fkey",
+        "n|fk|public.organization_admins.organization_admins_user_id_users_id_fkey",
+        "e|fk|public.organization_admins.organization_admins_user_id_users_id_fkey",
+        "n|con|public.organization_admins.organization_admins_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.organization_admins",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.organization_admins.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "organization_admins"
+      ],
+      "writes": [
+        "s|fk|public.organization_admins.organization_admins_organization_id_organizations_id_fkey",
+        "n|fk|public.organization_admins.organization_admins_organization_id_organizations_id_fkey",
+        "e|fk|public.organization_admins.organization_admins_organization_id_organizations_id_fkey",
+        "n|con|public.organization_admins.organization_admins_organization_id_organizations_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.organization_admins",
+        "n|sch|public",
+        "n|tbl|public.organizations",
+        "n|sch|public",
+        "n|col|public.organization_admins.organization_id",
+        "n|col|public.organizations.id",
+        "e|uniqueness|public.organizations.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_group_memberships"
+      ],
+      "writes": [
+        "s|fk|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey",
+        "n|fk|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey",
+        "e|fk|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey",
+        "n|con|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.working_group_memberships",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.working_group_memberships.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_group_memberships"
+      ],
+      "writes": [
+        "s|fk|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey",
+        "n|fk|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey",
+        "e|fk|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey",
+        "n|con|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.working_group_memberships",
+        "n|sch|public",
+        "n|tbl|public.working_groups",
+        "n|sch|public",
+        "n|col|public.working_group_memberships.working_group_id",
+        "n|col|public.working_groups.id",
+        "e|uniqueness|public.working_groups.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_groups"
+      ],
+      "writes": [
+        "s|fk|public.working_groups.working_groups_organization_id_organizations_id_fkey",
+        "n|fk|public.working_groups.working_groups_organization_id_organizations_id_fkey",
+        "e|fk|public.working_groups.working_groups_organization_id_organizations_id_fkey",
+        "n|con|public.working_groups.working_groups_organization_id_organizations_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.working_groups",
+        "n|sch|public",
+        "n|tbl|public.organizations",
+        "n|sch|public",
+        "n|col|public.working_groups.organization_id",
+        "n|col|public.organizations.id",
+        "e|uniqueness|public.organizations.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "organization_admins",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "organizations",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "working_group_memberships",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "working_groups",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "membership_role",
+        "values": [
+          "volunteer",
+          "coordinator"
+        ],
+        "entityType": "enums"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "uuidv7()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "uuidv7()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "role",
+        "type": "membership_role",
+        "typeSchema": "public",
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "uuidv7()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "organization_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "city",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "active",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "true",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "users",
+        "name": "is_platform_admin",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_admins_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_admins_organization_id_organizations_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "organization_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "organizations",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_sWENEAqytSwo_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "working_group_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "working_groups",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "working_groups_organization_id_organizations_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "organization_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "organizations",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_admins_pkey",
+        "columns": [
+          "user_id",
+          "organization_id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "organizations_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "working_groups_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_user_id_working_group_id_key",
+        "nameExplicit": true,
+        "columns": [
+          "user_id",
+          "working_group_id"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "working_groups_organization_id_name_key",
+        "nameExplicit": true,
+        "columns": [
+          "organization_id",
+          "name"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    }
+  ]
+}
