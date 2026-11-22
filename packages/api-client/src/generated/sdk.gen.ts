@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMeResponses, GetVersionData, GetVersionResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses } from './types.gen';
+import type { GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMeResponses, GetVersionData, GetVersionResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -44,3 +44,8 @@ export const updateMe = <ThrowOnError extends boolean = false>(options: Options<
         ...options.headers
     }
 });
+
+/**
+ * The active working groups of all organizations
+ */
+export const listWorkingGroups = <ThrowOnError extends boolean = false>(options?: Options<ListWorkingGroupsData, ThrowOnError>): RequestResult<ListWorkingGroupsResponses, ListWorkingGroupsErrors, ThrowOnError> => (options?.client ?? client).get<ListWorkingGroupsResponses, ListWorkingGroupsErrors, ThrowOnError>({ url: '/api/working-groups', ...options });

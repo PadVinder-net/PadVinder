@@ -9,3 +9,8 @@ export const workingGroupSummarySchema = z
   })
   .meta({ id: "WorkingGroupSummary" });
 export type WorkingGroupSummary = z.infer<typeof workingGroupSummarySchema>;
+
+export const workingGroupDirectoryResponseSchema = z
+  .object({ workingGroups: z.array(workingGroupSummarySchema) })
+  .meta({ id: "WorkingGroupDirectoryResponse" });
+export type WorkingGroupDirectoryResponse = z.infer<typeof workingGroupDirectoryResponseSchema>;

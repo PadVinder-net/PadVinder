@@ -19,6 +19,7 @@ import type { NotificationHub } from "./realtime/notification-hub";
 import { eventsRoutes, SESSION_RECHECK_MS } from "./routes/events";
 import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
+import { workingGroupRoutes } from "./routes/working-groups";
 import { versionRoutes } from "./routes/version";
 
 export type AppDeps = {
@@ -79,6 +80,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(healthRoutes, { env, db: deps.db });
       await api.register(versionRoutes, { env });
       await api.register(meRoutes, { db: deps.db });
+      await api.register(workingGroupRoutes, { db: deps.db });
       await api.register(eventsRoutes, {
         db: deps.db,
         notifications: deps.notifications,

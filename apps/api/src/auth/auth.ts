@@ -101,6 +101,7 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         // Ours. Set through our own profile endpoint, never through Better Auth's client.
         phone: { type: "string", required: false, input: false },
         isPlatformAdmin: { type: "boolean", required: false, input: false, defaultValue: false },
+        deletedAt: { type: "date", required: false, input: false },
       },
     },
     session: {

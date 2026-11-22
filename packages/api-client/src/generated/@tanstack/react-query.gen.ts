@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getHealth, getMe, getVersion, type Options, updateMe } from '../sdk.gen';
-import type { GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMeResponse, GetVersionData, GetVersionResponse, UpdateMeData, UpdateMeError, UpdateMeResponse } from '../types.gen';
+import { getHealth, getMe, getVersion, listWorkingGroups, type Options, updateMe } from '../sdk.gen';
+import type { GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMeResponse, GetVersionData, GetVersionResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -109,3 +109,21 @@ export const updateMeMutation = (options?: Partial<Options<UpdateMeData>>): UseM
     };
     return mutationOptions;
 };
+
+export const listWorkingGroupsQueryKey = (options?: Options<ListWorkingGroupsData>) => createQueryKey('listWorkingGroups', options);
+
+/**
+ * The active working groups of all organizations
+ */
+export const listWorkingGroupsOptions = (options?: Options<ListWorkingGroupsData>) => queryOptions<ListWorkingGroupsResponse, ListWorkingGroupsError, ListWorkingGroupsResponse, ReturnType<typeof listWorkingGroupsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listWorkingGroups({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listWorkingGroupsQueryKey(options)
+});

@@ -256,6 +256,29 @@ test("the client cannot make itself a platform admin", async () => {
   ]);
 });
 
+test("the client cannot set deletedAt at sign-in", async () => {
+  await requestCode(ctx, "gone@example.test");
+  const res = await ctx.app.inject({
+    method: "POST",
+    url: "/api/auth/sign-in/email-otp",
+    payload: {
+      email: "gone@example.test",
+      otp: codeFor(ctx, "gone@example.test"),
+      deletedAt: "2027-01-01T00:00:00Z",
+    },
+  });
+  // Better Auth refuses the field and uses up the code; the account is not marked as deleted.
+  expect(res.statusCode).toBe(400);
+  expect(res.json()).toMatchObject({ code: "FIELD_NOT_ALLOWED" });
+  await requestCode(ctx, "gone@example.test");
+  expect(
+    (await signIn(ctx, "gone@example.test", codeFor(ctx, "gone@example.test"))).statusCode,
+  ).toBe(200);
+  expect(await ctx.t.db.select({ deletedAt: users.deletedAt }).from(users)).toEqual([
+    { deletedAt: null },
+  ]);
+});
+
 test("a name and picture sent with the first sign-in are ignored", async () => {
   await requestCode(ctx, "noor@example.test");
   const res = await ctx.app.inject({

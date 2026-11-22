@@ -11,3 +11,4 @@ export * from "./seed";
 export * from "./users";
 export * from "./audit-log";
 export * from "./me";
+export * from "./working-groups";

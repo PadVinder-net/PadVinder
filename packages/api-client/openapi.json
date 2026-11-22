@@ -169,6 +169,20 @@
           "organization"
         ]
       },
+      "WorkingGroupDirectoryResponseInput": {
+        "type": "object",
+        "properties": {
+          "workingGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkingGroupSummaryInput"
+            }
+          }
+        },
+        "required": [
+          "workingGroups"
+        ]
+      },
       "MeResponseInput": {
         "type": "object",
         "properties": {
@@ -450,6 +464,21 @@
         ],
         "additionalProperties": false
       },
+      "WorkingGroupDirectoryResponse": {
+        "type": "object",
+        "properties": {
+          "workingGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkingGroupSummary"
+            }
+          }
+        },
+        "required": [
+          "workingGroups"
+        ],
+        "additionalProperties": false
+      },
       "MeResponse": {
         "type": "object",
         "properties": {
@@ -670,6 +699,34 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/working-groups": {
+      "get": {
+        "operationId": "listWorkingGroups",
+        "summary": "The active working groups of all organizations",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkingGroupDirectoryResponse"
                 }
               }
             }

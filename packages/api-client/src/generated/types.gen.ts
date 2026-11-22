@@ -44,6 +44,10 @@ export type WorkingGroupSummaryInput = {
     };
 };
 
+export type WorkingGroupDirectoryResponseInput = {
+    workingGroups: Array<WorkingGroupSummaryInput>;
+};
+
 export type MeResponseInput = {
     user: {
         id: string;
@@ -111,6 +115,10 @@ export type WorkingGroupSummary = {
         id: string;
         name: string;
     };
+};
+
+export type WorkingGroupDirectoryResponse = {
+    workingGroups: Array<WorkingGroupSummary>;
 };
 
 export type MeResponse = {
@@ -236,3 +244,28 @@ export type UpdateMeResponses = {
 };
 
 export type UpdateMeResponse = UpdateMeResponses[keyof UpdateMeResponses];
+
+export type ListWorkingGroupsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/working-groups';
+};
+
+export type ListWorkingGroupsErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+};
+
+export type ListWorkingGroupsError = ListWorkingGroupsErrors[keyof ListWorkingGroupsErrors];
+
+export type ListWorkingGroupsResponses = {
+    /**
+     * Default Response
+     */
+    200: WorkingGroupDirectoryResponse;
+};
+
+export type ListWorkingGroupsResponse = ListWorkingGroupsResponses[keyof ListWorkingGroupsResponses];
