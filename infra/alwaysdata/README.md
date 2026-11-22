@@ -51,20 +51,20 @@ padvinder/
 
 A release directory is the unpacked `padvinder-release.tar.gz` (see "Release" in `AGENTS.md`). Each deploy keeps the 5 newest releases plus whatever `current` points at, and removes the rest. Unchanged files are hard-linked from the previous release, so `node_modules` is stored once.
 
-The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`, `ALLOWED_ORIGINS` and `LOG_LEVEL=info`. Do not edit it on the server: the next provisioning run overwrites it.
+The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`, `ALLOWED_ORIGINS`, `LOG_LEVEL=info`, and what login needs: `PUBLIC_ORIGIN` (the address in the table above), `AUTH_SECRET`, `SMTP_HOST` (`smtp-<account>.alwaysdata.net`), `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (`PadVinder <noreply@padvinder.net>`, see "Mail"). `LOGIN_RATE_LIMITS` is never in it: the API's default is on, and it refuses `off` on an HTTPS origin. Do not edit the file on the server: the next provisioning run overwrites it.
 
 ## The scripts
 
-All three read their settings from environment variables with the same names as the GitHub secrets. Errors name missing variables, never their values. Every line they print goes through `redactForLog()`: secrets show as `***`, IP addresses as `<ip>` and the account name as `<account>`.
+All three read their settings from environment variables with the same names as the GitHub secrets. Errors name missing variables, never their values. Provisioning (plan and apply, not `--inspect`) needs every secret of the env file and stops before it reads or changes anything when one is missing, so it never writes an env file the API refuses. It also refuses an `AUTH_SECRET` shorter than 32 characters, and a value of `AUTH_SECRET`, `SMTP_USER` or `SMTP_PASSWORD` with a space, a quote, a backslash, `#` or a character outside printable ASCII: the env file holds them unquoted, and Node's `--env-file` would cut or change such a value. Every line they print goes through `redactForLog()`: secrets show as `***`, IP addresses as `<ip>` and the account name as `<account>`.
 
-| Command                                                                                        | Needs                                                                      | What it does                                                                                                                                                   |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm infra:provision --environment <env>`                                                     | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `DATABASE_PASSWORD`, SSH below | Prints the plan: which resources it would create or update. Changes nothing                                                                                    |
-| `pnpm infra:provision --environment <env> --apply [--rotate-password]`                         | same                                                                       | Reads the env file over SSH, carries out the plan, then writes the env file and creates `releases/`. Never restarts anything; it says when a restart is needed |
-| `pnpm infra:provision --environment <env> --inspect`                                           | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Read-only. Prints field names and value types of the account's resources, and the managed values of ours, to confirm the names in `src/resources.ts`           |
-| `pnpm infra:deploy --environment <env> --tarball padvinder-release.tar.gz --commit <full sha>` | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, SSH below                      | Deploys one release (steps below)                                                                                                                              |
-| `pnpm infra:services --environment <env> (--enable \| --disable \| --restart)`                 | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                 | Turns the two services of an environment on or off, or restarts them                                                                                           |
-| `pnpm test:fake-host`                                                                          | Docker, a release tarball for the deploy test                              | Tests SSH, upload and deploy against a fake host container. In CI as the job `deploy-test`                                                                     |
+| Command                                                                                        | Needs                                                                                                                   | What it does                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm infra:provision --environment <env>`                                                     | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `DATABASE_PASSWORD`, `AUTH_SECRET`, `SMTP_USER`, `SMTP_PASSWORD`, SSH below | Prints the plan: which resources it would create or update. Changes nothing                                                                                    |
+| `pnpm infra:provision --environment <env> --apply [--rotate-password]`                         | same                                                                                                                    | Reads the env file over SSH, carries out the plan, then writes the env file and creates `releases/`. Never restarts anything; it says when a restart is needed |
+| `pnpm infra:provision --environment <env> --inspect`                                           | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                                                              | Read-only. Prints field names and value types of the account's resources, and the managed values of ours, to confirm the names in `src/resources.ts`           |
+| `pnpm infra:deploy --environment <env> --tarball padvinder-release.tar.gz --commit <full sha>` | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, SSH below                                                                   | Deploys one release (steps below)                                                                                                                              |
+| `pnpm infra:services --environment <env> (--enable \| --disable \| --restart)`                 | `ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`                                                                              | Turns the two services of an environment on or off, or restarts them                                                                                           |
+| `pnpm test:fake-host`                                                                          | Docker, a release tarball for the deploy test                                                                           | Tests SSH, upload and deploy against a fake host container. In CI as the job `deploy-test`                                                                     |
 
 SSH needs `SSH_KNOWN_HOSTS_FILE` (path to a known_hosts file) and the private key, from one of two places:
 
@@ -114,6 +114,7 @@ The staging deploy, Provision and Staging services of one environment share the 
 | Alwaysdata profile                 | The maintainer, 2FA on           | The panel, and the API tokens (a token has the profile's rights)                                    |
 | Alwaysdata account `<account>`     | (under that profile)             | Sites, services, databases of both environments; its main SSH user for provisioning and deploys     |
 | GitHub organization and repository | The maintainer                   | Workflows, the environments `staging` and `production`, their secrets, approving production deploys |
+| Mailbox `noreply@padvinder.net`    | (on the account `<account>`)     | The sender of the login codes, for both environments (see "Mail")                                   |
 | DNS of `padvinder.net`             | The maintainer, at the registrar | The DNS records below (not hosted at Alwaysdata)                                                    |
 
 ## GitHub setup (once, by hand)
@@ -122,7 +123,7 @@ Settings, Environments in the repository. The step by step for the environments,
 
 - [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, the branch rule `main` only.
 - [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off (one maintainer would block himself). Deployment branches and tags: `main` only.
-- [ ] In each environment, these five secrets:
+- [ ] In each environment, these eight secrets:
 
 | Name                 | Kind   | Staging and production                             | How to make it                                                          |
 | -------------------- | ------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -131,6 +132,9 @@ Settings, Environments in the repository. The step by step for the environments,
 | `DATABASE_PASSWORD`  | Secret | Different per environment                          | `openssl rand -hex 32`                                                  |
 | `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                        |
 | `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                                |
+| `AUTH_SECRET`        | Secret | Different per environment                          | `openssl rand -hex 32`. Better Auth signs sessions with it              |
+| `SMTP_USER`          | Secret | The same in both                                   | The mailbox address, `noreply@padvinder.net` (see "Mail")               |
+| `SMTP_PASSWORD`      | Secret | The same in both                                   | The mailbox's password, `openssl rand -hex 32` (see "Mail")             |
 
 **Why `main` only, also for staging.** Both environments live on one Alwaysdata account, and there every SSH user and every API token reaches everything: the staging token can read and change production, and the deploy key logs in as the account's main user, which runs and owns both. Whoever can run code in the `staging` environment can therefore read production's secrets and data. So the account is the security boundary, not the environment, and staging is treated as production-sensitive: only reviewed code on `main` may hold the deploy credentials. A branch cannot be tried on staging from GitHub; merge it, or the maintainer deploys it locally with the CLI (see "Running locally").
 
@@ -166,6 +170,25 @@ openssl rand -hex 32 | gh secret set DATABASE_PASSWORD --env production --repo P
 
 GitHub cannot show a secret again. The password also stands in the env file on the server, and a lost one is replaced by rotating it (below).
 
+**Login secret.** A different one per environment, like the database passwords:
+
+```sh
+openssl rand -hex 32 | gh secret set AUTH_SECRET --env staging --repo PadVinder-net/PadVinder
+openssl rand -hex 32 | gh secret set AUTH_SECRET --env production --repo PadVinder-net/PadVinder
+```
+
+**Mailbox.** Make the password first, then the mailbox with it (see "Mail"), then the secrets. Both environments send from the same mailbox:
+
+```sh
+openssl rand -hex 32 > smtp-password      # in the temporary directory; paste it into the panel
+gh secret set SMTP_PASSWORD --env staging --repo PadVinder-net/PadVinder < smtp-password
+gh secret set SMTP_PASSWORD --env production --repo PadVinder-net/PadVinder < smtp-password
+printf noreply@padvinder.net | gh secret set SMTP_USER --env staging --repo PadVinder-net/PadVinder
+printf noreply@padvinder.net | gh secret set SMTP_USER --env production --repo PadVinder-net/PadVinder
+```
+
+The mailbox address is no real secret (it is the sender of every mail), but another mail service would give a login that is one, so it is a secret from the start.
+
 **Account and known hosts.**
 
 ```sh
@@ -180,11 +203,33 @@ gh secret set SSH_KNOWN_HOSTS --env production --repo PadVinder-net/PadVinder < 
 
 Only store the known hosts after the fingerprint matches; with a wrong one the deploys trust the wrong server.
 
+## Mail
+
+The API sends the login codes over SMTP. On Alwaysdata it uses Alwaysdata's own SMTP server, logged in as a mailbox on the account: no extra service and no extra cost (decided in `docs/superpowers/specs/2026-11-21-accounts-and-access-design.md`, "Mail in production and staging"). Alwaysdata documents no sending limits and no delivery logs, so delivery is a check (see "Verification"); if mail lands in spam or does not arrive, move to a transactional mail service.
+
+| Setting         | Value                               | Where it comes from                                                                      |
+| --------------- | ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| `SMTP_HOST`     | `smtp-<account>.alwaysdata.net`     | `smtpHost()` in `src/environments.ts`, from the account name                             |
+| `SMTP_PORT`     | `465`, TLS from the first byte      | `smtpPort` in `src/environments.ts`. The only port Alwaysdata's login details page lists |
+| `SMTP_USER`     | `noreply@padvinder.net`             | Secret `SMTP_USER`. Alwaysdata's SMTP login is the full mailbox address                  |
+| `SMTP_PASSWORD` | The mailbox's password              | Secret `SMTP_PASSWORD`                                                                   |
+| `MAIL_FROM`     | `PadVinder <noreply@padvinder.net>` | `mailFrom` in `src/environments.ts`. Must be the mailbox `SMTP_USER` logs in as          |
+
+The API requires TLS whenever it logs in (port 465: TLS at once; any other port: STARTTLS or nothing is sent), so the password never travels in plain text. Staging and production send from the same mailbox, with the same sender; a code only works in the environment that sent it.
+
+**Make the mailbox, once, before the first Provision with login.** In the panel:
+
+1. Domains: check that `padvinder.net` is listed (the sites use it, so it probably is). If it is not, add it as a domain whose DNS stays elsewhere: do not move the name servers to Alwaysdata; DNS stays at the registrar (see "DNS").
+2. Emails, Addresses, Add: domain `padvinder.net`, local part `noreply`, password the one made for `SMTP_PASSWORD` (see "Mailbox" under "Making each value"). Leave the other settings at their defaults; set a small quota if you like, nothing needs to stay in it.
+3. Domains, `padvinder.net`, DNS records: this lists the SPF, DKIM and DMARC records Alwaysdata wants. Copy them to the registrar (see "DNS"). Mail sent before they are in place is likely to land in spam.
+
+**Moving to another mail service** (Lettermint, Brevo): the API only assumes SMTP. Change `smtpHost()`, `smtpPort` and, if the sender changes, `mailFrom` in `src/environments.ts` (a pull request), set `SMTP_USER` and `SMTP_PASSWORD` to the service's SMTP login, put the service's SPF and DKIM records at the registrar, then run Provision with `apply` and restart the services.
+
 ## First run, in this order
 
 The workflows reach the environments only from `main`, so the first runs happen after pull request 8 is merged.
 
-1. **Secrets** in both environments, as above.
+1. **Secrets** in both environments, as above, and the mailbox (see "Mail").
 2. **Add the deploy public key** `padvinder-deploy.pub` to the main SSH user `<account>` in the panel (see "Deploy key"). That user came with the account; no SSH user is created.
 3. **Merge pull request 8.** Its Deploy run fails safely, because nothing is provisioned yet: the staging job loads the key, unpacks the release and asks the API for the services, then stops with `Deploy failed: Found no service "padvinder-api (staging)". Found no service "padvinder-worker (staging)". Run pnpm infra:provision --environment staging to see what differs.` It has not used SSH or changed anything, and production does not start, because it needs the staging job.
 4. **Plan staging, read-only.** Actions, Provision, Run workflow (from `main`), environment `staging`, `apply` off, `inspect` on. Nothing changes, and SSH is not used. Check the plan, and compare the inspect output with the `UNVERIFIED` fields in `src/resources.ts`. If the names differ, fix them there in a pull request, merge it (its Deploy run fails as in step 3) and plan again.
@@ -192,6 +237,21 @@ The workflows reach the environments only from `main`, so the first runs happen 
 6. **Deploy to staging.** Actions, Deploy, Run workflow (from `main`); or re-run the failed run of step 3. The services start failing as soon as they are created (no release yet), and Alwaysdata may turn them off; the first deploy turns them on. The production job then waits for approval: reject it for now (Review deployments): production is not provisioned yet, and a deploy waiting in the group `deploy-production` gets in the way of provisioning it (see "Operating notes").
 7. **Verify** staging: the "Verification" section below.
 8. **Production:** steps 4 and 5 with `production`. Each run waits for your approval, also a plan. The key is already on the main SSH user. Then run Deploy again from `main`, check staging, and approve the production job.
+
+## Rolling out login
+
+The login pull request makes the API refuse to start without `PUBLIC_ORIGIN`, `AUTH_SECRET`, `SMTP_HOST`, `SMTP_PORT` and `MAIL_FROM`, which only a Provision run of that pull request's code writes. The worker does not need them. Provision runs from `main` only, so merging comes first, and the Deploy run the merge starts cannot succeed yet. Order, once:
+
+1. **Secrets:** `AUTH_SECRET`, `SMTP_USER` and `SMTP_PASSWORD` in both environments (see "Making each value"). Until they are set, Provision stops with `Set these environment variables: AUTH_SECRET, SMTP_USER, SMTP_PASSWORD` and changes nothing.
+2. **Mailbox** `noreply@padvinder.net` on the account, with the password of `SMTP_PASSWORD` (see "Mail").
+3. **DNS:** the SPF, DKIM and DMARC records at the registrar (see "DNS"). They may take a while; login works without them, but mail is likely to land in spam until they are in place.
+4. **Merge** the pull request. Its Deploy run fails safely on staging, unless you cancel it while it is still at `release / build`. What you see: the migrations run (they only add tables, so the old release keeps working on them), `current` switches, the services restart, and the new API exits at once with `Invalid API environment: AUTH_SECRET: ...; PUBLIC_ORIGIN: ...; SMTP_HOST: ...; SMTP_PORT: ...; MAIL_FROM: ...` in its service log (`admin/logs/services/`). The health check gives up after 3 minutes, the deploy switches back to the previous release, restarts, and fails with `Deploy of <commit> failed its health check and was rolled back to <previous release>. ... The rollback to <commit> passed its health check.` Staging keeps running the old release. The production job does not start, because it needs the staging job.
+5. **Provision staging:** Actions, Provision, environment `staging`, `apply` on. The plan is `ok` for every resource; it rewrites `padvinder/staging/.env` with the login lines and says the services must be restarted. No restart needed now: the next step restarts them.
+6. **Deploy to staging:** re-run the failed Deploy run (Re-run failed jobs), or run Deploy from `main`. When its production job asks for approval, reject it for now (a deploy waiting in `deploy-production` gets in the way of provisioning production, see "Operating notes").
+7. **Check staging:** log in on `https://staging.padvinder.net/app/` with an address of your own, and work through the login rows in "Verification".
+8. **Production:** Provision `production` with `apply` on (it waits for your approval), then run Deploy from `main` again, and approve its production job.
+
+If production has not been provisioned at all yet, step 8 is its first run ("First run", step 8); the secrets of step 1 are then already in place.
 
 ## Running locally
 
@@ -201,6 +261,9 @@ The same commands work on your machine with the settings in the environment vari
 export ALWAYSDATA_ACCOUNT='<account>'
 read -rs ALWAYSDATA_API_KEY && export ALWAYSDATA_API_KEY        # paste, Enter
 read -rs DATABASE_PASSWORD && export DATABASE_PASSWORD          # only for provisioning
+read -rs AUTH_SECRET && export AUTH_SECRET                      # only for provisioning
+read -rs SMTP_USER && export SMTP_USER                          # only for provisioning
+read -rs SMTP_PASSWORD && export SMTP_PASSWORD                  # only for provisioning
 export DEPLOY_SSH_KEY_FILE="$HOME/.ssh/padvinder-deploy" SSH_KNOWN_HOSTS_FILE="$HOME/.ssh/padvinder-known-hosts"   # outside the repository
 pnpm infra:provision --environment staging
 ```
@@ -239,16 +302,19 @@ pnpm infra:deploy --environment staging --tarball padvinder-release.tar.gz --com
 
 ### Rotation schedule
 
-| Secret                                  | Why                                                                                                 | When                                                                                                                                                      |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALWAYSDATA_API_KEY`                    | Full rights of the profile over the whole account; the public docs do not say whether tokens expire | Every January (before the feature freeze around 1 February, so nothing changes during the season), and at once when a log or a runner may have exposed it |
-| `DEPLOY_SSH_KEY`                        | Full SSH access to the account                                                                      | Every January, together with the API token                                                                                                                |
-| `DATABASE_PASSWORD` (per environment)   | Readable on the server in `padvinder/<env>/.env` by anything on the account                         | Every January; at once when someone with access leaves, or on suspicion                                                                                   |
-| `ALWAYSDATA_ACCOUNT`, `SSH_KNOWN_HOSTS` | Not real secrets; secrets only to stay out of public logs                                           | Only when the account moves or Alwaysdata changes its host key                                                                                            |
+| Secret                                  | Why                                                                                                 | When                                                                                                                                                                |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALWAYSDATA_API_KEY`                    | Full rights of the profile over the whole account; the public docs do not say whether tokens expire | Every January (before the feature freeze around 1 February, so nothing changes during the season), and at once when a log or a runner may have exposed it           |
+| `DEPLOY_SSH_KEY`                        | Full SSH access to the account                                                                      | Every January, together with the API token                                                                                                                          |
+| `DATABASE_PASSWORD` (per environment)   | Readable on the server in `padvinder/<env>/.env` by anything on the account                         | Every January; at once when someone with access leaves, or on suspicion                                                                                             |
+| `SMTP_PASSWORD` (both environments)     | Sends mail as `noreply@padvinder.net`; readable on the server in both env files                     | Every January, together with the database passwords; at once when someone with access leaves, or on suspicion                                                       |
+| `AUTH_SECRET` (per environment)         | Signs the sessions and encrypts the stored login codes; readable on the server in the env file      | Not on a schedule: rotating it logs every user of that environment out, and open login codes stop working. At once when someone with access leaves, or on suspicion |
+| `ALWAYSDATA_ACCOUNT`, `SSH_KNOWN_HOSTS` | Not real secrets; secrets only to stay out of public logs                                           | Only when the account moves or Alwaysdata changes its host key                                                                                                      |
+| `SMTP_USER`                             | Not a real secret on Alwaysdata (the sender address); a secret for another mail service's login     | Only when the mailbox or the mail service changes                                                                                                                   |
 
 "At once" also covers a lost or compromised laptop that held a key or token, and anyone losing access.
 
-Secrets that later slices add get a row here when they are added. Examples: the Better Auth secret (rotating it logs every user out), the SMTP credentials, and the VAPID key pair (rotating it invalidates every push subscription, so devices must subscribe again). This is guidance for whoever adds them, not a list of existing rows.
+Secrets that later slices add get a row here when they are added. Example: the VAPID key pair (rotating it invalidates every push subscription, so devices must subscribe again). This is guidance for whoever adds them, not a list of existing rows.
 
 The workflow `rotation-reminder.yml` opens an issue every 1 January with a checklist. How to rotate each secret is in the next section.
 
@@ -258,6 +324,8 @@ The workflow `rotation-reminder.yml` opens an issue every 1 January with a check
 - **API token:** make a new token in the panel, set `ALWAYSDATA_API_KEY`, delete the old token in the panel.
 - **Deploy key:** make a new key pair, add the new public key to the main SSH user `<account>` in the panel, set `DEPLOY_SSH_KEY` in both environments, check that a deploy or a Provision apply works, then remove the old public key in the panel. The key must have no passphrase: the action loads it into ssh-agent without a prompt, and fails with "Could not load DEPLOY_SSH_KEY into ssh-agent" otherwise.
 - **SSH host key** (only if Alwaysdata changes it): make `SSH_KNOWN_HOSTS` again, after checking the fingerprint.
+- **Mailbox password:** make a new one (`openssl rand -hex 32 > smtp-password` in a temporary directory), set `SMTP_PASSWORD` in both environments, change the password of `noreply@padvinder.net` in the panel (Emails, Addresses), then run Provision with `apply` for staging and for production and restart both environments' services (`pnpm infra:services --environment <env> --restart`). From the change in the panel until the restart no login mail goes out; users press "Stuur opnieuw" after it. Do it at a quiet moment.
+- **Login secret:** `openssl rand -hex 32 | gh secret set AUTH_SECRET --env <env> ...`, Provision with `apply` (no `rotate-password`: that is for the database password only), then restart the services. Every user of that environment is logged out and must ask for a new code.
 
 ### Turning staging off and on
 
@@ -278,7 +346,16 @@ DNS for `padvinder.net` is hosted at the registrar, not at Alwaysdata. These are
 | `www.padvinder.net`     | A    | Not in any site's addresses yet           |
 | `www.padvinder.net`     | AAAA | Not in any site's addresses yet           |
 
-There are no MX or CAA records. `www.padvinder.net` resolves, but no PadVinder site serves it, so it has no certificate. Either add it to the production site (with a redirect) or remove the records; that is a decision for the maintainer.
+There are no MX or CAA records.
+
+**To do for mail** (see "Mail"; the values come from the Alwaysdata panel, Domains, `padvinder.net`, DNS records, and are not written here):
+
+- [ ] SPF: add Alwaysdata's `include:` mechanism to the existing SPF `TXT` record of `padvinder.net`. Keep one SPF record; a second one makes SPF fail.
+- [ ] DKIM: the `TXT` record Alwaysdata shows for `padvinder.net` (a name under `_domainkey.padvinder.net`).
+- [ ] DMARC: a `TXT` record at `_dmarc.padvinder.net`. Start with policy `none`, and tighten it once "Verification" shows SPF and DKIM passing.
+- [ ] Decide whether `padvinder.net` gets MX records pointing at Alwaysdata. Without them, bounces and replies to `noreply@padvinder.net` reach nobody; sending works either way.
+
+Record each one in the table above (name and type only) once it exists. `www.padvinder.net` resolves, but no PadVinder site serves it, so it has no certificate. Either add it to the production site (with a redirect) or remove the records; that is a decision for the maintainer.
 
 Let's Encrypt only issues a certificate when the address already points at Alwaysdata, so DNS comes before the site.
 
@@ -286,7 +363,7 @@ Let's Encrypt only issues a certificate when the address already points at Alway
 
 ### On a new Alwaysdata account
 
-1. Make the account, its API token and the GitHub secrets for it (`ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `SSH_KNOWN_HOSTS` change; keep or remake the others).
+1. Make the account, its API token, the mailbox (see "Mail") and the GitHub secrets for it (`ALWAYSDATA_ACCOUNT`, `ALWAYSDATA_API_KEY`, `SSH_KNOWN_HOSTS` change, and `SMTP_PASSWORD` if the new mailbox has another password; keep or remake the others; keep `AUTH_SECRET` so nobody is logged out). The DKIM record of the new account replaces the old one at the registrar.
 2. Follow "First run" up to and including the apply, for each environment.
 3. Restore the database before the first deploy (below). The deploy's migrations then find nothing to do.
 4. Copy files: today there are none besides the env file and the releases, which provisioning and the deploy make again. Once photos exist, copy their storage directory too.
@@ -312,7 +389,7 @@ Everything is plain Linux processes against a standard PostgreSQL; nothing here 
 
    An error that the `postgis` extension already exists is harmless.
 
-3. **Release.** Unpack `padvinder-release.tar.gz`, write an env file with `DATABASE_URL`, `API_HOST`, `API_PORT`, `ALLOWED_ORIGINS` and `LOG_LEVEL` (mode 600, outside the release), then from inside `release/`:
+3. **Release.** Unpack `padvinder-release.tar.gz`, write an env file with the variables of "Server layout" (mode 600, outside the release; `SMTP_*` and `MAIL_FROM` of the new host's mail service), then from inside `release/`:
 
    ```sh
    node --env-file=release.env --env-file=<env file> api/dist/migrate.js migrations
@@ -354,5 +431,14 @@ The first deploy to staging (22 November 2026, commit 1a80783, from the maintain
 | UNVERIFIED: the service on/off field `is_disabled`                                                                                                                                                                                                                                        | Staging services off and on; the panel shows the change                                                                          | confirmed 22 November 2026: the restart through the API also started services that Alwaysdata had stopped after "maximum restart attempts reached" before the first release. OPEN: switching staging off and on from the workflow not tried                                                                                                                                         |
 | The ssh-agent of the credentials step outlives that step on GitHub's runner, and the job's last step stops it                                                                                                                                                                             | The deploy's upload works; the step "Stop the SSH agent" prints nothing (not "had already stopped")                              | not yet verified on GitHub's runner; the first deploy was run from the maintainer's machine (22 November 2026)                                                                                                                                                                                                                                                                      |
 | The status codes of the API's `PATCH` and `restart` (the fake answers 204)                                                                                                                                                                                                                | The first apply and deploy succeed                                                                                               | confirmed 22 November 2026: the first provision and deploy succeeded                                                                                                                                                                                                                                                                                                                |
+
+Login and mail, after the rollout of login ("Rolling out login"):
+
+| What                                                                                                                                                                      | How to check                                                                                                                                                          | Status |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| The API logs in to `smtp-<account>.alwaysdata.net` on port 465 with TLS as `noreply@padvinder.net`. Taken from Alwaysdata's login details page, which lists only port 465 | Ask for a code on staging; the mail arrives. A failure is in the API's service log (`admin/logs/services/`), without the address                                      | OPEN   |
+| A login code reaches Gmail, Outlook, iCloud, KPN and Ziggo inboxes, not the spam folder                                                                                   | Ask for a code for an address at each; look in the inbox and the spam folder                                                                                          | OPEN   |
+| SPF, DKIM and DMARC pass                                                                                                                                                  | In Gmail, "Show original" on a code mail: `SPF: PASS`, `DKIM: PASS`, `DMARC: PASS`. If they do not pass after the DNS records are in place, move to a mail service    | OPEN   |
+| Alwaysdata's reverse proxy passes the client's IP address in a header the client cannot forge, so the login limit per IP address means something                          | Ask for codes with a forged `X-Forwarded-For`; the API's `sessions.ip_address` and the limit must follow the real address. If not, all users share one limit per path | OPEN   |
 
 When a name differs, change it in `src/resources.ts` only, and the fake in `src/testing/fake-api.ts` if its answers differ.

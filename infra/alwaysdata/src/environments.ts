@@ -8,6 +8,8 @@ export type Environment = {
   apiPort: number;
   /** Exact origins for `ALLOWED_ORIGINS`. */
   allowedOrigins: string[];
+  /** The origin users open, for `PUBLIC_ORIGIN`; must be one of `allowedOrigins`. */
+  publicOrigin: string;
 };
 
 export const environments: Record<EnvironmentName, Environment> = {
@@ -15,11 +17,13 @@ export const environments: Record<EnvironmentName, Environment> = {
     addresses: ["padvinder.net"],
     apiPort: 8300,
     allowedOrigins: ["https://padvinder.net"],
+    publicOrigin: "https://padvinder.net",
   },
   staging: {
     addresses: ["staging.padvinder.net"],
     apiPort: 8301,
     allowedOrigins: ["https://staging.padvinder.net"],
+    publicOrigin: "https://staging.padvinder.net",
   },
 };
 
@@ -42,3 +46,14 @@ export const sshHost = (account: string) => `ssh-${account}.alwaysdata.net`;
  * file-rights problems, so releases and env files belong to the main user like everything else.
  */
 export const sshUser = (account: string) => account;
+
+/**
+ * Mail goes out through Alwaysdata's own SMTP server, logged in as a mailbox on the account
+ * (SMTP_USER and SMTP_PASSWORD). Port 465 with implicit TLS, as Alwaysdata documents it; the
+ * API requires TLS whenever it logs in. Another provider (Lettermint, Brevo) means changing
+ * these two and the SMTP secrets: the API only assumes SMTP.
+ */
+export const smtpHost = (account: string) => `smtp-${account}.alwaysdata.net`;
+export const smtpPort = 465;
+/** The sender of every mail, in both environments: the mailbox SMTP_USER logs in as. */
+export const mailFrom = "PadVinder <noreply@padvinder.net>";

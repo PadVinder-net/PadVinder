@@ -1,3 +1,4 @@
+import type { LoginSecrets } from "./env-file.ts";
 import { sshHost, sshUser, type EnvironmentName } from "./environments.ts";
 import type { SshIdentity } from "./remote.ts";
 
@@ -5,13 +6,26 @@ export type InfraConfig = {
   environment: EnvironmentName;
   account: string;
   apiKey: string;
-  /** Only when requested: provisioning needs it, deploys do not. */
+  /** Only when requested: provisioning writes it to the env file, deploys do not need it. */
   databasePassword?: string;
+  /** Only when requested, like the database password. */
+  login?: LoginSecrets;
   /** Only when requested. */
   ssh?: { host: string; user: string; identity: SshIdentity; knownHostsFile: string };
 };
 
 const accountPattern = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** The env file's secrets, in the order errors name them. */
+const loginSecretNames = ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD"] as const;
+/** The API refuses a shorter AUTH_SECRET (apps/api/src/env.ts). */
+const authSecretMinLength = 32;
+/**
+ * What Node's --env-file reads back unchanged from an unquoted value: printable ASCII
+ * without spaces, quotes, backslashes and `#` (a comment). Tested in env-file.test.ts.
+ */
+const envFileValuePattern = /^[\x21-\x7e]+$/;
+const envFileUnsafePattern = /["#'\\`]/;
 
 /**
  * Reads the infrastructure settings from environment variables, under the same names as the
@@ -20,14 +34,16 @@ const accountPattern = /^[a-z0-9][a-z0-9_-]*$/;
 export function loadInfraConfig(
   source: Record<string, string | undefined>,
   environment: EnvironmentName,
-  options: { databasePassword?: boolean; ssh?: boolean } = {},
+  options: { envFileSecrets?: boolean; ssh?: boolean } = {},
 ): InfraConfig {
-  const wantPassword = options.databasePassword ?? true;
+  // The database password and the login secrets go into the env file together: provisioning
+  // never writes a file without them, because the API refuses to start on it.
+  const wantSecrets = options.envFileSecrets ?? true;
   const wantSsh = options.ssh ?? true;
   const required = [
     "ALWAYSDATA_ACCOUNT",
     "ALWAYSDATA_API_KEY",
-    ...(wantPassword ? ["DATABASE_PASSWORD"] : []),
+    ...(wantSecrets ? ["DATABASE_PASSWORD", ...loginSecretNames] : []),
     ...(wantSsh ? ["SSH_KNOWN_HOSTS_FILE"] : []),
   ];
   const value = (name: string) => source[name] ?? "";
@@ -52,7 +68,27 @@ export function loadInfraConfig(
   }
 
   const config: InfraConfig = { environment, account, apiKey: value("ALWAYSDATA_API_KEY") };
-  if (wantPassword) config.databasePassword = value("DATABASE_PASSWORD");
+  if (wantSecrets) {
+    for (const name of loginSecretNames) {
+      const secret = value(name);
+      if (!envFileValuePattern.test(secret) || envFileUnsafePattern.test(secret)) {
+        throw new Error(
+          `${name} may hold only printable ASCII characters, without spaces, quotes, backslashes or #: the env file on the server cannot carry them`,
+        );
+      }
+    }
+    if (value("AUTH_SECRET").length < authSecretMinLength) {
+      throw new Error(
+        `AUTH_SECRET must have at least ${authSecretMinLength} characters, or the API does not start; make one with openssl rand -hex 32`,
+      );
+    }
+    config.databasePassword = value("DATABASE_PASSWORD");
+    config.login = {
+      authSecret: value("AUTH_SECRET"),
+      smtpUser: value("SMTP_USER"),
+      smtpPassword: value("SMTP_PASSWORD"),
+    };
+  }
   if (wantSsh) {
     config.ssh = {
       host: sshHost(account),

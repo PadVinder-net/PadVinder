@@ -16,11 +16,17 @@ import {
 
 const password = "p@ss/w+rd";
 const apiKey = "api/key+value";
+const login = {
+  authSecret: "auth-secret-value-auth-secret-value-0000",
+  smtpUser: "mailbox-user@example.test",
+  smtpPassword: "smtp-password-value",
+};
 const config: InfraConfig = {
   environment: "staging",
   account: "acmecorp",
   apiKey,
   databasePassword: password,
+  login,
   ssh: {
     host: "ssh-acmecorp.alwaysdata.net",
     user: "acmecorp",
@@ -110,7 +116,15 @@ const run = (provisionArgs: ProvisionArgs) =>
 const writes = () => fake.requests.filter((r) => r.method !== "GET");
 
 const expectNoSecrets = (text: string) => {
-  for (const value of [password, encodeURIComponent(password), apiKey, config.account]) {
+  for (const value of [
+    password,
+    encodeURIComponent(password),
+    apiKey,
+    config.account,
+    login.authSecret,
+    login.smtpUser,
+    login.smtpPassword,
+  ]) {
     expect(text).not.toContain(value);
   }
 };
@@ -149,7 +163,12 @@ test("with --apply it creates the resources, then writes the env file and the re
       method: "writeFile",
       args: [
         "padvinder/staging/.env",
-        renderEnvFile({ account: config.account, env: "staging", databasePassword: password }),
+        renderEnvFile({
+          account: config.account,
+          env: "staging",
+          databasePassword: password,
+          login,
+        }),
         0o600,
       ],
     },
@@ -177,6 +196,7 @@ test("a restart is asked for only when the env file changed or the password was 
     account: config.account,
     env: "staging",
     databasePassword: password,
+    login,
   });
   remoteFiles.set("padvinder/staging/.env", envFile.replace("LOG_LEVEL=info", "LOG_LEVEL=debug"));
   output = [];
@@ -218,6 +238,7 @@ test("--apply refuses a password that differs from the env file's, unless --rota
     account: config.account,
     env: "staging",
     databasePassword: oldPassword,
+    login,
   });
   remoteFiles.set("padvinder/staging/.env", oldEnvFile);
   calls = [];
@@ -240,7 +261,7 @@ test("--apply refuses a password that differs from the env file's, unless --rota
   expect(await run(args({ apply: true, rotatePassword: true }))).toBe(0);
   expect(writes().some((r) => r.method === "PATCH")).toBe(true);
   expect(remoteFiles.get("padvinder/staging/.env")).toBe(
-    renderEnvFile({ account: config.account, env: "staging", databasePassword: password }),
+    renderEnvFile({ account: config.account, env: "staging", databasePassword: password, login }),
   );
   expect(output.join("\n")).toMatch(restartNotice);
   expect(output.join("\n")).not.toContain(oldPassword);
@@ -250,7 +271,12 @@ test("a password mismatch stops before any change through the API", async () => 
   expect(await run(args({ apply: true }))).toBe(0);
   remoteFiles.set(
     "padvinder/staging/.env",
-    renderEnvFile({ account: config.account, env: "staging", databasePassword: "old-secret" }),
+    renderEnvFile({
+      account: config.account,
+      env: "staging",
+      databasePassword: "old-secret",
+      login,
+    }),
   );
   // Something else to apply, too.
   fake.resources.get("service")![0]!.command = "node old.js";
@@ -590,4 +616,67 @@ test("the CLI exits 2 with usage on an unknown flag and 1 on missing variables",
   });
   expect(missing.status).toBe(1);
   expect(missing.stderr).toMatch(/ALWAYSDATA_API_KEY/);
+  expect(missing.stderr).toMatch(/AUTH_SECRET, SMTP_USER, SMTP_PASSWORD/);
+  // Inspect writes no env file, so it does without them.
+  const inspect = spawnSync(process.execPath, [script, "--environment", "staging", "--inspect"], {
+    env: { ...env, ALWAYSDATA_ACCOUNT: "acme" },
+    encoding: "utf8",
+  });
+  expect(inspect.status).toBe(1);
+  expect(inspect.stderr).toBe("Set these environment variables: ALWAYSDATA_API_KEY\n");
+});
+
+test("without the login secrets it fails before reading or changing anything", async () => {
+  const { login: _, ...withoutLogin } = config;
+  const code = await runProvision({
+    args: args({ apply: true }),
+    config: withoutLogin,
+    api,
+    remote: () => fakeRemote,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(1);
+  expect(output.join("\n")).toMatch(
+    /Provisioning failed: AUTH_SECRET, SMTP_USER and SMTP_PASSWORD are not set/,
+  );
+  expect(writes()).toEqual([]);
+  expect(calls).toEqual([]);
+});
+
+test("a new login secret rewrites the env file and asks for a restart, without rotate-password", async () => {
+  remoteFiles.set("padvinder/staging/current", "release");
+  const oldEnvFile = renderEnvFile({
+    account: config.account,
+    env: "staging",
+    databasePassword: password,
+    login: { ...login, authSecret: "old-auth-secret-old-auth-secret-000000" },
+  });
+  remoteFiles.set("padvinder/staging/.env", oldEnvFile);
+  expect(await run(args({ apply: true }))).toBe(0);
+  const written = remoteFiles.get("padvinder/staging/.env");
+  expect(written).toContain(`AUTH_SECRET=${login.authSecret}\n`);
+  expect(written).toContain(`SMTP_PASSWORD=${login.smtpPassword}\n`);
+  expect(calls.find((call) => call.method === "writeFile")?.args[2]).toBe(0o600);
+  const text = output.join("\n");
+  expect(text).toMatch(restartNotice);
+  expect(text).not.toContain("old-auth-secret");
+  expectNoSecrets(text);
+});
+
+test("an env file from before login gets the login lines, with the same database password", async () => {
+  remoteFiles.set("padvinder/staging/current", "release");
+  const full = renderEnvFile({
+    account: config.account,
+    env: "staging",
+    databasePassword: password,
+    login,
+  });
+  const beforeLogin = full
+    .split("\n")
+    .filter((line) => !/^(PUBLIC_ORIGIN|AUTH_SECRET|SMTP_\w+|MAIL_FROM)=/.test(line))
+    .join("\n");
+  remoteFiles.set("padvinder/staging/.env", beforeLogin);
+  expect(await run(args({ apply: true }))).toBe(0);
+  expect(remoteFiles.get("padvinder/staging/.env")).toBe(full);
+  expect(output.join("\n")).toMatch(restartNotice);
 });

@@ -1,8 +1,9 @@
 // Creates and updates the Alwaysdata resources of one environment, and writes its env file.
 // Usage: pnpm infra:provision --environment <staging|production> [--apply [--rotate-password]]
 //        pnpm infra:provision --environment <staging|production> --inspect
-// Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, SSH_KNOWN_HOSTS_FILE, and
-// DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE from the environment. Its output may land in
+// Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, AUTH_SECRET, SMTP_USER,
+// SMTP_PASSWORD, SSH_KNOWN_HOSTS_FILE, and DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE from
+// the environment (--inspect only the first two). Its output may land in
 // a public log: every line goes through redactForLog(): secrets are hidden, IP addresses
 // show as <ip> and the account name as <account>.
 import { createHash } from "node:crypto";
@@ -224,6 +225,16 @@ const databaseUrlOf = (envFile: string) => /^DATABASE_URL=(.*)$/m.exec(envFile)?
 export const passwordMismatchMessage =
   "The database password in GitHub differs from the one on the server. Run Provision again with rotate-password, or restore the old secret.";
 
+/** Every secret the run knows, to hide in what it prints. */
+function secretsOf(config: InfraConfig): string[] {
+  const { login } = config;
+  return [
+    config.apiKey,
+    config.databasePassword ?? "",
+    ...(login ? [login.authSecret, login.smtpUser, login.smtpPassword] : []),
+  ];
+}
+
 /** Runs the provisioning and returns the exit code. Every printed line is redacted. */
 export async function runProvision(input: {
   args: ProvisionArgs;
@@ -234,7 +245,7 @@ export async function runProvision(input: {
   print: (line: string) => void;
 }): Promise<number> {
   const { args, config, api } = input;
-  const secrets = [config.apiKey, config.databasePassword ?? ""];
+  const secrets = secretsOf(config);
   const print = (text: string) => input.print(redactForLog(text, secrets, config.account));
 
   try {
@@ -252,6 +263,11 @@ export async function runProvision(input: {
 
     const databasePassword = config.databasePassword;
     if (databasePassword === undefined) throw new Error("DATABASE_PASSWORD is not set");
+    // Checked before anything is read or changed: an env file without them stops the API.
+    const login = config.login;
+    if (login === undefined) {
+      throw new Error("AUTH_SECRET, SMTP_USER and SMTP_PASSWORD are not set");
+    }
     const env = args.environment;
     // Read-only, and before anything is written: the services must name the main SSH user.
     const mainSshUserId = await findMainSshUserId(api, config.account);
@@ -270,7 +286,7 @@ export async function runProvision(input: {
     }
 
     const directory = environmentDirectory(env);
-    const content = renderEnvFile({ account: config.account, env, databasePassword });
+    const content = renderEnvFile({ account: config.account, env, databasePassword, login });
 
     // Read the env file before changing anything, so neither a failing SSH login nor a
     // mismatching password leaves a database password changed without the env file that
@@ -356,7 +372,7 @@ async function main(): Promise<number> {
   let config: InfraConfig;
   try {
     config = loadInfraConfig(process.env, args.environment, {
-      databasePassword: !args.inspect,
+      envFileSecrets: !args.inspect,
       ssh: !args.inspect,
     });
   } catch (error) {
@@ -372,7 +388,7 @@ async function main(): Promise<number> {
       if (!config.ssh) throw new Error("The SSH settings are missing");
       return createSshRemote({
         ...config.ssh,
-        secrets: [config.apiKey, config.databasePassword ?? ""],
+        secrets: secretsOf(config),
       });
     },
     print: (line) => console.log(line),
