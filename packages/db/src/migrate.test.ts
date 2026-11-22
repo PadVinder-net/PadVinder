@@ -1,10 +1,11 @@
 import { cp, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pg from "pg";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { sql } from "drizzle-orm";
 import { runMigrations } from "./migrate";
-import { createTestDatabase, type TestDatabase } from "./testing";
+import { createTestDatabase, newTestDatabaseName, type TestDatabase } from "./testing";
 
 let t: TestDatabase | undefined;
 beforeAll(async () => {
@@ -93,4 +94,40 @@ test("migrates a database that already holds data in the old shape", async () =>
     await rm(firstTwo, { recursive: true });
     await old.drop();
   }
+});
+
+test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
+  const admin = new URL(t!.url);
+  // A test database name, so the cleanup drops it if this run is interrupted.
+  const name = newTestDatabaseName();
+  admin.pathname = "/postgres";
+  const client = new pg.Client({ connectionString: admin.toString() });
+  await client.connect();
+  try {
+    await client.query(
+      `create database "${name}" template template0 encoding 'UTF8' lc_collate 'C' lc_ctype 'C'`,
+    );
+    const url = new URL(t!.url);
+    url.pathname = `/${name}`;
+    const error = (await runMigrations(url.toString()).catch((e: unknown) => e)) as Error;
+    expect(error.message).toBe(
+      `Database ${name} has encoding/locale UTF8/C/C; PadVinder requires UTF8 with locale C.UTF-8. Recreate it with that locale before migrating.`,
+    );
+    // Nothing was migrated.
+    const check = new pg.Client({ connectionString: url.toString() });
+    await check.connect();
+    try {
+      const { rows } = await check.query("select to_regnamespace('drizzle') as schema");
+      expect(rows[0].schema).toBeNull();
+    } finally {
+      await check.end();
+    }
+  } finally {
+    await client.query(`drop database if exists "${name}" with (force)`);
+    await client.end();
+  }
+});
+
+test("accepts the test database, which has UTF8 and C.UTF-8", async () => {
+  await expect(runMigrations(t!.url)).resolves.toBeUndefined();
 });

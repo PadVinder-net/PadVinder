@@ -1,0 +1,48 @@
+# Opens an issue every 1 January to rotate the deployment secrets. The schedule and the steps
+# are in infra/alwaysdata/README.md ("Rotation schedule", "Rotating a secret").
+# The only workflow with write permission: it can only touch issues. No secrets, no checkout.
+name: Rotation reminder
+
+on:
+  schedule:
+    # GitHub cron runs in UTC: 07:00 UTC is 08:00 or 09:00 in Amsterdam.
+    - cron: "0 7 1 1 *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  remind:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Open the issue
+        run: |
+          year="$(date -u +%Y)"
+          title="Rotate the deployment secrets ($year)"
+          # Exact title match; the search of "gh issue list" is fuzzy.
+          existing="$(gh issue list --state open --limit 200 --json number,title |
+            jq -r --arg t "$title" '.[] | select(.title == $t) | .number')"
+          if [ -n "$existing" ]; then
+            echo "::notice::Issue #$existing already exists; nothing to do."
+            exit 0
+          fi
+          cat > body.md <<'BODY'
+          It is January: rotate the deployment secrets before the feature freeze around 1 February.
+          Why and when: "Rotation schedule" in `infra/alwaysdata/README.md`. How: "Rotating a secret" in the same file.
+
+          - [ ] `ALWAYSDATA_API_KEY`: new token in the panel, set the secret, delete the old token
+          - [ ] `DEPLOY_SSH_KEY`: new key pair, in both environments, remove the old public key
+          - [ ] `DATABASE_PASSWORD` of staging (Provision with `rotate-password`, then restart the services)
+          - [ ] `DATABASE_PASSWORD` of production (the same)
+          - [ ] A deploy or a Provision plan works with the new secrets
+          - [ ] Check whether later slices added secrets that need a row in the schedule
+
+          Rotate at once, outside the schedule, after a leak, a lost laptop that held a key, or when someone loses access.
+          BODY
+          gh issue create --title "$title" --body-file body.md

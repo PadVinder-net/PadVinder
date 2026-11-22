@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
@@ -9,7 +10,10 @@ import { calVerSchema } from "../../packages/contracts/src/version.ts";
 
 import { manifest } from "./pwa-manifest.ts";
 
-const DEFAULT_APP_VERSION = "2027.0.0";
+// The single source of the app version: bump it in package.json. PADVINDER_APP_VERSION overrides it.
+const DEFAULT_APP_VERSION: string = JSON.parse(
+  readFileSync(`${import.meta.dirname}/package.json`, "utf8"),
+).version;
 
 // The root directory, resolved from this file so it works from any working directory.
 const rootDir = `${import.meta.dirname}/../..`;
@@ -33,13 +37,18 @@ export default defineConfig(({ command, mode }) => {
         `Set it to YYYY.N.P or leave it unset to use ${DEFAULT_APP_VERSION}.`,
     );
   }
+  // The CI run number, shown next to the version. Empty counts as unset.
+  const appBuild = env.PADVINDER_BUILD_NUMBER || "dev";
   const https = env.DEV_HTTPS === "1";
 
   return {
     // The API serves the build at /app/, and the installed PWA's scope is /app/. Do not change.
     base: "/app/",
     envDir: rootDir,
-    define: { __APP_VERSION__: JSON.stringify(appVersion) },
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __APP_BUILD__: JSON.stringify(appBuild),
+    },
     server: {
       port,
       strictPort: true,

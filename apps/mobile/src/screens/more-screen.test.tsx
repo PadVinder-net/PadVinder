@@ -109,3 +109,10 @@ test("Log uit when the session had already ended goes to the login screen withou
   expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
   expect(screen.queryByText(/Uitloggen lukt nu niet/)).toBeNull();
 });
+
+test("more screen shows the app version and build", async () => {
+  mockFetch({ "/api/health": healthyFixture });
+  renderScreen();
+  expect(screen.getByText("App-versie 2027.0.0 (dev)")).toBeVisible();
+  await screen.findByText("Alles werkt");
+});

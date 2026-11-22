@@ -1,5 +1,6 @@
 {
   "name": "@padvinder/mobile",
+  "version": "2027.0.0",
   "private": true,
   "type": "module",
   "scripts": {

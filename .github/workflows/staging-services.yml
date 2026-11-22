@@ -1,0 +1,47 @@
+# Switches the staging services on or off: pnpm infra:services. Staging shares 1 GB of RAM
+# with production, so it may be off when nobody uses it. A deploy to staging switches it on.
+name: Staging services
+
+on:
+  workflow_dispatch:
+    inputs:
+      state:
+        description: Switch the staging API and worker on or off.
+        type: choice
+        options:
+          - "on"
+          - "off"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  services:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    # The same group as the staging deploy, so a switch never lands in the middle of one.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Only the Alwaysdata API; no SSH, so no deploy key.
+      - name: Switch the services
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          STATE: ${{ inputs.state }}
+        run: |
+          case "$STATE" in
+            on) pnpm infra:services --environment staging --enable ;;
+            off) pnpm infra:services --environment staging --disable ;;
+            *)
+              echo "::error::state must be on or off."
+              exit 1
+              ;;
+          esac

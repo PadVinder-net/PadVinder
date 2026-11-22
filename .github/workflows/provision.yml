@@ -1,0 +1,87 @@
+# Plans, and on request applies, the Alwaysdata resources of one environment: pnpm
+# infra:provision. By hand only, from main: both GitHub environments allow the branch main
+# only (one Alwaysdata account holds both, so only reviewed code may hold the credentials).
+name: Provision
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The environment to provision.
+        type: choice
+        options:
+          - staging
+          - production
+        required: true
+      apply:
+        description: Carry out the plan. Without it, only print the plan.
+        type: boolean
+        default: false
+      rotate-password:
+        description: >-
+          Send DATABASE_PASSWORD to the existing database user too. Needed after changing the
+          secret; only together with apply.
+        type: boolean
+        default: false
+      inspect:
+        description: Also print the field names and value types of the account's resources.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    # The same group as the deploy jobs: provisioning writes the env file the services read,
+    # so it waits for a running deploy of the environment, and a deploy waits for it.
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # After the dependencies are installed, so no install script can use the key.
+      - uses: ./.github/actions/alwaysdata-credentials
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: Provision
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          APPLY: ${{ inputs.apply }}
+          ROTATE_PASSWORD: ${{ inputs.rotate-password }}
+        run: |
+          args=(--environment "$ENVIRONMENT")
+          if [[ "$APPLY" == "true" ]]; then
+            args+=(--apply)
+          fi
+          # Without apply the CLI rejects this with a usage error.
+          if [[ "$ROTATE_PASSWORD" == "true" ]]; then
+            args+=(--rotate-password)
+          fi
+          pnpm infra:provision "${args[@]}"
+      # Read-only, so it also runs when the plan failed: its output helps find out why.
+      - name: Inspect
+        if: ${{ !cancelled() && inputs.inspect }}
+        env:
+          ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
+          ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: pnpm infra:provision --environment "$ENVIRONMENT" --inspect
+      - name: Stop the SSH agent
+        if: always()
+        run: |
+          if [[ -n "${DEPLOY_SSH_AGENT_PID:-}" ]]; then
+            SSH_AGENT_PID="$DEPLOY_SSH_AGENT_PID" ssh-agent -k >/dev/null 2>&1 ||
+              echo "The SSH agent had already stopped."
+          fi
+          rm -f "$RUNNER_TEMP/ssh-agent.sock"

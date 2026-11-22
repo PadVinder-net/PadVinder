@@ -1,6 +1,7 @@
 import { healthQueryOptions, useHealthLiveUpdates, useLogOut } from "@padvinder/api-client";
 import { Button, HealthStatus } from "@padvinder/ui";
 import { useQuery } from "@tanstack/react-query";
+import { APP_BUILD, APP_VERSION } from "../app-version";
 
 export function MoreScreen() {
   const { data, isError } = useQuery(healthQueryOptions());
@@ -24,6 +25,9 @@ export function MoreScreen() {
       >
         Log uit
       </Button>
+      <p className="text-muted-foreground mt-4 text-sm">
+        App-versie {APP_VERSION} ({APP_BUILD})
+      </p>
     </section>
   );
 }
