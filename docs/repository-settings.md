@@ -13,7 +13,7 @@ Settings, Rules, Rulesets, New ruleset, New branch ruleset.
   - Restrict deletions.
   - Require linear history.
   - Require a pull request before merging. Required approvals: 0 while there is one developer; raise it when there are more. Allowed merge methods: squash and rebase (linear history rules out merge commits).
-  - Require status checks to pass. Turn on "Require branches to be up to date before merging". Add these checks: `check`, `visual`, `e2e`, `scan`, `deploy-test` and `release / build`. Confirm the exact names in the picker after the first run: a job that calls a reusable workflow shows as `<caller job> / <called job>`, which is why the last one is `release / build`.
+  - Require status checks to pass. Turn on "Require branches to be up to date before merging". Add these checks: `check`, `visual`, `e2e`, `scan` and `release / build`. Confirm the exact names in the picker after the first run: a job that calls a reusable workflow shows as `<caller job> / <called job>`, which is why the last one is `release / build`. Do not add `deploy-test` (workflow `deploy-test.yml`): it runs only on pull requests that touch the deploy path, a path-filtered workflow reports nothing on other pull requests, and a required check that never reports blocks the merge.
   - Block force pushes.
 - Bypass list: leave empty, so the rules also apply to admins.
 
@@ -50,7 +50,6 @@ gh api repos/OWNER/REPO/rulesets --method POST --input - <<'JSON'
           { "context": "visual" },
           { "context": "e2e" },
           { "context": "scan" },
-          { "context": "deploy-test" },
           { "context": "release / build" }
         ]
       }
@@ -144,6 +143,6 @@ GitHub's wildcards do not match `/`, so a staging branch is `staging/<name>` wit
 
 ## 5. Check afterwards
 
-- Open a pull request and confirm that all six checks run and that the merge button waits for them.
+- Open a pull request and confirm that all five checks run and that the merge button waits for them.
 - Try pushing directly to `main`, and force-pushing: both must be refused.
 - A required check that never reports blocks the merge forever. If a job is renamed in the workflow, update the ruleset in the same change.
