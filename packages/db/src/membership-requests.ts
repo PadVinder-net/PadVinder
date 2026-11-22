@@ -42,7 +42,9 @@ export type CreateMembershipRequestResult =
         | "working_group_not_found"
         | "already_member"
         | "already_requested"
-        | "too_many_requests";
+        | "too_many_requests"
+        /** The account is gone or was deleted (in the moment after its session was checked). */
+        | "user_not_found";
     };
 
 export type WithdrawMembershipRequestResult =
@@ -94,6 +96,7 @@ async function selectRequestsForReview(
       applicantName: users.name,
       applicantEmail: users.email,
       applicantPhone: users.phone,
+      applicantDeletedAt: users.deletedAt,
     })
     .from(membershipRequests)
     .innerJoin(workingGroups, eq(workingGroups.id, membershipRequests.workingGroupId))
@@ -121,11 +124,12 @@ async function selectRequestsForReview(
       city: row.city,
       organization: { id: row.organizationId, name: row.organizationName },
     },
+    // A deleted account has no contact details: its replaced address is never shown.
     applicant: {
       id: row.userId,
       name: row.applicantName,
-      email: row.applicantEmail,
-      phone: row.applicantPhone,
+      email: row.applicantDeletedAt ? "" : row.applicantEmail,
+      phone: row.applicantDeletedAt ? null : row.applicantPhone,
     },
   }));
 }
@@ -147,6 +151,17 @@ function withoutOrganizationId({
   return request;
 }
 
+/**
+ * Holds a lock on the membership requests of one user until the transaction ends. Creating a
+ * request and deleting the account take it, so no request is stored after the account is gone.
+ */
+export async function lockMembershipRequestsOfUser(
+  tx: DbTransaction,
+  userId: string,
+): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_CLASS}, hashtext(${userId}))`);
+}
+
 /** True for PostgreSQL's unique_violation (23505), also when Drizzle wrapped it in a cause. */
 function isUniqueViolation(error: unknown): boolean {
   for (let e = error, depth = 0; e instanceof Error && depth < 5; e = e.cause, depth++) {
@@ -159,6 +174,7 @@ function isUniqueViolation(error: unknown): boolean {
  * Asks to join a working group for the user, idempotently: `id` comes from the app and is the
  * same on every resend. The checks run in this order, in one transaction:
  *
+ * 0. The user is gone or deleted: `user_not_found`.
  * 1. A request with this `id` exists: `existing` for the same user (changes nothing, sends
  *    nothing), `id_in_use` for another user.
  * 2. The working group is missing or not active: `working_group_not_found`.
@@ -190,7 +206,13 @@ function tryCreateMembershipRequest(
   input: { id: string; userId: string; workingGroupId: string; requestedAt: Date; now: Date },
 ): Promise<CreateMembershipRequestResult> {
   return db.transaction(async (tx): Promise<CreateMembershipRequestResult> => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_CLASS}, hashtext(${input.userId}))`);
+    await lockMembershipRequestsOfUser(tx, input.userId);
+
+    const [user] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, input.userId), isNull(users.deletedAt)));
+    if (!user) return { outcome: "user_not_found" };
 
     const [stored] = await selectRequests(tx, eq(membershipRequests.id, input.id));
     if (stored) {

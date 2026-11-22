@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { approveMembershipRequest, createMembershipRequest, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, withdrawMembershipRequest } from '../sdk.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { approveMembershipRequest, createMembershipRequest, deleteMe, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, withdrawMembershipRequest } from '../sdk.gen';
+import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -74,6 +74,23 @@ export const getVersionOptions = (options?: Options<GetVersionData>) => queryOpt
     },
     queryKey: getVersionQueryKey(options)
 });
+
+/**
+ * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end
+ */
+export const deleteMeMutation = (options?: Partial<Options<DeleteMeData>>): UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> => {
+    const mutationOptions: UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteMe({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getMeQueryKey = (options?: Options<GetMeData>) => createQueryKey('getMe', options);
 

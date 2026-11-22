@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, asc, count, eq, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
 import { recordAudit, type AuditAction, type AuditActor } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
 import { notifyAccessChanged } from "./notifications";
@@ -50,12 +50,28 @@ export type RoleChange = { userId: string; changed: boolean; created?: boolean }
 const PLATFORM_ADMIN_LOCK = 7_301_100_001;
 
 /**
- * Every writer of users.is_platform_admin must take this lock (account deletion will too).
+ * Every writer of users.is_platform_admin must take this lock (`deleteAccount` does too).
  * Serializes every change of the platform admin flag, so two revokes cannot both see "two admins".
  * Held until the transaction ends.
  */
 export async function lockPlatformAdmins(tx: DbTransaction): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(${PLATFORM_ADMIN_LOCK})`);
+}
+
+/**
+ * Whether another platform admin remains who has logged in at least once (the first login
+ * verifies the address), besides `userId`. An account the tool made for a mistyped address never
+ * logs in, so it does not count; neither does a deleted account (it has no flag and no verified
+ * address). Call it under `lockPlatformAdmins`. Revoking and account deletion share this rule.
+ */
+export async function hasOtherPlatformAdmin(tx: DbTransaction, userId: string): Promise<boolean> {
+  const [{ others } = { others: 0 }] = await tx
+    .select({ others: count() })
+    .from(users)
+    .where(
+      and(eq(users.isPlatformAdmin, true), eq(users.emailVerified, true), ne(users.id, userId)),
+    );
+  return others > 0;
 }
 
 async function requireOrganization(tx: DbTransaction, organizationId: string): Promise<void> {
@@ -82,7 +98,11 @@ async function requireWorkingGroup(
   return row.organizationId;
 }
 
-/** Finds the account by address, or creates an empty one. Safe when two callers do it at once. */
+/**
+ * Finds the account by address, or creates an empty one. Safe when two callers do it at once. A
+ * deleted account (reachable only through its replaced address) is `user_not_found`: it never
+ * gets a role again.
+ */
 async function findOrCreateUser(
   tx: DbTransaction,
   email: string,
@@ -94,9 +114,12 @@ async function findOrCreateUser(
     .onConflictDoNothing({ target: users.email })
     .returning({ id: users.id });
   if (created) return { id: created.id, created: true };
-  const [existing] = await tx.select({ id: users.id }).from(users).where(eq(users.email, address));
+  const [existing] = await tx
+    .select({ id: users.id, deletedAt: users.deletedAt })
+    .from(users)
+    .where(eq(users.email, address));
   // A concurrent transaction that inserted the row has committed by now (the insert waited for it).
-  if (!existing) throw new AdminError("user_not_found");
+  if (!existing || existing.deletedAt) throw new AdminError("user_not_found");
   return { id: existing.id, created: false };
 }
 
@@ -111,11 +134,12 @@ export async function findOrCreateAccount(
   return db.transaction((tx) => findOrCreateUser(tx, email));
 }
 
+/** The account with this address; a deleted account is `user_not_found`. */
 async function requireUser(tx: DbTransaction, email: string): Promise<string> {
   const [row] = await tx
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.email, parseEmail(email)));
+    .where(and(eq(users.email, parseEmail(email)), isNull(users.deletedAt)));
   if (!row) throw new AdminError("user_not_found");
   return row.id;
 }
@@ -247,16 +271,7 @@ export async function revokePlatformAdmin(
       .from(users)
       .where(eq(users.id, userId));
     if (!target?.isPlatformAdmin) return { userId, changed: false };
-    // Another platform admin must remain who has logged in at least once (the first login
-    // verifies the address). An account this tool made for a mistyped address never logs in,
-    // so it does not count. Account deletion must apply the same rule.
-    const [{ others } = { others: 0 }] = await tx
-      .select({ others: count() })
-      .from(users)
-      .where(
-        and(eq(users.isPlatformAdmin, true), eq(users.emailVerified, true), ne(users.id, userId)),
-      );
-    if (others === 0) throw new AdminError("last_platform_admin");
+    if (!(await hasOtherPlatformAdmin(tx, userId))) throw new AdminError("last_platform_admin");
     await tx.update(users).set({ isPlatformAdmin: false }).where(eq(users.id, userId));
     await recordRoleChange(tx, actor, null, "role.platform_admin_revoked", userId);
     return { userId, changed: true };

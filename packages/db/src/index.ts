@@ -1,4 +1,5 @@
 export * from "./access";
+export * from "./accounts";
 export * from "./admin";
 export * from "./client";
 export * from "./diagnostics";

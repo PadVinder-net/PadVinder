@@ -14,7 +14,8 @@ export type AuditAction =
   | "role.coordinator_revoked"
   | "membership_request.approved"
   | "membership_request.rejected"
-  | "membership.removed";
+  | "membership.removed"
+  | "account.deleted";
 
 export type AuditSubject = {
   type: "user" | "organization" | "working_group" | "membership" | "membership_request";

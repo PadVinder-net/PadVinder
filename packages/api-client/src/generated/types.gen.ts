@@ -287,6 +287,35 @@ export type GetVersionResponses = {
 
 export type GetVersionResponse = GetVersionResponses[keyof GetVersionResponses];
 
+export type DeleteMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/me';
+};
+
+export type DeleteMeErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type DeleteMeError = DeleteMeErrors[keyof DeleteMeErrors];
+
+export type DeleteMeResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type DeleteMeResponse = DeleteMeResponses[keyof DeleteMeResponses];
+
 export type GetMeData = {
     body?: never;
     path?: never;

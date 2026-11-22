@@ -835,17 +835,12 @@ test("a withdrawal waits for a decision that holds the row, then sees it", async
 describe("listRequestNotificationRecipients", () => {
   const fresh = async (name: string) =>
     (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system)).id;
-  const person = async (email: string, deleted = false) => {
-    await db()
-      .insert(users)
-      .values({
-        name: "Persoon",
-        email,
-        emailVerified: true,
-        deletedAt: deleted ? new Date() : null,
-      });
+  const person = async (email: string) => {
+    await db().insert(users).values({ name: "Persoon", email, emailVerified: true });
     return email;
   };
+  const markDeleted = (email: string) =>
+    db().update(users).set({ deletedAt: new Date() }).where(eq(users.email, email));
 
   test("returns the coordinators of the group, not those of another group", async () => {
     const group = await fresh("Rec A");
@@ -896,9 +891,12 @@ describe("listRequestNotificationRecipients", () => {
     const group = await fresh("Rec E");
     await grantCoordinator(
       db(),
-      { email: await person("rec-e-gone@example.test", true), workingGroupId: group },
+      { email: await person("rec-e-gone@example.test"), workingGroupId: group },
       system,
     );
+    // Marked deleted by hand, with the membership left: `deleteAccount` would remove it, and the
+    // admin tool gives a deleted account no role.
+    await markDeleted("rec-e-gone@example.test");
     const recipients = await listRequestNotificationRecipients(db(), group);
     expect(recipients).not.toContain("rec-e-gone@example.test");
     expect(recipients).toContain("rec-admin@example.test");
@@ -911,9 +909,10 @@ describe("listRequestNotificationRecipients", () => {
     );
     await grantCoordinator(
       db(),
-      { email: await person("rec-f-gone@example.test", true), workingGroupId: group2 },
+      { email: await person("rec-f-gone@example.test"), workingGroupId: group2 },
       system,
     );
+    await markDeleted("rec-f-gone@example.test");
     expect(await listRequestNotificationRecipients(db(), group2)).toEqual(["rec-f@example.test"]);
   });
 

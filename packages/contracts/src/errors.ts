@@ -15,6 +15,8 @@ export const apiErrorCodes = {
   alreadyDecided: "already_decided",
   /** The membership changed (made coordinator, or no longer) while the request was being handled. */
   membershipChanged: "membership_changed",
+  /** The user is the only platform admin, so they cannot delete their account. */
+  lastPlatformAdmin: "last_platform_admin",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "./client";
 import { organizationAdmins, users, workingGroupMemberships, workingGroups } from "./schema";
 
@@ -14,14 +14,15 @@ export type Access = {
 };
 
 /**
- * What a user may be, read from the database. `null` when the user does not exist.
+ * What a user may be, read from the database. `null` when the user does not exist or deleted
+ * their account (a session made in the moment of the deletion never becomes an actor).
  * Memberships of inactive working groups are left out.
  */
 export async function getAccess(db: Db, userId: string): Promise<Access | null> {
   const [user] = await db
     .select({ isPlatformAdmin: users.isPlatformAdmin })
     .from(users)
-    .where(eq(users.id, userId));
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)));
   if (!user) return null;
   const memberships = await db
     .select({

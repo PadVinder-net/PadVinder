@@ -62,7 +62,8 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
       listRequestNotificationRecipients(db, created.workingGroup.id),
     ])
       .then(([request, recipients]) => {
-        if (!request) return; // The applicant deleted their account in the meantime.
+        // Withdrawn or decided in the meantime (the applicant deleted their account, for one).
+        if (!request || request.status !== "pending") return;
         sendInBackground(
           mailer,
           log,
@@ -150,6 +151,9 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
             apiErrorCodes.tooManyRequests,
             "Too many membership requests in 24 hours",
           );
+        case "user_not_found":
+          // The account was deleted after its session was checked.
+          throw apiError(401, apiErrorCodes.notLoggedIn, "Log in first");
         default: {
           const unreachable: never = result;
           throw new Error(`Unknown outcome ${JSON.stringify(unreachable)}`);

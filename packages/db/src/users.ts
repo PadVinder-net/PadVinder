@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "./client";
 import { users } from "./schema";
 
@@ -11,12 +11,19 @@ const profileColumns = {
   phone: users.phone,
 };
 
+/** The user, unless they do not exist or deleted their account. */
+const activeUser = (userId: string) => and(eq(users.id, userId), isNull(users.deletedAt));
+
+/** `null` when the user does not exist or deleted their account. */
 export async function getUserProfile(db: Db, userId: string): Promise<UserProfile | null> {
-  const [row] = await db.select(profileColumns).from(users).where(eq(users.id, userId));
+  const [row] = await db.select(profileColumns).from(users).where(activeUser(userId));
   return row ?? null;
 }
 
-/** Changes only the keys that are present in the patch. `null` when the user does not exist. */
+/**
+ * Changes only the keys that are present in the patch. `null` when the user does not exist or
+ * deleted their account: a change that arrives after the deletion never writes a name back.
+ */
 export async function updateUserProfile(
   db: Db,
   userId: string,
@@ -27,11 +34,11 @@ export async function updateUserProfile(
   if (patch.phone !== undefined) changes.phone = patch.phone;
   const [row] =
     Object.keys(changes).length === 0
-      ? await db.select(profileColumns).from(users).where(eq(users.id, userId))
+      ? await db.select(profileColumns).from(users).where(activeUser(userId))
       : await db
           .update(users)
           .set({ ...changes, updatedAt: new Date() })
-          .where(eq(users.id, userId))
+          .where(activeUser(userId))
           .returning(profileColumns);
   return row ?? null;
 }
