@@ -8,3 +8,4 @@ export * from "./notifications";
 export * from "./schema";
 export * from "./seed";
 export * from "./users";
+export * from "./audit-log";
