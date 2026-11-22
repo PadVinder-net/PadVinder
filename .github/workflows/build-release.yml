@@ -1,6 +1,6 @@
 # Builds the release tarball, builds a container image from it and smoke-tests that image
-# against a fresh database. Called by CI on every pull request, by Deploy test, and by the
-# deployment.
+# against a fresh database. Called by CI on every pull request (its deploy-test job deploys
+# the tarball to a fake host) and by the deployment.
 name: Build release
 
 on:
@@ -21,6 +21,11 @@ on:
         type: number
         required: false
         default: 7
+      skip:
+        description: Skip the build; the job still reports, as skipped. CI sets it when a pull request cannot change the release.
+        type: boolean
+        required: false
+        default: false
     outputs:
       artifact-name:
         description: The name of the uploaded artifact, release-<commit>.
@@ -34,6 +39,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ !inputs.skip }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
