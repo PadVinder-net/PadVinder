@@ -1,5 +1,6 @@
 import { and, asc, eq, sql, type AnyColumn } from "drizzle-orm";
 import type { Db } from "./client";
+import { getCurrentMembershipRequest, type MembershipRequestRecord } from "./membership-requests";
 import {
   organizationAdmins,
   organizations,
@@ -23,16 +24,19 @@ export type MeRoles = {
     };
   }[];
   organizationAdminOf: { id: string; name: string }[];
+  /** See `getCurrentMembershipRequest`. */
+  membershipRequest: MembershipRequestRecord | null;
 };
 
 const dutch = (column: AnyColumn) => sql`${column} collate "nl-NL-x-icu"`;
 
 /**
  * The memberships and administrator rights of a user, sorted in Dutch order. Memberships of
- * inactive working groups are left out. Empty lists for a user that does not exist.
+ * inactive working groups are left out. Empty lists for a user that does not exist. With the
+ * user's current membership request.
  */
 export async function getMeRoles(db: Db, userId: string): Promise<MeRoles> {
-  const [memberships, admins] = await Promise.all([
+  const [memberships, admins, membershipRequest] = await Promise.all([
     db
       .select({
         id: workingGroupMemberships.id,
@@ -58,6 +62,7 @@ export async function getMeRoles(db: Db, userId: string): Promise<MeRoles> {
       .innerJoin(organizations, eq(organizations.id, organizationAdmins.organizationId))
       .where(eq(organizationAdmins.userId, userId))
       .orderBy(asc(dutch(organizations.name)), asc(organizations.id)),
+    getCurrentMembershipRequest(db, userId),
   ]);
   return {
     memberships: memberships.map((m) => ({
@@ -71,5 +76,6 @@ export async function getMeRoles(db: Db, userId: string): Promise<MeRoles> {
       },
     })),
     organizationAdminOf: admins,
+    membershipRequest,
   };
 }

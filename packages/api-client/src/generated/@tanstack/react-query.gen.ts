@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getHealth, getMe, getVersion, listWorkingGroups, type Options, updateMe } from '../sdk.gen';
-import type { GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMeResponse, GetVersionData, GetVersionResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse } from '../types.gen';
+import { createMembershipRequest, getHealth, getMe, getVersion, listWorkingGroups, type Options, updateMe, withdrawMembershipRequest } from '../sdk.gen';
+import type { CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMeResponse, GetVersionData, GetVersionResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -127,3 +127,37 @@ export const listWorkingGroupsOptions = (options?: Options<ListWorkingGroupsData
     },
     queryKey: listWorkingGroupsQueryKey(options)
 });
+
+/**
+ * Ask to join a working group. Sending the same id again returns the stored request
+ */
+export const createMembershipRequestMutation = (options?: Partial<Options<CreateMembershipRequestData>>): UseMutationOptions<CreateMembershipRequestResponse, CreateMembershipRequestError, Options<CreateMembershipRequestData>> => {
+    const mutationOptions: UseMutationOptions<CreateMembershipRequestResponse, CreateMembershipRequestError, Options<CreateMembershipRequestData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createMembershipRequest({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Withdraw your own pending request
+ */
+export const withdrawMembershipRequestMutation = (options?: Partial<Options<WithdrawMembershipRequestData>>): UseMutationOptions<WithdrawMembershipRequestResponse, WithdrawMembershipRequestError, Options<WithdrawMembershipRequestData>> => {
+    const mutationOptions: UseMutationOptions<WithdrawMembershipRequestResponse, WithdrawMembershipRequestError, Options<WithdrawMembershipRequestData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await withdrawMembershipRequest({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};

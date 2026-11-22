@@ -6,7 +6,9 @@ import {
   meFixture,
   meWithoutNameFixture,
   platformAdminMeFixture,
+  rejectedMeFixture,
   twoOrganizationsMeFixture,
+  waitingMeFixture,
 } from "./fixtures";
 
 test("accepts one key", () =>
@@ -48,6 +50,8 @@ test.each([
   platformAdminMeFixture,
   applicantMeFixture,
   twoOrganizationsMeFixture,
+  waitingMeFixture,
+  rejectedMeFixture,
 ])("every me fixture parses", (fixture) =>
   expect(meResponseSchema.parse(fixture)).toEqual(fixture),
 );

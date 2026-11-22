@@ -39,6 +39,7 @@ test("a new user has no memberships and no admin rights", async () => {
   expect(await getMeRoles(t!.db, id)).toEqual({
     memberships: [],
     organizationAdminOf: [],
+    membershipRequest: null,
   });
 });
 

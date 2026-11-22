@@ -8,6 +8,11 @@ export const apiErrorCodes = {
   notFound: "not_found",
   originNotAllowed: "origin_not_allowed",
   tooManyRequests: "too_many_requests",
+  /** The client-generated ID belongs to a record of someone else. */
+  idInUse: "id_in_use",
+  alreadyMember: "already_member",
+  alreadyRequested: "already_requested",
+  alreadyDecided: "already_decided",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];

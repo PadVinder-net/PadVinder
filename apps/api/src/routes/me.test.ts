@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { grantCoordinator, users } from "@padvinder/db";
+import { grantCoordinator, membershipRequests, users, workingGroupMemberships } from "@padvinder/db";
 import { eq } from "drizzle-orm";
+import { v7 as uuidv7 } from "uuid";
 import { createCast, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
@@ -41,6 +42,7 @@ test("returns the logged-in user", async () => {
     },
     memberships: [],
     organizationAdminOf: [],
+    membershipRequest: null,
   });
 });
 
@@ -213,4 +215,72 @@ test("PATCH still returns the full shape", async () => {
     memberships: [{ isCoordinator: false }],
     organizationAdminOf: [],
   });
+});
+
+const askToJoin = (headers: Record<string, string>, workingGroupId: string) => {
+  const payload = { id: uuidv7(), workingGroupId, requestedAt: "2027-01-10T19:00:00+01:00" };
+  return ctx.app
+    .inject({ method: "POST", url: "/api/membership-requests", headers, payload })
+    .then((res) => ({ id: payload.id, res }));
+};
+
+test("me shows the pending request, then the rejected one, then null after a new membership", async () => {
+  const user = await loginAs(ctx, "waiting@example.test", { name: "Wachtend" });
+  const { id, res } = await askToJoin(user.headers, cast.workingGroup.workingGroupId);
+  expect(res.statusCode).toBe(201);
+  const pending = await getMe(user.headers);
+  expect(pending.membershipRequest).toEqual(res.json());
+  expect(pending.membershipRequest).toMatchObject({
+    id,
+    status: "pending",
+    decidedAt: null,
+    workingGroup: { id: cast.workingGroup.workingGroupId, name: "Cast Werkgroep" },
+  });
+
+  const decidedAt = new Date("2027-01-11T09:00:00Z");
+  await ctx.t.db
+    .update(membershipRequests)
+    .set({ status: "rejected", decidedAt })
+    .where(eq(membershipRequests.id, id));
+  expect((await getMe(user.headers)).membershipRequest).toMatchObject({
+    id,
+    status: "rejected",
+    decidedAt: "2027-01-11T09:00:00.000Z",
+  });
+
+  // A new request for another group, approved: the newest request is no longer open.
+  const second = await askToJoin(user.headers, cast.otherGroup.workingGroupId);
+  expect(second.res.statusCode).toBe(201);
+  await ctx.t.db.transaction(async (tx) => {
+    await tx
+      .update(membershipRequests)
+      .set({ status: "approved", decidedAt })
+      .where(eq(membershipRequests.id, second.id));
+    await tx.insert(workingGroupMemberships).values({
+      userId: user.userId,
+      workingGroupId: cast.otherGroup.workingGroupId,
+    });
+  });
+  const member = await getMe(user.headers);
+  expect(member.membershipRequest).toBeNull();
+  expect(member.memberships).toMatchObject([
+    { workingGroup: { id: cast.otherGroup.workingGroupId } },
+  ]);
+});
+
+test("me shows null after a withdrawal", async () => {
+  const user = await loginAs(ctx, "withdrawing@example.test", { name: "Terugtrekker" });
+  const { id } = await askToJoin(user.headers, cast.workingGroup.workingGroupId);
+  expect((await getMe(user.headers)).membershipRequest).toMatchObject({ id, status: "pending" });
+  const res = await ctx.app.inject({
+    method: "POST",
+    url: `/api/membership-requests/${id}/withdraw`,
+    headers: user.headers,
+  });
+  expect(res.statusCode).toBe(200);
+  expect((await getMe(user.headers)).membershipRequest).toBeNull();
+});
+
+test("a member without requests has membershipRequest null", async () => {
+  expect((await getMe(cast.members.volunteer.headers)).membershipRequest).toBeNull();
 });

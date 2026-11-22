@@ -48,6 +48,22 @@ export type WorkingGroupDirectoryResponseInput = {
     workingGroups: Array<WorkingGroupSummaryInput>;
 };
 
+export type MembershipRequestStatusInput = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export type CreateMembershipRequestInput = {
+    id: string;
+    workingGroupId: string;
+    requestedAt: string;
+};
+
+export type MembershipRequestInput = {
+    id: string;
+    status: MembershipRequestStatusInput;
+    requestedAt: string;
+    decidedAt: string | null;
+    workingGroup: WorkingGroupSummaryInput;
+};
+
 export type MeResponseInput = {
     user: {
         id: string;
@@ -65,6 +81,7 @@ export type MeResponseInput = {
         id: string;
         name: string;
     }>;
+    membershipRequest: MembershipRequestInput | null;
 };
 
 export type UpdateMeRequestInput = {
@@ -121,6 +138,22 @@ export type WorkingGroupDirectoryResponse = {
     workingGroups: Array<WorkingGroupSummary>;
 };
 
+export type MembershipRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export type CreateMembershipRequest = {
+    id: string;
+    workingGroupId: string;
+    requestedAt: string;
+};
+
+export type MembershipRequest = {
+    id: string;
+    status: MembershipRequestStatus;
+    requestedAt: string;
+    decidedAt: string | null;
+    workingGroup: WorkingGroupSummary;
+};
+
 export type MeResponse = {
     user: {
         id: string;
@@ -138,6 +171,7 @@ export type MeResponse = {
         id: string;
         name: string;
     }>;
+    membershipRequest: MembershipRequest | null;
 };
 
 export type UpdateMeRequest = {
@@ -269,3 +303,87 @@ export type ListWorkingGroupsResponses = {
 };
 
 export type ListWorkingGroupsResponse = ListWorkingGroupsResponses[keyof ListWorkingGroupsResponses];
+
+export type CreateMembershipRequestData = {
+    body: CreateMembershipRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/membership-requests';
+};
+
+export type CreateMembershipRequestErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+    /**
+     * Default Response
+     */
+    429: ApiError;
+};
+
+export type CreateMembershipRequestError = CreateMembershipRequestErrors[keyof CreateMembershipRequestErrors];
+
+export type CreateMembershipRequestResponses = {
+    /**
+     * Default Response
+     */
+    200: MembershipRequest;
+    /**
+     * Default Response
+     */
+    201: MembershipRequest;
+};
+
+export type CreateMembershipRequestResponse = CreateMembershipRequestResponses[keyof CreateMembershipRequestResponses];
+
+export type WithdrawMembershipRequestData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/membership-requests/{id}/withdraw';
+};
+
+export type WithdrawMembershipRequestErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type WithdrawMembershipRequestError = WithdrawMembershipRequestErrors[keyof WithdrawMembershipRequestErrors];
+
+export type WithdrawMembershipRequestResponses = {
+    /**
+     * Default Response
+     */
+    200: MembershipRequest;
+};
+
+export type WithdrawMembershipRequestResponse = WithdrawMembershipRequestResponses[keyof WithdrawMembershipRequestResponses];

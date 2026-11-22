@@ -8,12 +8,17 @@ import { getMeRoles, updateUserProfile, type Db, type UserProfile } from "@padvi
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { Actor } from "../permissions/actor";
 import { apiError, errorResponses } from "../errors";
+import { toMembershipRequest } from "./membership-requests";
 
 export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
   /** The profile and the platform flag come from the actor, read with the session. */
   async function toMe(actor: Actor, user: UserProfile): Promise<MeResponse> {
-    const roles = await getMeRoles(db, actor.userId);
-    return { user: { ...user, isPlatformAdmin: actor.isPlatformAdmin }, ...roles };
+    const { membershipRequest, ...roles } = await getMeRoles(db, actor.userId);
+    return {
+      user: { ...user, isPlatformAdmin: actor.isPlatformAdmin },
+      ...roles,
+      membershipRequest: membershipRequest && toMembershipRequest(membershipRequest),
+    };
   }
 
   app.get(

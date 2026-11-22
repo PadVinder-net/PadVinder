@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { membershipRequestSchema } from "./membership-requests";
 import { workingGroupSummarySchema } from "./working-groups";
 
 export const meResponseSchema = z
@@ -20,6 +21,11 @@ export const meResponseSchema = z
       }),
     ),
     organizationAdminOf: z.array(z.object({ id: z.string(), name: z.string() })),
+    /**
+     * The user's newest request (by arrival at the server) when it is pending or rejected,
+     * otherwise `null`. The app shows the waiting screen or the rejection from it.
+     */
+    membershipRequest: membershipRequestSchema.nullable(),
   })
   .meta({ id: "MeResponse" });
 export type MeResponse = z.infer<typeof meResponseSchema>;
