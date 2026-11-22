@@ -63,14 +63,48 @@ test("saving the name shows the app", async () => {
   expect(await screen.findByText("de app")).toBeVisible();
 });
 
-// Until the picker and the waiting screen replace it (plan 3, Task 11).
-test.each([
-  ["without a request", applicantMeFixture],
-  ["waiting", waitingMeFixture],
-])("an applicant %s sees the app", async (_label, me) => {
-  mockFetch({ "/api/me": me });
+test("an applicant sees the picker, not the app", async () => {
+  mockFetch({ "/api/me": applicantMeFixture, "/api/working-groups": { workingGroups: [] } });
   renderGate();
-  expect(await screen.findByText("de app")).toBeVisible();
+  expect(await screen.findByRole("heading", { name: "Kies je werkgroep" })).toBeVisible();
+  expect(screen.queryByText("de app")).toBeNull();
+});
+
+test("a waiting applicant sees the waiting screen, not the app", async () => {
+  mockFetch({ "/api/me": waitingMeFixture });
+  renderGate();
+  expect(await screen.findByRole("heading", { name: "Welkom!" })).toBeVisible();
+  expect(screen.queryByText("de app")).toBeNull();
+});
+
+test("the live stream is open while someone is logged in, and not on the login screen", async () => {
+  const opened: string[] = [];
+  const Original = globalThis.EventSource;
+  globalThis.EventSource = class extends (Original as unknown as { new (): object }) {
+    constructor(url: string) {
+      super();
+      opened.push(url);
+    }
+  } as unknown as typeof EventSource;
+  try {
+    mockFetch({ "/api/me": unauthorized() });
+    const { unmount } = render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <AuthGate>
+          <p>de app</p>
+        </AuthGate>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("heading", { name: "Log in bij PadVinder" });
+    expect(opened).toEqual([]);
+    unmount();
+    mockFetch({ "/api/me": waitingMeFixture });
+    renderGate();
+    await screen.findByRole("heading", { name: "Welkom!" });
+    expect(opened).toEqual(["/api/events"]);
+  } finally {
+    globalThis.EventSource = Original;
+  }
 });
 
 test("shows the app for a user with a name", async () => {
