@@ -1,8 +1,20 @@
 name: padvinder
 
 services:
+  # LOCAL DEVELOPMENT AND TESTS ONLY. NEVER USE THIS CONFIGURATION IN PRODUCTION.
+  # fsync=off makes PostgreSQL stop waiting for the disk: a crash of the Docker VM can corrupt
+  # these databases. That is acceptable here only because they hold made-up and test data that
+  # ./scripts/setup-workspace.sh recreates. Production and staging run on Alwaysdata with fsync on.
   db:
     image: imresamu/postgis:18-3.6-bookworm
+    # Without fsync, the test suite's DROP DATABASE (which waits for a checkpoint) takes 0.1 s
+    # instead of 2-7 s inside Docker Desktop, so parallel test runs from several workspaces no
+    # longer hit test timeouts.
+    command: ["postgres", "-c", "fsync=off"]
+    # A small init process as PID 1 reaps stray health-check processes; with postgres as PID 1, an
+    # orphaned pg_isready exiting with code 2 was taken for a crashed backend and restarted the
+    # server.
+    init: true
     ports:
       - "54329:5432"
     environment:
