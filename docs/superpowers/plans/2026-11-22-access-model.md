@@ -610,3 +610,13 @@ test("a volunteer does not see the system status", ...); // createSession with a
   - Update the reference example notes: the health details and the heartbeat event are for platform admins.
 - [ ] **Step 4: Run everything.** `pnpm check && pnpm build && pnpm test:e2e`. Expected: PASS.
 - [ ] **Step 5: Commit.** `git commit -m "Document the access model and update the end-to-end tests"`
+
+## Notes from the build (22 November 2026)
+
+- Task 2: the audit log also rejects `TRUNCATE` (a statement trigger), not only `UPDATE` and `DELETE`, because `TRUNCATE` skips row triggers.
+- Task 3: `normalizeEmail` moved to `packages/db` (`admin.ts`); the API's login code reuses it instead of keeping a second copy.
+- Task 3: granting and revoking platform admin take a transaction-level advisory lock, so two concurrent revokes cannot both see "two admins" and remove the last one. Every writer of `users.is_platform_admin` must take it; account deletion (plan 3) too.
+- Task 4 (not in the plan): the deployment pull request had merged, so `scripts/smoke-test-image.sh` runs `api/dist/admin.js list` once against the release image, which proves the tool is in the artifact, and `infra/alwaysdata/README.md` ("Administration tool") documents running it over SSH from the live release directory.
+- Task 5: `relationTo` matches a membership on the working group and the organization, so a target with a mismatched organization is never treated as a member. `decide` ends with an exhaustiveness guard: a new `Permission` without a rule is a type error, never a silent "allowed". `shouldDeliver` (Task 9) has the same guard for audiences.
+- Task 9: a database failure during the 5-minute session re-check of `/api/events` keeps the old actor and tries again at the next interval, instead of closing the stream: closing would make every open app reconnect at once while the database struggles. Only a session that is gone ends the stream.
+- Task 11: the end-to-end test "a volunteer does not see the system status" logs in a fresh account, which has no role at all; for the system status that is the same as a volunteer. The existing tab-navigation and deep-link tests stay; each test now makes its own session.
