@@ -1,10 +1,10 @@
-import type { MembershipRole } from "@padvinder/db";
 import { expect, test } from "vitest";
 import type { Actor } from "./actor";
 import { authorize, decide, relationTo } from "./rules";
 
-function m(workingGroupId: string, organizationId: string, role: MembershipRole) {
-  return { membershipId: `m-${workingGroupId}`, workingGroupId, organizationId, role };
+function m(workingGroupId: string, organizationId: string, as: "volunteer" | "coordinator") {
+  const isCoordinator = as === "coordinator";
+  return { membershipId: `m-${workingGroupId}`, workingGroupId, organizationId, isCoordinator };
 }
 
 function actor(parts: Partial<Omit<Actor, "userId" | "user">>): Actor {
@@ -78,15 +78,15 @@ test.each([
 });
 
 test("a coordinator removes a volunteer but not a coordinator", () => {
-  const remove = (who: Who, memberRole: MembershipRole) =>
-    decide(actors[who], { action: "workingGroup.removeMember", target, memberRole });
-  expect(remove("coordinator", "volunteer")).toBe("allowed");
-  expect(remove("coordinator", "coordinator")).toBe("forbidden");
-  expect(remove("organizationAdmin", "coordinator")).toBe("allowed");
-  expect(remove("platformAdmin", "coordinator")).toBe("allowed");
-  expect(remove("volunteer", "volunteer")).toBe("forbidden");
-  expect(remove("volunteerOtherGroup", "volunteer")).toBe("hidden");
-  expect(remove("adminOtherOrganization", "volunteer")).toBe("hidden");
+  const remove = (who: Who, memberIsCoordinator: boolean) =>
+    decide(actors[who], { action: "workingGroup.removeMember", target, memberIsCoordinator });
+  expect(remove("coordinator", false)).toBe("allowed");
+  expect(remove("coordinator", true)).toBe("forbidden");
+  expect(remove("organizationAdmin", true)).toBe("allowed");
+  expect(remove("platformAdmin", true)).toBe("allowed");
+  expect(remove("volunteer", false)).toBe("forbidden");
+  expect(remove("volunteerOtherGroup", false)).toBe("hidden");
+  expect(remove("adminOtherOrganization", false)).toBe("hidden");
 });
 
 test("a coordinator in one organization is an outsider in the other", () => {

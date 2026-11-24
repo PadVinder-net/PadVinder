@@ -93,12 +93,12 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
     {
       userId: members.volunteer.userId,
       workingGroupId: workingGroup.workingGroupId,
-      role: "volunteer",
+      isCoordinator: false,
     },
     {
       userId: members.volunteerOtherGroup.userId,
       workingGroupId: otherGroup.workingGroupId,
-      role: "volunteer",
+      isCoordinator: false,
     },
   ]);
 

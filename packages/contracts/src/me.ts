@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { membershipRoleSchema, workingGroupSummarySchema } from "./working-groups";
+import { workingGroupSummarySchema } from "./working-groups";
 
 export const meResponseSchema = z
   .object({
@@ -14,7 +14,8 @@ export const meResponseSchema = z
     memberships: z.array(
       z.object({
         id: z.string(),
-        role: membershipRoleSchema,
+        /** Every member is a volunteer; a coordinator is one too, with this flag set. */
+        isCoordinator: z.boolean(),
         workingGroup: workingGroupSummarySchema,
       }),
     ),

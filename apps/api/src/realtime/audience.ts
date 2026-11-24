@@ -21,19 +21,20 @@ export function addressOf(event: LiveEvent): LiveEventAddress {
 }
 
 /**
- * Whether a connection of `actor` receives an event for `audience` at `address`. Platform admins
- * receive everything. An address that lacks the field its audience needs reaches platform admins
- * only, so a mistake in an event never leaks it.
+ * Whether a connection of `actor` receives an event for `audience` at `address`. An event for
+ * `user` reaches only that user, platform admins included: it is personal. Platform admins
+ * receive every other event, so the portal stays current in every organization. An address that
+ * lacks the field its audience needs reaches platform admins only (nobody, for `user`), so a
+ * mistake in an event never leaks it.
  */
 export function shouldDeliver(
   actor: Actor,
   audience: LiveEventAudience,
   address: LiveEventAddress,
 ): boolean {
+  if (audience === "user") return address.userId !== undefined && address.userId === actor.userId;
   if (actor.isPlatformAdmin) return true;
   switch (audience) {
-    case "user":
-      return address.userId !== undefined && address.userId === actor.userId;
     case "working-group-coordinators":
     case "working-group-members": {
       const { workingGroupId, organizationId } = address;

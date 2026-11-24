@@ -310,11 +310,11 @@ export async function grantCoordinator(
     // One statement: insert, or raise a volunteer; a coordinator row is left alone (no row returned).
     const changed = await tx
       .insert(workingGroupMemberships)
-      .values({ userId, workingGroupId: input.workingGroupId, role: "coordinator" })
+      .values({ userId, workingGroupId: input.workingGroupId, isCoordinator: true })
       .onConflictDoUpdate({
         target: [workingGroupMemberships.userId, workingGroupMemberships.workingGroupId],
-        set: { role: "coordinator" },
-        setWhere: eq(workingGroupMemberships.role, "volunteer"),
+        set: { isCoordinator: true },
+        setWhere: eq(workingGroupMemberships.isCoordinator, false),
       })
       .returning({ id: workingGroupMemberships.id });
     if (changed.length === 0) return { userId, changed: false, created };
@@ -335,12 +335,12 @@ export async function revokeCoordinator(
     const userId = await requireUser(tx, input.email);
     const updated = await tx
       .update(workingGroupMemberships)
-      .set({ role: "volunteer" })
+      .set({ isCoordinator: false })
       .where(
         and(
           eq(workingGroupMemberships.userId, userId),
           eq(workingGroupMemberships.workingGroupId, input.workingGroupId),
-          eq(workingGroupMemberships.role, "coordinator"),
+          eq(workingGroupMemberships.isCoordinator, true),
         ),
       )
       .returning({ id: workingGroupMemberships.id });

@@ -59,7 +59,7 @@ test("sorts in Dutch order and leaves out inactive groups", async () => {
   await t!.db.update(workingGroups).set({ active: false }).where(eq(workingGroups.id, inactive.id));
   await t!.db
     .insert(workingGroupMemberships)
-    .values(groups.map((g) => ({ userId: id, workingGroupId: g.id, role: "volunteer" as const })));
+    .values(groups.map((g) => ({ userId: id, workingGroupId: g.id, isCoordinator: false })));
   await grantOrganizationAdmin(
     t!.db,
     { email: "sorted-me@example.test", organizationId: zeta.id },
@@ -80,6 +80,6 @@ test("sorts in Dutch order and leaves out inactive groups", async () => {
   expect(
     me!.memberships.map((m) => `${m.workingGroup.organization.name}/${m.workingGroup.name}`),
   ).toEqual(["Éend/Ëast", "Éend/Zuid", "Zeta/Een"]);
-  expect(me!.memberships[2]).toMatchObject({ role: "coordinator" });
+  expect(me!.memberships[2]).toMatchObject({ isCoordinator: true });
   expect(me!.organizationAdminOf.map((o) => o.name)).toEqual(["Éend", "Zeta"]);
 });

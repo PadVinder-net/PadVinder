@@ -1,6 +1,5 @@
 import { and, asc, eq, sql, type AnyColumn } from "drizzle-orm";
 import type { Db } from "./client";
-import type { MembershipRole } from "./access";
 import {
   organizationAdmins,
   organizations,
@@ -15,7 +14,7 @@ import {
 export type MeRoles = {
   memberships: {
     id: string;
-    role: MembershipRole;
+    isCoordinator: boolean;
     workingGroup: {
       id: string;
       name: string;
@@ -37,7 +36,7 @@ export async function getMeRoles(db: Db, userId: string): Promise<MeRoles> {
     db
       .select({
         id: workingGroupMemberships.id,
-        role: workingGroupMemberships.role,
+        isCoordinator: workingGroupMemberships.isCoordinator,
         groupId: workingGroups.id,
         groupName: workingGroups.name,
         city: workingGroups.city,
@@ -63,7 +62,7 @@ export async function getMeRoles(db: Db, userId: string): Promise<MeRoles> {
   return {
     memberships: memberships.map((m) => ({
       id: m.id,
-      role: m.role,
+      isCoordinator: m.isCoordinator,
       workingGroup: {
         id: m.groupId,
         name: m.groupName,

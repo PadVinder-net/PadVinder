@@ -22,7 +22,10 @@ export const LIVE_EVENT_TYPES: readonly LiveEventType[] = liveEventSchema.option
   (option) => option.shape.type.value,
 );
 
-/** Who receives an event. Platform admins receive every event. */
+/**
+ * Who receives an event. Platform admins receive every event except those for `user`: an event
+ * addressed to one person reaches only that person.
+ */
 export type LiveEventAudience =
   | "user"
   | "working-group-coordinators"
@@ -31,14 +34,9 @@ export type LiveEventAudience =
   | "platform-admins";
 
 /**
- * The audience of each event type. A type without an entry goes to platform admins only, so
- * forgetting to declare one never leaks an event.
+ * The audience of each event type. Complete: a type added to the union without an audience is a
+ * type error here, so no event goes out without a decision about who receives it.
  */
-export const liveEventAudiences: Partial<Record<LiveEventType, LiveEventAudience>> = {
+export const liveEventAudiences: Record<LiveEventType, LiveEventAudience> = {
   "worker-heartbeat": "platform-admins",
 };
-
-/** The declared audience of an event type, or `platform-admins` when none is declared. */
-export function audienceOf(type: LiveEventType): LiveEventAudience {
-  return (Object.hasOwn(liveEventAudiences, type) && liveEventAudiences[type]) || "platform-admins";
-}

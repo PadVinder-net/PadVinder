@@ -1,15 +1,5 @@
-import { membershipRoleSchema } from "@padvinder/contracts";
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  pgEnum,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 
 // The tenant structure: PadVinder -> organization -> working group, and who belongs where.
@@ -45,9 +35,6 @@ export const workingGroups = pgTable(
   ],
 );
 
-// The roles come from the API contract, so the database, the API and the apps share one list.
-export const membershipRole = pgEnum("membership_role", membershipRoleSchema.enum);
-
 export const workingGroupMemberships = pgTable(
   "working_group_memberships",
   {
@@ -58,7 +45,8 @@ export const workingGroupMemberships = pgTable(
     workingGroupId: uuid("working_group_id")
       .notNull()
       .references(() => workingGroups.id),
-    role: membershipRole("role").notNull(),
+    // Every member is a volunteer; a coordinator is a volunteer with this flag.
+    isCoordinator: boolean("is_coordinator").notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [

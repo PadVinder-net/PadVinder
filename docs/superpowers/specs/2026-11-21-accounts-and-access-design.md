@@ -102,12 +102,12 @@ Decided with the maintainer on 21 November 2026.
 
 A user account is global: it belongs to the person, not to an organization. What a user may do follows from four things, all read from the database on each request:
 
-| Role (glossary)     | How it is stored                                             |
-| ------------------- | ------------------------------------------------------------ |
-| `volunteer`         | A row in `working_group_memberships` with role `volunteer`   |
-| `coordinator`       | A row in `working_group_memberships` with role `coordinator` |
-| `organizationAdmin` | A row in `organization_admins`                               |
-| `platformAdmin`     | The flag `is_platform_admin` on the user                     |
+| Role (glossary)     | How it is stored                         |
+| ------------------- | ---------------------------------------- |
+| `volunteer`         | A row in `working_group_memberships`     |
+| `coordinator`       | Such a row with `is_coordinator` set     |
+| `organizationAdmin` | A row in `organization_admins`           |
+| `platformAdmin`     | The flag `is_platform_admin` on the user |
 
 A logged-in user with none of these is an **applicant**: they can see the list of working groups and ask to join one, nothing else.
 
@@ -125,7 +125,7 @@ All tables are snake_case and plural. All IDs are `uuid` columns.
 | `sessions`, `accounts`, `verifications` | As Better Auth needs them                                                                                                                                                                   | Renamed to plural snake_case. Defined in `packages/db` and migrated with Drizzle Kit like every other table                                                |
 | `organizations`                         | `id`, `name`                                                                                                                                                                                | The tenant                                                                                                                                                 |
 | `working_groups`                        | `id`, `organization_id`, `name`, `city`, `active` (default true)                                                                                                                            | Unique on (`organization_id`, `name`)                                                                                                                      |
-| `working_group_memberships`             | `id`, `user_id`, `working_group_id`, `role` (`volunteer` or `coordinator`)                                                                                                                  | The association table. Unique on (`user_id`, `working_group_id`). Ending a membership deletes the row; the audit log keeps the history                     |
+| `working_group_memberships`             | `id`, `user_id`, `working_group_id`, `is_coordinator` (default false)                                                                                                                       | The association table. Unique on (`user_id`, `working_group_id`). Ending a membership deletes the row; the audit log keeps the history                     |
 | `membership_requests`                   | `id` (client-generated UUIDv7), `user_id`, `working_group_id`, `status` (`pending`, `approved`, `rejected`, `withdrawn`), `requested_at`, `received_at`, `decided_at`, `decided_by_user_id` | At most one `pending` request per (`user_id`, `working_group_id`), as a partial unique index. `requested_at` is the app's time, `received_at` the server's |
 | `organization_admins`                   | `user_id`, `organization_id`                                                                                                                                                                | Primary key on both                                                                                                                                        |
 | `audit_log_entries`                     | `id`, `occurred_at`, `actor_kind` (`user` or `system`), `actor_user_id` (nullable), `organization_id` (nullable), `action`, `subject_type`, `subject_id`, `details` (jsonb)                 | Append-only                                                                                                                                                |
@@ -286,7 +286,7 @@ Rules:
 - A user who is already a member of the group, or has a pending request for it, gets 409 on a new request with a different `id`.
 - A user may have pending requests for several working groups; the app offers one at a time.
 - A user can create at most 5 membership requests per 24 hours. More answers 429 with the text "Je hebt vandaag te vaak een aanmelding gestuurd. Probeer het morgen opnieuw." Without it, one account could make PadVinder mail every coordinator again and again by asking and withdrawing. A resend of a stored `id` does not count. _(Author's call.)_
-- **Approving** creates the membership with role `volunteer` and sets the request to `approved`, in one transaction with the audit entry and the live events. **Rejecting** sets `rejected`. The first decision counts: the same decision again returns the stored record; the opposite decision, or a decision on a withdrawn request, answers 409.
+- **Approving** creates the membership, as a volunteer, and sets the request to `approved`, in one transaction with the audit entry and the live events. **Rejecting** sets `rejected`. The first decision counts: the same decision again returns the stored record; the opposite decision, or a decision on a withdrawn request, answers 409.
 - A rejected applicant may ask again, also for the same group.
 - A request for a working group that is not active answers 404.
 
@@ -296,7 +296,7 @@ Rules:
 
 ### Live events
 
-`/api/events` now needs a login: 401 without one. Each event type in `packages/contracts` declares one audience, and the stream delivers an event only to connections that match. An event type without a declared audience goes to platform admins only, so forgetting to declare one never leaks.
+`/api/events` now needs a login: 401 without one. Each event type in `packages/contracts` declares one audience, and the stream delivers an event only to connections that match. The map of audiences is complete: an event type without an audience does not compile.
 
 | Audience                     | The event carries                  | Delivered to                                                                                               |
 | ---------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -306,7 +306,7 @@ Rules:
 | `organization`               | `organizationId`                   | Everyone with a membership or admin row in that organization. Not used yet                                 |
 | `platform-admins`            | nothing                            | Platform admins                                                                                            |
 
-Platform admins also receive every event.
+Platform admins also receive every event except those for `user`: an event addressed to one person reaches only that person (decided by the maintainer on 24 November 2026, so later personal messages stay private).
 
 Events in this part, each carrying IDs only:
 

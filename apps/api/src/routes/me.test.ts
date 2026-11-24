@@ -145,7 +145,7 @@ test("a volunteer sees their one membership", async () => {
     user: { isPlatformAdmin: false },
     memberships: [
       {
-        role: "volunteer",
+        isCoordinator: false,
         workingGroup: {
           id: cast.workingGroup.workingGroupId,
           organization: { id: cast.organization.id, name: "Cast Organisatie" },
@@ -177,12 +177,12 @@ test("someone in two organizations sees both memberships", async () => {
       )
       .sort(),
   ).toEqual([cast.organization.id, cast.otherOrganization.id].sort());
-  expect(me.memberships.every((m: { role: string }) => m.role === "coordinator")).toBe(true);
+  expect(me.memberships.every((m: { isCoordinator: boolean }) => m.isCoordinator)).toBe(true);
 });
 
-test("a coordinator has the coordinator role", async () => {
+test("a coordinator has the coordinator flag", async () => {
   const me = await getMe(cast.members.coordinator.headers);
-  expect(me.memberships).toMatchObject([{ role: "coordinator" }]);
+  expect(me.memberships).toMatchObject([{ isCoordinator: true }]);
 });
 
 test("an organization admin sees the organization", async () => {
@@ -210,7 +210,7 @@ test("PATCH still returns the full shape", async () => {
   expect(res.statusCode).toBe(200);
   expect(res.json()).toMatchObject({
     user: { phone: "06 5", isPlatformAdmin: false },
-    memberships: [{ role: "volunteer" }],
+    memberships: [{ isCoordinator: false }],
     organizationAdminOf: [],
   });
 });

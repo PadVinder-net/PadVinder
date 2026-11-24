@@ -1,5 +1,4 @@
 import { apiErrorCodes } from "@padvinder/contracts";
-import type { MembershipRole } from "@padvinder/db";
 import { apiError } from "../errors";
 import type { Actor } from "./actor";
 
@@ -22,7 +21,11 @@ export type Permission =
   | { action: "workingGroup.listMembers"; target: WorkingGroupTarget }
   | { action: "workingGroup.viewMemberContact"; target: WorkingGroupTarget }
   | { action: "workingGroup.reviewRequests"; target: WorkingGroupTarget }
-  | { action: "workingGroup.removeMember"; target: WorkingGroupTarget; memberRole: MembershipRole };
+  | {
+      action: "workingGroup.removeMember";
+      target: WorkingGroupTarget;
+      memberIsCoordinator: boolean;
+    };
 
 /** `hidden` is answered as 404, `forbidden` as 403. */
 export type Decision = "allowed" | "forbidden" | "hidden";
@@ -34,7 +37,8 @@ export function relationTo(actor: Actor, target: WorkingGroupTarget): Relation {
   const membership = actor.memberships.find(
     (m) => m.workingGroupId === target.workingGroupId && m.organizationId === target.organizationId,
   );
-  return membership?.role ?? "outsider";
+  if (!membership) return "outsider";
+  return membership.isCoordinator ? "coordinator" : "volunteer";
 }
 
 const staff: readonly Relation[] = ["platformAdmin", "organizationAdmin", "coordinator"];
@@ -53,7 +57,7 @@ export function decide(actor: Actor, permission: Permission): Decision {
       return staff.includes(relation) ? "allowed" : "forbidden";
     case "workingGroup.removeMember":
       if (relation === "coordinator") {
-        return permission.memberRole === "volunteer" ? "allowed" : "forbidden";
+        return permission.memberIsCoordinator ? "forbidden" : "allowed";
       }
       return staff.includes(relation) ? "allowed" : "forbidden";
     default: {

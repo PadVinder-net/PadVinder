@@ -2,28 +2,11 @@
   "type": "diff",
   "version": "10",
   "dialect": "postgres",
-  "id": "fa7bdbc4-78bc-46e6-8de0-b44b2aa54090",
+  "id": "ae1ecc21-1626-487b-b310-7796b9e26d8f",
   "prevIds": [
     "b799c905-4955-48b4-bac1-ccaf79576ca2"
   ],
   "footprints": [
-    {
-      "statementType": "create_enum",
-      "statementTarget": [
-        "enum",
-        "public",
-        "membership_role"
-      ],
-      "writes": [
-        "s|enum|public.membership_role",
-        "n|enum|public.membership_role",
-        "e|enum|public.membership_role",
-        "n|type|public.membership_role"
-      ],
-      "reads": [
-        "n|sch|public"
-      ]
-    },
     {
       "statementType": "create_enum",
       "statementTarget": [
@@ -96,8 +79,7 @@
         "n|rel|public.working_group_memberships_user_id_working_group_id_key"
       ],
       "reads": [
-        "n|sch|public",
-        "n|enum|public.membership_role"
+        "n|sch|public"
       ]
     },
     {
@@ -412,18 +394,6 @@
       "op": "create",
       "row": {
         "schema": "public",
-        "name": "membership_role",
-        "values": [
-          "volunteer",
-          "coordinator"
-        ],
-        "entityType": "enums"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
         "name": "audit_actor_kind",
         "values": [
           "user",
@@ -581,12 +551,12 @@
       "row": {
         "schema": "public",
         "table": "working_group_memberships",
-        "name": "role",
-        "type": "membership_role",
-        "typeSchema": "public",
+        "name": "is_coordinator",
+        "type": "boolean",
+        "typeSchema": null,
         "notNull": true,
         "dimensions": 0,
-        "default": null,
+        "default": "false",
         "generated": null,
         "identity": null,
         "entityType": "columns"

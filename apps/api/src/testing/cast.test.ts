@@ -21,16 +21,16 @@ test("the cast has the roles it says", async () => {
     cast.organization.id,
   ]);
   expect((await access("coordinator"))?.memberships).toMatchObject([
-    { workingGroupId: cast.workingGroup.workingGroupId, role: "coordinator" },
+    { workingGroupId: cast.workingGroup.workingGroupId, isCoordinator: true },
   ]);
   expect((await access("volunteer"))?.memberships).toMatchObject([
-    { workingGroupId: cast.workingGroup.workingGroupId, role: "volunteer" },
+    { workingGroupId: cast.workingGroup.workingGroupId, isCoordinator: false },
   ]);
   expect((await access("volunteerOtherGroup"))?.memberships).toMatchObject([
-    { workingGroupId: cast.otherGroup.workingGroupId, role: "volunteer" },
+    { workingGroupId: cast.otherGroup.workingGroupId, isCoordinator: false },
   ]);
   expect((await access("coordinatorOtherOrganization"))?.memberships).toMatchObject([
-    { organizationId: cast.otherOrganization.id, role: "coordinator" },
+    { organizationId: cast.otherOrganization.id, isCoordinator: true },
   ]);
   expect((await access("applicant"))?.memberships).toEqual([]);
   expect(cast.workingGroup.organizationId).toBe(cast.organization.id);

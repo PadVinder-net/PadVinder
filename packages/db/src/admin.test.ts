@@ -225,7 +225,7 @@ test("grantCoordinator creates the membership, with one entry, and a repeat adds
     system,
   );
   expect(first.changed).toBe(true);
-  expect((await getAccess(db(), first.userId))?.memberships[0]?.role).toBe("coordinator");
+  expect((await getAccess(db(), first.userId))?.memberships[0]?.isCoordinator).toBe(true);
   const granted = {
     action: "role.coordinator_granted",
     organizationId: orgId,
@@ -249,7 +249,7 @@ test("grantCoordinator raises a volunteer, with one entry", async () => {
     .returning({ id: users.id });
   await db()
     .insert(workingGroupMemberships)
-    .values({ userId: v!.id, workingGroupId: groupId, role: "volunteer" });
+    .values({ userId: v!.id, workingGroupId: groupId, isCoordinator: false });
   const raised = await grantCoordinator(
     db(),
     { email: "v@example.test", workingGroupId: groupId },
@@ -261,7 +261,7 @@ test("grantCoordinator raises a volunteer, with one entry", async () => {
       .select()
       .from(workingGroupMemberships)
       .where(eq(workingGroupMemberships.userId, v!.id)),
-  ).toMatchObject([{ role: "coordinator" }]);
+  ).toMatchObject([{ isCoordinator: true }]);
   expect((await entries()).slice(2)).toEqual([
     {
       action: "role.coordinator_granted",
@@ -284,7 +284,7 @@ test("revokeCoordinator leaves a volunteer membership, with one entry, and a rep
     (await revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system))
       .changed,
   ).toBe(true);
-  expect((await getAccess(db(), userId))?.memberships).toMatchObject([{ role: "volunteer" }]);
+  expect((await getAccess(db(), userId))?.memberships).toMatchObject([{ isCoordinator: false }]);
   expect((await entries()).slice(3)).toEqual([
     {
       action: "role.coordinator_revoked",

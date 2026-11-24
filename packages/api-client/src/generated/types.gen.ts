@@ -34,8 +34,6 @@ export type HealthResponseInput = {
     };
 };
 
-export type MembershipRoleInput = 'volunteer' | 'coordinator';
-
 export type WorkingGroupSummaryInput = {
     id: string;
     name: string;
@@ -56,7 +54,7 @@ export type MeResponseInput = {
     };
     memberships: Array<{
         id: string;
-        role: MembershipRoleInput;
+        isCoordinator: boolean;
         workingGroup: WorkingGroupSummaryInput;
     }>;
     organizationAdminOf: Array<{
@@ -105,8 +103,6 @@ export type HealthResponse = {
     };
 };
 
-export type MembershipRole = 'volunteer' | 'coordinator';
-
 export type WorkingGroupSummary = {
     id: string;
     name: string;
@@ -127,7 +123,7 @@ export type MeResponse = {
     };
     memberships: Array<{
         id: string;
-        role: MembershipRole;
+        isCoordinator: boolean;
         workingGroup: WorkingGroupSummary;
     }>;
     organizationAdminOf: Array<{

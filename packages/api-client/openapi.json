@@ -134,13 +134,6 @@
           "worker"
         ]
       },
-      "MembershipRoleInput": {
-        "type": "string",
-        "enum": [
-          "volunteer",
-          "coordinator"
-        ]
-      },
       "WorkingGroupSummaryInput": {
         "type": "object",
         "properties": {
@@ -215,8 +208,8 @@
                 "id": {
                   "type": "string"
                 },
-                "role": {
-                  "$ref": "#/components/schemas/MembershipRoleInput"
+                "isCoordinator": {
+                  "type": "boolean"
                 },
                 "workingGroup": {
                   "$ref": "#/components/schemas/WorkingGroupSummaryInput"
@@ -224,7 +217,7 @@
               },
               "required": [
                 "id",
-                "role",
+                "isCoordinator",
                 "workingGroup"
               ]
             }
@@ -420,13 +413,6 @@
         ],
         "additionalProperties": false
       },
-      "MembershipRole": {
-        "type": "string",
-        "enum": [
-          "volunteer",
-          "coordinator"
-        ]
-      },
       "WorkingGroupSummary": {
         "type": "object",
         "properties": {
@@ -504,8 +490,8 @@
                 "id": {
                   "type": "string"
                 },
-                "role": {
-                  "$ref": "#/components/schemas/MembershipRole"
+                "isCoordinator": {
+                  "type": "boolean"
                 },
                 "workingGroup": {
                   "$ref": "#/components/schemas/WorkingGroupSummary"
@@ -513,7 +499,7 @@
               },
               "required": [
                 "id",
-                "role",
+                "isCoordinator",
                 "workingGroup"
               ],
               "additionalProperties": false

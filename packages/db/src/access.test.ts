@@ -58,8 +58,8 @@ test("memberships carry the organization of their working group", async () => {
   const a1 = await insertGroup(a, "Groep A1");
   const b1 = await insertGroup(b, "Groep B1");
   await t!.db.insert(workingGroupMemberships).values([
-    { userId, workingGroupId: a1, role: "coordinator" },
-    { userId, workingGroupId: b1, role: "volunteer" },
+    { userId, workingGroupId: a1, isCoordinator: true },
+    { userId, workingGroupId: b1, isCoordinator: false },
   ]);
   const access = await getAccess(t!.db, userId);
   expect(access?.memberships).toHaveLength(2);
@@ -69,13 +69,13 @@ test("memberships carry the organization of their working group", async () => {
         membershipId: expect.any(String),
         workingGroupId: a1,
         organizationId: a,
-        role: "coordinator",
+        isCoordinator: true,
       },
       {
         membershipId: expect.any(String),
         workingGroupId: b1,
         organizationId: b,
-        role: "volunteer",
+        isCoordinator: false,
       },
     ]),
   );
@@ -87,8 +87,8 @@ test("an inactive working group gives no membership", async () => {
   const active = await insertGroup(org, "Actief");
   const inactive = await insertGroup(org, "Gestopt", false);
   await t!.db.insert(workingGroupMemberships).values([
-    { userId, workingGroupId: active, role: "volunteer" },
-    { userId, workingGroupId: inactive, role: "coordinator" },
+    { userId, workingGroupId: active, isCoordinator: false },
+    { userId, workingGroupId: inactive, isCoordinator: true },
   ]);
   const access = await getAccess(t!.db, userId);
   expect(access?.memberships.map((m) => m.workingGroupId)).toEqual([active]);
@@ -110,17 +110,24 @@ test("an unknown user is null", async () => {
   expect(await getAccess(t!.db, "019e0000-0000-7000-8000-000000000000")).toBeNull();
 });
 
+test("a new membership is a volunteer, not a coordinator", async () => {
+  const userId = await insertUser("default@example.test");
+  const group = await insertGroup(await insertOrganization("Organisatie Z"), "Groep Z1");
+  await t!.db.insert(workingGroupMemberships).values({ userId, workingGroupId: group });
+  expect((await getAccess(t!.db, userId))?.memberships).toMatchObject([{ isCoordinator: false }]);
+});
+
 test("one user cannot be a member of one group twice", async () => {
   const userId = await insertUser("twice@example.test");
   const org = await insertOrganization("Organisatie E");
   const group = await insertGroup(org, "Groep E1");
   await t!.db
     .insert(workingGroupMemberships)
-    .values({ userId, workingGroupId: group, role: "volunteer" });
+    .values({ userId, workingGroupId: group, isCoordinator: false });
   await expect(
     t!.db
       .insert(workingGroupMemberships)
-      .values({ userId, workingGroupId: group, role: "coordinator" }),
+      .values({ userId, workingGroupId: group, isCoordinator: true }),
   ).rejects.toThrow();
 });
 

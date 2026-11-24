@@ -56,10 +56,7 @@ async function ensureVolunteer(
   workingGroupId: string,
 ): Promise<void> {
   const userId = await ensureAccount(db, email, name);
-  await db
-    .insert(workingGroupMemberships)
-    .values({ userId, workingGroupId, role: "volunteer" })
-    .onConflictDoNothing();
+  await db.insert(workingGroupMemberships).values({ userId, workingGroupId }).onConflictDoNothing();
 }
 
 /** Made-up organizations, groups and people for local development. Idempotent. */

@@ -1,11 +1,5 @@
 import { expect, test } from "vitest";
-import {
-  audienceOf,
-  LIVE_EVENT_TYPES,
-  liveEventAudiences,
-  liveEventSchema,
-  type LiveEventType,
-} from "./events";
+import { LIVE_EVENT_TYPES, liveEventAudiences, liveEventSchema } from "./events";
 
 test("accepts a worker heartbeat", () => {
   const event = { type: "worker-heartbeat", beatAt: "2027-03-01T19:30:00.000Z" };
@@ -25,11 +19,9 @@ test("lists the event types of the union", () => {
 
 test("the worker heartbeat is for platform admins", () => {
   expect(liveEventAudiences["worker-heartbeat"]).toBe("platform-admins");
-  expect(audienceOf("worker-heartbeat")).toBe("platform-admins");
 });
 
-test("an event type without a declared audience is for platform admins", () => {
-  // A type added to the union without an entry in `liveEventAudiences`, or a key of Object.
-  expect(audienceOf("not-declared" as LiveEventType)).toBe("platform-admins");
-  expect(audienceOf("toString" as LiveEventType)).toBe("platform-admins");
+test("every event type has a declared audience", () => {
+  // The type demands it; this guards against an entry removed with a cast.
+  expect(Object.keys(liveEventAudiences).sort()).toEqual([...LIVE_EVENT_TYPES].sort());
 });

@@ -1,4 +1,4 @@
-import { audienceOf } from "@padvinder/contracts";
+import { liveEventAudiences } from "@padvinder/contracts";
 import { type Db, liveEventsChannel } from "@padvinder/db";
 import type { ServerResponse } from "node:http";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
@@ -56,7 +56,7 @@ export const eventsRoutes: FastifyPluginAsyncZod<{
 
       // The hub has already validated the event against the channel's schema.
       const unsubscribe = notifications.subscribe(liveEventsChannel, (event) => {
-        if (!shouldDeliver(actor, audienceOf(event.type), addressOf(event))) return;
+        if (!shouldDeliver(actor, liveEventAudiences[event.type], addressOf(event))) return;
         write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
       });
       const keepalive = setInterval(() => write(": keepalive\n\n"), SSE_KEEPALIVE_MS);

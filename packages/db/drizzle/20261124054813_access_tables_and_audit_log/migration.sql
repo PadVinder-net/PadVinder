@@ -1,4 +1,3 @@
-CREATE TYPE "membership_role" AS ENUM('volunteer', 'coordinator');--> statement-breakpoint
 CREATE TYPE "audit_actor_kind" AS ENUM('user', 'system');--> statement-breakpoint
 CREATE TABLE "organization_admins" (
 	"user_id" uuid,
@@ -17,7 +16,7 @@ CREATE TABLE "working_group_memberships" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
 	"user_id" uuid NOT NULL,
 	"working_group_id" uuid NOT NULL,
-	"role" "membership_role" NOT NULL,
+	"is_coordinator" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "working_group_memberships_user_id_working_group_id_key" UNIQUE("user_id","working_group_id")
 );

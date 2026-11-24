@@ -1,11 +1,11 @@
 import type { LiveEventAudience } from "@padvinder/contracts";
-import type { MembershipRole } from "@padvinder/db";
 import { expect, test } from "vitest";
 import type { Actor } from "../permissions/actor";
 import { addressOf, shouldDeliver } from "./audience";
 
-function m(workingGroupId: string, organizationId: string, role: MembershipRole) {
-  return { membershipId: `m-${workingGroupId}`, workingGroupId, organizationId, role };
+function m(workingGroupId: string, organizationId: string, as: "volunteer" | "coordinator") {
+  const isCoordinator = as === "coordinator";
+  return { membershipId: `m-${workingGroupId}`, workingGroupId, organizationId, isCoordinator };
 }
 
 function actor(userId: string, parts: Partial<Omit<Actor, "userId" | "user">>): Actor {
@@ -46,7 +46,7 @@ function reached(audience: LiveEventAudience, to: Parameters<typeof shouldDelive
 }
 
 test.each([
-  ["user", ["platformAdmin", "volunteer"]],
+  ["user", ["volunteer"]],
   ["working-group-coordinators", ["platformAdmin", "organizationAdmin", "coordinator"]],
   ["working-group-members", ["platformAdmin", "organizationAdmin", "coordinator", "volunteer"]],
   [
@@ -58,10 +58,12 @@ test.each([
   expect(reached(audience, address)).toEqual([...expected].sort());
 });
 
-test("an address without the needed field reaches platform admins only", () => {
-  expect(reached("user", { workingGroupId: "g-a1", organizationId: "o-a" })).toEqual([
-    "platformAdmin",
-  ]);
+test("an event for one user reaches a platform admin only when it is addressed to them", () => {
+  expect(reached("user", { userId: "u-platform-admin" })).toEqual(["platformAdmin"]);
+});
+
+test("an address without the needed field reaches platform admins only, and nobody for user", () => {
+  expect(reached("user", { workingGroupId: "g-a1", organizationId: "o-a" })).toEqual([]);
   for (const audience of ["working-group-coordinators", "working-group-members"] as const) {
     expect(reached(audience, { organizationId: "o-a" }), audience).toEqual(["platformAdmin"]);
     expect(reached(audience, { workingGroupId: "g-a1" }), audience).toEqual(["platformAdmin"]);

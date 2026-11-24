@@ -1,9 +1,6 @@
-import type { MembershipRole } from "@padvinder/contracts";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "./client";
 import { organizationAdmins, users, workingGroupMemberships, workingGroups } from "./schema";
-
-export type { MembershipRole };
 
 export type Access = {
   isPlatformAdmin: boolean;
@@ -11,7 +8,7 @@ export type Access = {
     membershipId: string;
     workingGroupId: string;
     organizationId: string;
-    role: MembershipRole;
+    isCoordinator: boolean;
   }[];
   adminOfOrganizationIds: string[];
 };
@@ -31,7 +28,7 @@ export async function getAccess(db: Db, userId: string): Promise<Access | null> 
       membershipId: workingGroupMemberships.id,
       workingGroupId: workingGroupMemberships.workingGroupId,
       organizationId: workingGroups.organizationId,
-      role: workingGroupMemberships.role,
+      isCoordinator: workingGroupMemberships.isCoordinator,
     })
     .from(workingGroupMemberships)
     .innerJoin(workingGroups, eq(workingGroups.id, workingGroupMemberships.workingGroupId))

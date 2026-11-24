@@ -21,7 +21,7 @@ export const meFixture: MeResponse = {
     isPlatformAdmin: false,
   },
   memberships: [
-    { id: "0192f3c0-0000-7000-8000-0000000000c1", role: "volunteer", workingGroup: northGroup },
+    { id: "0192f3c0-0000-7000-8000-0000000000c1", isCoordinator: false, workingGroup: northGroup },
   ],
   organizationAdminOf: [],
 };
@@ -33,7 +33,7 @@ export const meWithoutNameFixture: MeResponse = {
 
 export const coordinatorMeFixture: MeResponse = {
   ...meFixture,
-  memberships: [{ ...meFixture.memberships[0]!, role: "coordinator" }],
+  memberships: [{ ...meFixture.memberships[0]!, isCoordinator: true }],
 };
 
 export const platformAdminMeFixture: MeResponse = {
@@ -55,7 +55,7 @@ export const twoOrganizationsMeFixture: MeResponse = {
     ...meFixture.memberships,
     {
       id: "0192f3c0-0000-7000-8000-0000000000c2",
-      role: "coordinator",
+      isCoordinator: true,
       workingGroup: {
         id: "0192f3c0-0000-7000-8000-0000000000b2",
         name: "Centrum",
