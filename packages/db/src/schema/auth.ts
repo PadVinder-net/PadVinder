@@ -36,7 +36,7 @@ export const users = pgTable("users", {
   phone: text("phone"),
   // Ours. Set only by hand in the database or by a platform admin, never through Better Auth.
   isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
-  // Ours. Set when an account is deleted (a later plan); never through Better Auth's client.
+  // Ours. Set when an account is deleted; never through Better Auth's client.
   deletedAt: timestamptz("deleted_at"),
 });
 

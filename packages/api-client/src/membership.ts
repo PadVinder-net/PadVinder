@@ -138,8 +138,9 @@ export const deleteAccountMutationKey = ["deleteAccount"] as const;
 
 /**
  * Deletes the user's own account. On success the whole cache of the user is cleared: me becomes
- * `null` (the gate shows the login screen) and every other query is removed. The last platform
- * admin gets `last_platform_admin` and keeps everything.
+ * `null` (the gate shows the login screen), every other query is removed, and every mutation but
+ * this deletion (which the gate reads to say the account is gone). The last platform admin gets
+ * `last_platform_admin` and keeps everything.
  */
 export function useDeleteAccount() {
   const queryClient = useQueryClient();
@@ -150,7 +151,7 @@ export function useDeleteAccount() {
     },
     onSuccess: () => {
       queryClient.setQueryData(getMeQueryKey(), null);
-      clearOtherUserData(queryClient, { keepMutations: true });
+      clearOtherUserData(queryClient, { keepMutation: deleteAccountMutationKey });
     },
   });
 }

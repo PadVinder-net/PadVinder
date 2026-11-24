@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { client } from "./generated/client.gen";
 import {
   apiErrorCode,
+  deleteAccountMutationKey,
   getMeQueryKey,
   listMembersQueryKey,
   listMembershipRequestsQueryKey,
@@ -305,12 +306,27 @@ describe("useDeleteAccount", () => {
     const requests = answerWith(noContent());
     const { result, queryClient } = setup(() => useDeleteAccount());
     seedLists(queryClient);
+    // An earlier profile change of the same user, whose variables hold a name and a phone.
+    await queryClient
+      .getMutationCache()
+      .build(queryClient, {
+        mutationKey: ["updateMe"],
+        mutationFn: async () => null,
+      })
+      .execute({ name: "Noor", phone: "06 12345678" });
     await result.current.mutateAsync();
     expect(requests[0]!.method).toBe("DELETE");
     expect(new URL(requests[0]!.url).pathname).toBe("/api/me");
     // The gate watches me, so that query stays, as logged out.
     expect(queryClient.getQueryData(getMeQueryKey())).toBeNull();
     expect(queryClient.getQueryCache().getAll()).toHaveLength(1);
+    // Only the deletion stays, for the gate's notice.
+    expect(
+      queryClient
+        .getMutationCache()
+        .getAll()
+        .map((mutation) => mutation.options.mutationKey),
+    ).toEqual([deleteAccountMutationKey]);
   });
 
   test("the last platform admin keeps everything and gets the code", async () => {
