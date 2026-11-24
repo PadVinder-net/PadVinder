@@ -435,6 +435,7 @@ test("the only two platform admins deleting themselves at the same moment: exact
     const ids: string[] = [];
     for (const email of ["een@example.test", "twee@example.test"]) {
       await grantPlatformAdmin(fresh.db, { email }, system);
+      await logIn(fresh.db, email);
       const [row] = await fresh.db.select().from(users).where(eq(users.email, email));
       ids.push(row!.id);
     }

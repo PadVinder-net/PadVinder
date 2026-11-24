@@ -20,7 +20,7 @@ test("saving the profile shows the saved text", async () => {
   expect(await screen.findByRole("heading", { name: "Profiel" })).toBeVisible();
   expect(screen.getByText("noor@example.test")).toBeVisible();
   expect(screen.getByRole("link", { name: "Terug" })).toHaveAttribute("href", "/app/more");
-  await userEvent.type(screen.getByLabelText("Telefoonnummer (mag leeg)"), "06 11112222");
+  await userEvent.type(screen.getByLabelText("Telefoonnummer (optioneel)"), "06 11112222");
   await userEvent.click(screen.getByRole("button", { name: "Bewaar" }));
   expect(await screen.findByText("Je gegevens zijn bewaard.")).toBeVisible();
 });

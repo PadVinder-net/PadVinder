@@ -1,12 +1,11 @@
 import {
   apiErrorCode,
-  apiErrorMessage,
   mayRemoveMember,
   useMe,
   useRemoveMembership,
   type MeResponse,
 } from "@padvinder/api-client";
-import { MemberDetail, nameInSentence } from "@padvinder/ui";
+import { apiErrorMessage, MemberDetail, nameInSentence } from "@padvinder/ui";
 import { useNavigate, useParams } from "react-router";
 import { LoadError, Loading, SubScreen, type FlashState } from "./sub-screen";
 import { useMemberLists } from "./working-group-lists";

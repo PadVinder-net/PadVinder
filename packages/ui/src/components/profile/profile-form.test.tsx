@@ -24,7 +24,7 @@ test("the profile shows the email address as text and saves name and phone", asy
   expect(name).toHaveValue("Noor de Vries");
   await userEvent.clear(name);
   await userEvent.type(name, "  Noor Bakker ");
-  await userEvent.type(screen.getByRole("textbox", { name: "Telefoonnummer (mag leeg)" }), "06 1");
+  await userEvent.type(screen.getByRole("textbox", { name: "Telefoonnummer (optioneel)" }), "06 1");
   await userEvent.click(screen.getByRole("button", { name: "Bewaar" }));
   expect(onSave).toHaveBeenCalledWith({ name: "Noor Bakker", phone: "06 1" });
 });

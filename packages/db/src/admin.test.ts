@@ -455,6 +455,7 @@ test("every grant and revoke that changes something sends access-changed for tha
     const platform = await grantPlatformAdmin(db(), { email: "p@example.test" }, system);
     expect(await events.drain()).toEqual(changed(platform.userId));
     await grantPlatformAdmin(db(), { email: "q@example.test" }, system);
+    await logIn("q@example.test");
     await events.drain();
     expect((await revokePlatformAdmin(db(), { email: "p@example.test" }, system)).userId).toBe(
       platform.userId,

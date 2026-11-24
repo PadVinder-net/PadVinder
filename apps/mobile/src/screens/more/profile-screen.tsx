@@ -1,15 +1,12 @@
 import {
   apiErrorCode,
-  apiErrorMessage,
   useDeleteAccount,
   useMe,
   useUpdateMe,
   type GetMeResponse,
 } from "@padvinder/api-client";
-import { ProfileForm } from "@padvinder/ui";
+import { apiErrorMessage, connectionMessage, ProfileForm } from "@padvinder/ui";
 import { SubScreen } from "./sub-screen";
-
-const connectionMessage = "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.";
 
 /**
  * The profile with saving and deleting the account. Also used by the applicant screens. After a

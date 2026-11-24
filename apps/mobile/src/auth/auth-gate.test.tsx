@@ -11,11 +11,11 @@ import {
   getHealthQueryKey,
   getMeQueryKey,
 } from "@padvinder/api-client";
-import { createTestQueryClient, mockFetch } from "@padvinder/api-client/testing";
+import { createTestQueryClient, FakeEventSource, mockFetch } from "@padvinder/api-client/testing";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { AuthGate } from "./auth-gate";
 
 const unauthorized = () =>
@@ -104,6 +104,36 @@ test("the live stream is open while someone is logged in, and not on the login s
     expect(opened).toEqual(["/api/events"]);
   } finally {
     globalThis.EventSource = Original;
+  }
+});
+
+test("access-changed turns the waiting screen into the app; a refused stream after the session ended shows the login screen and stays closed", async () => {
+  FakeEventSource.instances = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const routes: Record<string, unknown> = { "/api/me": waitingMeFixture };
+    mockFetch(routes);
+    renderGate();
+    await screen.findByRole("heading", { name: "Welkom!" });
+    const source = FakeEventSource.instances[0]!;
+    routes["/api/me"] = meFixture;
+    source.emit(
+      "access-changed",
+      JSON.stringify({ type: "access-changed", userId: waitingMeFixture.user.id }),
+    );
+    expect(await screen.findByText("de app")).toBeVisible();
+
+    // Logged out elsewhere: the server refuses the stream, me is asked again and is gone.
+    routes["/api/me"] = unauthorized();
+    source.fail(true);
+    expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
+    // The gate unmounted the live updates, which cancelled the pause before opening it again.
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   }
 });
 

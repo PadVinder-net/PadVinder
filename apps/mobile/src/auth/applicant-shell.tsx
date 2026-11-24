@@ -1,19 +1,24 @@
 import {
   apiErrorCode,
-  apiErrorMessage,
   listWorkingGroupsOptions,
   useCreateMembershipRequest,
   useLogOut,
   useWithdrawMembershipRequest,
   type GetMeResponse,
 } from "@padvinder/api-client";
-import { Button, WaitingForApproval, WorkingGroupPicker } from "@padvinder/ui";
+import {
+  apiErrorMessage,
+  Button,
+  connectionMessage,
+  logOutFailedMessage,
+  WaitingForApproval,
+  WorkingGroupPicker,
+} from "@padvinder/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { newId } from "../lib/new-id";
 import { ProfileEditor } from "../screens/more/profile-screen";
 
-const connectionMessage = "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.";
 const goneMessage = "Deze werkgroep bestaat niet meer. Kies een andere werkgroep.";
 
 /** The ID and time of one join attempt, kept until the user picks another group. */
@@ -37,7 +42,7 @@ export function ApplicantShell({ me }: { me: GetMeResponse }) {
     <>
       {logOutFailed ? (
         <p role="alert" className="font-medium text-destructive">
-          Uitloggen lukt nu niet. Controleer je verbinding en probeer het opnieuw.
+          {logOutFailedMessage}
         </p>
       ) : null}
     </>

@@ -74,7 +74,7 @@ export function ProfileForm({
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="profile-phone" className={labelClass}>
-            Telefoonnummer (mag leeg)
+            Telefoonnummer (optioneel)
           </Label>
           <Input
             id="profile-phone"

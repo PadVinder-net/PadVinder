@@ -23,3 +23,24 @@ const loginErrorMessages: Record<LoginError, string> = {
 export function loginErrorMessage(error: LoginError): string {
   return loginErrorMessages[error];
 }
+
+const apiErrorMessages: Record<string, string> = {
+  too_many_requests: "Je hebt vandaag te vaak een aanmelding gestuurd. Probeer het morgen opnieuw.",
+  already_decided: "Deze aanmelding is al behandeld.",
+  last_platform_admin: "Je bent de enige hoofdbeheerder. Maak eerst iemand anders hoofdbeheerder.",
+  not_allowed: "Dit mag je niet doen.",
+  not_found: "Dit bestaat niet meer.",
+  membership_changed: "Deze persoon heeft intussen een andere rol. Kijk opnieuw.",
+};
+
+/**
+ * The Dutch text for an error `code` of our API (`apiErrorCode` in `@padvinder/api-client`), or
+ * the connection message for `null` and any code without its own text. Never shows the English
+ * `message`.
+ */
+export function apiErrorMessage(code: string | null): string {
+  return (
+    (code !== null && Object.hasOwn(apiErrorMessages, code) && apiErrorMessages[code]) ||
+    connectionMessage
+  );
+}

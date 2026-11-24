@@ -11,7 +11,12 @@ export { EmailForm, type EmailFormProps } from "./components/login/email-form";
 export { NameForm, type NameFormProps } from "./components/login/name-form";
 export { LoginFlow, type LoginFlowProps, type LoginResult } from "./components/login/login-flow";
 export { AuthGateView, type AuthGateViewProps } from "./components/login/auth-gate-view";
-export { connectionMessage, loginErrorMessage, logOutFailedMessage } from "./lib/messages";
+export {
+  apiErrorMessage,
+  connectionMessage,
+  loginErrorMessage,
+  logOutFailedMessage,
+} from "./lib/messages";
 export { foldText, filterWorkingGroups } from "./lib/filter-working-groups";
 export {
   WorkingGroupPicker,

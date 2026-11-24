@@ -31,6 +31,7 @@ test("empty lists for an unknown user", async () => {
   expect(await getMeRoles(t!.db, "0193a5e0-0000-7000-8000-000000000000")).toEqual({
     memberships: [],
     organizationAdminOf: [],
+    membershipRequest: null,
   });
 });
 
