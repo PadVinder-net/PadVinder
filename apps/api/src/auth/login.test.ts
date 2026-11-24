@@ -1,5 +1,5 @@
 import { Writable } from "node:stream";
-import { sessions, users, verifications } from "@padvinder/db";
+import { grantPlatformAdmin, sessions, users, verifications } from "@padvinder/db";
 import { createTestDatabase } from "@padvinder/db/testing";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -235,6 +235,27 @@ test("the client cannot set the phone number", async () => {
   expect(await ctx.t.db.select().from(users)).toHaveLength(0);
 });
 
+test("the client cannot make itself a platform admin", async () => {
+  await requestCode(ctx, "noor@example.test");
+  const res = await ctx.app.inject({
+    method: "POST",
+    url: "/api/auth/sign-in/email-otp",
+    payload: {
+      email: "noor@example.test",
+      otp: codeFor(ctx, "noor@example.test"),
+      isPlatformAdmin: true,
+    },
+  });
+  // Whether Better Auth refuses or ignores the field, the account is not an admin.
+  expect([200, 400]).toContain(res.statusCode);
+  if (res.statusCode === 400) {
+    await signIn(ctx, "noor@example.test", codeFor(ctx, "noor@example.test"));
+  }
+  expect(await ctx.t.db.select({ admin: users.isPlatformAdmin }).from(users)).toEqual([
+    { admin: false },
+  ]);
+});
+
 test("a name and picture sent with the first sign-in are ignored", async () => {
   await requestCode(ctx, "noor@example.test");
   const res = await ctx.app.inject({
@@ -437,4 +458,17 @@ test("every Better Auth table makes its ids with uuidv7()", async () => {
   expect(result.rows.map((row) => row.column_default)).toEqual(
     Array.from({ length: 5 }, () => "uuidv7()"),
   );
+});
+
+test("an account made by a grant is the one that logs in with that address", async () => {
+  const granted = await grantPlatformAdmin(
+    ctx.t.db,
+    { email: "Eerste@Example.test" },
+    { kind: "system" },
+  );
+  const { userId } = await loginAs(ctx, "eerste@example.test");
+  expect(userId).toBe(granted.userId);
+  expect(await ctx.t.db.select().from(users)).toMatchObject([
+    { id: granted.userId, isPlatformAdmin: true },
+  ]);
 });

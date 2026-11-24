@@ -1,8 +1,9 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  // main.js is the API; migrate.js applies the migrations of a release before it starts.
-  entry: ["src/main.ts", "src/migrate.ts"],
+  // main.js is the API; migrate.js applies the migrations of a release before it starts;
+  // admin.js is the maintainer's tool for organizations and roles.
+  entry: { main: "src/main.ts", migrate: "src/migrate.ts", admin: "src/cli/admin.ts" },
   format: "esm",
   platform: "node",
   target: "node24",

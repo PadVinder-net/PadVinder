@@ -21,6 +21,7 @@ export type HealthResponseInput = {
     checkedAt: string;
     database: {
         reachable: boolean;
+        detailsHidden: boolean;
         postgresVersion: string | null;
         postgisVersion: string | null;
         latestMigration: {
@@ -33,13 +34,33 @@ export type HealthResponseInput = {
     };
 };
 
+export type WorkingGroupSummaryInput = {
+    id: string;
+    name: string;
+    city: string;
+    organization: {
+        id: string;
+        name: string;
+    };
+};
+
 export type MeResponseInput = {
     user: {
         id: string;
         name: string;
         email: string;
         phone: string | null;
+        isPlatformAdmin: boolean;
     };
+    memberships: Array<{
+        id: string;
+        isCoordinator: boolean;
+        workingGroup: WorkingGroupSummaryInput;
+    }>;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
 };
 
 export type UpdateMeRequestInput = {
@@ -69,6 +90,7 @@ export type HealthResponse = {
     checkedAt: string;
     database: {
         reachable: boolean;
+        detailsHidden: boolean;
         postgresVersion: string | null;
         postgisVersion: string | null;
         latestMigration: {
@@ -81,13 +103,33 @@ export type HealthResponse = {
     };
 };
 
+export type WorkingGroupSummary = {
+    id: string;
+    name: string;
+    city: string;
+    organization: {
+        id: string;
+        name: string;
+    };
+};
+
 export type MeResponse = {
     user: {
         id: string;
         name: string;
         email: string;
         phone: string | null;
+        isPlatformAdmin: boolean;
     };
+    memberships: Array<{
+        id: string;
+        isCoordinator: boolean;
+        workingGroup: WorkingGroupSummary;
+    }>;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
 };
 
 export type UpdateMeRequest = {

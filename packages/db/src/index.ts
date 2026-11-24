@@ -1,3 +1,5 @@
+export * from "./access";
+export * from "./admin";
 export * from "./client";
 export * from "./diagnostics";
 export * from "./heartbeats";
@@ -7,3 +9,5 @@ export * from "./notifications";
 export * from "./schema";
 export * from "./seed";
 export * from "./users";
+export * from "./audit-log";
+export * from "./me";

@@ -1,4 +1,12 @@
-import { accounts, rateLimits, sessions, users, verifications, type Db } from "@padvinder/db";
+import {
+  accounts,
+  normalizeEmail,
+  rateLimits,
+  sessions,
+  users,
+  verifications,
+  type Db,
+} from "@padvinder/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
@@ -32,11 +40,6 @@ export const LOGIN_CODE_LIMIT_ERRORS: Record<LoginCodeLimit, { code: string; mes
     message: "Too many login codes requested for this address in 24 hours",
   },
 };
-
-/** Trimmed and lowercase, so sloppy typing reaches the same account. */
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
 
 // Anything that looks like an email address, to keep addresses out of Better Auth's log lines.
 const EMAIL_LIKE = /[^\s@<>"'(),;:]+@[^\s@<>"'(),;:]+/g;
@@ -97,6 +100,7 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
       additionalFields: {
         // Ours. Set through our own profile endpoint, never through Better Auth's client.
         phone: { type: "string", required: false, input: false },
+        isPlatformAdmin: { type: "boolean", required: false, input: false, defaultValue: false },
       },
     },
     session: {

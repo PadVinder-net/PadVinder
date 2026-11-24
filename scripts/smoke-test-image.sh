@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke-tests a release image: migrates a database, starts the worker and the API, and
+# Smoke-tests a release image: migrates a database, runs the admin tool once, starts the worker and the API, and
 # checks health and the static apps.
 #
 #   scripts/smoke-test-image.sh <image> <database-url>
@@ -49,6 +49,14 @@ containers+=("$migrate")
 docker run --name "$migrate" "${common[@]}" "$image" \
   node --env-file=release.env api/dist/migrate.js migrations \
   || fail "migrate failed"
+
+# The maintainer's tool needs only DATABASE_URL. It must be in the artifact and run.
+echo "Running the admin tool"
+admin="padvinder-smoke-admin-$run_id"
+containers+=("$admin")
+docker run --name "$admin" "${common[@]}" "$image" \
+  node --env-file=release.env api/dist/admin.js list \
+  || fail "the admin tool failed"
 
 echo "Starting the worker and the API"
 worker="padvinder-smoke-worker-$run_id"

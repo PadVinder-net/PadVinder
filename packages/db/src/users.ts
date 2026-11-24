@@ -16,12 +16,12 @@ export async function getUserProfile(db: Db, userId: string): Promise<UserProfil
   return row ?? null;
 }
 
-/** Changes only the keys that are present in the patch. */
+/** Changes only the keys that are present in the patch. `null` when the user does not exist. */
 export async function updateUserProfile(
   db: Db,
   userId: string,
   patch: { name?: string; phone?: string | null },
-): Promise<UserProfile> {
+): Promise<UserProfile | null> {
   const changes: { name?: string; phone?: string | null } = {};
   if (patch.name !== undefined) changes.name = patch.name;
   if (patch.phone !== undefined) changes.phone = patch.phone;
@@ -33,6 +33,5 @@ export async function updateUserProfile(
           .set({ ...changes, updatedAt: new Date() })
           .where(eq(users.id, userId))
           .returning(profileColumns);
-  if (!row) throw new Error("User not found");
-  return row;
+  return row ?? null;
 }

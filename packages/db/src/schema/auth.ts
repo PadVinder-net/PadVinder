@@ -34,6 +34,8 @@ export const users = pgTable("users", {
   updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   // Ours, not Better Auth's. Optional.
   phone: text("phone"),
+  // Ours. Set only by hand in the database or by a platform admin, never through Better Auth.
+  isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
 });
 
 export const sessions = pgTable(

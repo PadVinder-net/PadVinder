@@ -4,3 +4,4 @@ export * from "./health";
 export * from "./login";
 export * from "./me";
 export * from "./version";
+export * from "./working-groups";

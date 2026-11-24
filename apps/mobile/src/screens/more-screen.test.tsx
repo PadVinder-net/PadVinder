@@ -1,6 +1,6 @@
-import { healthyFixture, meFixture } from "@padvinder/contracts/fixtures";
+import { healthyFixture, meFixture, platformAdminMeFixture } from "@padvinder/contracts/fixtures";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getMeQueryKey } from "@padvinder/api-client";
@@ -24,15 +24,28 @@ function renderScreen() {
   );
 }
 
-test("more screen shows the system status", async () => {
-  mockFetch({ "/api/health": healthyFixture });
+test("a platform admin sees the system status", async () => {
+  mockFetch({ "/api/me": platformAdminMeFixture, "/api/health": healthyFixture });
   renderScreen();
   expect(screen.getByRole("heading", { level: 1, name: "Meer" })).toBeVisible();
   expect(await screen.findByText("Alles werkt")).toBeVisible();
 });
 
+test("anyone else sees no system status", async () => {
+  const { calls } = mockFetch({ "/api/me": meFixture, "/api/health": healthyFixture });
+  renderScreen();
+  expect(await screen.findByRole("button", { name: "Log uit" })).toBeVisible();
+  await waitFor(() => expect(calls).toContain("/api/me"));
+  expect(calls).not.toContain("/api/health");
+  expect(screen.queryByRole("heading", { name: "Systeemstatus" })).toBeNull();
+  expect(screen.queryByText("Alles werkt")).toBeNull();
+});
+
 test("more screen shows the load error", async () => {
-  mockFetch({ "/api/health": new Response("boom", { status: 500 }) });
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    "/api/health": new Response("boom", { status: 500 }),
+  });
   renderScreen();
   expect(await screen.findByText(/De server is niet bereikbaar/)).toBeVisible();
 });
@@ -111,8 +124,7 @@ test("Log uit when the session had already ended goes to the login screen withou
 });
 
 test("more screen shows the app version and build", async () => {
-  mockFetch({ "/api/health": healthyFixture });
+  mockFetch({ "/api/me": meFixture });
   renderScreen();
   expect(screen.getByText("App-versie 2027.0.0 (dev)")).toBeVisible();
-  await screen.findByText("Alles werkt");
 });

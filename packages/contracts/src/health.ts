@@ -25,6 +25,8 @@ export const healthResponseSchema = z
     checkedAt: timestampSchema,
     database: z.object({
       reachable: z.boolean(),
+      /** `true` when the details are not given: the caller may not see them, or the database is unreachable. The three fields below are then `null`. */
+      detailsHidden: z.boolean(),
       postgresVersion: z.string().nullable(),
       postgisVersion: z.string().nullable(),
       latestMigration: z.object({ name: z.string(), createdAt: timestampSchema }).nullable(),

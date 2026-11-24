@@ -1,17 +1,23 @@
-import { healthQueryOptions, useHealthLiveUpdates, useLogOut } from "@padvinder/api-client";
+import { healthQueryOptions, useHealthLiveUpdates, useLogOut, useMe } from "@padvinder/api-client";
 import { Button, HealthStatus, logOutFailedMessage } from "@padvinder/ui";
 import { useQuery } from "@tanstack/react-query";
 import { APP_BUILD, APP_VERSION } from "../app-version";
 
-export function MoreScreen() {
+/** Only mounted for platform admins, so nobody else fetches or streams the status. */
+function SystemStatus() {
   const { data, isError } = useQuery(healthQueryOptions());
   useHealthLiveUpdates();
+  return <HealthStatus health={data} loadFailed={isError} />;
+}
+
+export function MoreScreen() {
+  const me = useMe();
   const { logOut, failed: logOutFailed } = useLogOut();
 
   return (
     <section className="p-4">
       <h1 className="mb-4 text-2xl font-bold">Meer</h1>
-      <HealthStatus health={data} loadFailed={isError} />
+      {me.data?.user.isPlatformAdmin ? <SystemStatus /> : null}
       {logOutFailed ? (
         <p role="alert" className="mt-6 text-base text-destructive">
           {logOutFailedMessage}

@@ -187,7 +187,7 @@ The portal sends the whole list in one request, and the API handles the addresse
 - Already a member of this group: answered with "is al lid", nothing changes.
 - An account that has logged in before (`last_login_at` is set), with an open request for this group: the request becomes approved, decided by whoever added them. They asked for it. The answer is "is toegelaten", and they get the approval mail of part 1.
 - Such an account without an open request for this group: **not added.** The answer is "heeft al een account en krijgt een mail". The person gets a mail that says how to ask for the group themselves (see "Mails"), and an audit entry `membership.invited` is written. A second attempt for the same person and group within 24 hours sends no second mail.
-- Otherwise (no account, or an account that has never logged in): a membership with role `volunteer`, an audit entry, the `access-changed` event, and a queued mail.
+- Otherwise (no account, or an account that has never logged in): a membership as a volunteer, an audit entry, the `access-changed` event, and a queued mail.
 
 The portal thereby tells the adder that an address has a PadVinder account, though not where. That is accepted.
 
@@ -356,7 +356,7 @@ Under `/api`, in `packages/contracts`. Paths and field names are the builder's t
 | `POST /organizations/{id}/working-groups`                     | Create a group with its first coordinator (`coordinatorEmail`)                                                                             |
 | `PATCH /working-groups/{id}`                                  | Change name, city or `active`                                                                                                              |
 | `POST /working-groups/{id}/members`                           | Add people: `{ emails: string[] }`, answers one outcome per address: added, approved, invited, already a member, or not an address         |
-| `PATCH /memberships/{id}`                                     | Change the role. 409 for the last coordinator of an active group                                                                           |
+| `PATCH /memberships/{id}`                                     | Set or clear `isCoordinator`. 409 for the last coordinator of an active group                                                              |
 | `GET /membership-requests`                                    | The open requests of every group the actor reviews                                                                                         |
 | `GET /organizations`, `GET /organizations/{id}`               | The organizations the actor administers; one with its admins                                                                               |
 | `POST /organizations`, `PATCH /organizations/{id}`            | Create with its first admin (`adminEmail`); change name (platform admin) or contact address. An organization admin sending `name` gets 403 |

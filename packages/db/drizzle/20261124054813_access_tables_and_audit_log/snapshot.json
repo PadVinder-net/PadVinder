@@ -1,0 +1,1134 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "ae1ecc21-1626-487b-b310-7796b9e26d8f",
+  "prevIds": [
+    "b799c905-4955-48b4-bac1-ccaf79576ca2"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "audit_actor_kind"
+      ],
+      "writes": [
+        "s|enum|public.audit_actor_kind",
+        "n|enum|public.audit_actor_kind",
+        "e|enum|public.audit_actor_kind",
+        "n|type|public.audit_actor_kind"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "organization_admins"
+      ],
+      "writes": [
+        "s|tbl|public.organization_admins",
+        "n|tbl|public.organization_admins",
+        "e|tbl|public.organization_admins",
+        "n|rel|public.organization_admins",
+        "n|type|public.organization_admins",
+        "n|rel|public.organization_admins_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "organizations"
+      ],
+      "writes": [
+        "s|tbl|public.organizations",
+        "n|tbl|public.organizations",
+        "e|tbl|public.organizations",
+        "n|rel|public.organizations",
+        "n|type|public.organizations",
+        "n|rel|public.organizations_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_group_memberships"
+      ],
+      "writes": [
+        "s|tbl|public.working_group_memberships",
+        "n|tbl|public.working_group_memberships",
+        "e|tbl|public.working_group_memberships",
+        "n|rel|public.working_group_memberships",
+        "n|type|public.working_group_memberships",
+        "n|rel|public.working_group_memberships_pkey",
+        "n|rel|public.working_group_memberships_user_id_working_group_id_key"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_groups"
+      ],
+      "writes": [
+        "s|tbl|public.working_groups",
+        "n|tbl|public.working_groups",
+        "e|tbl|public.working_groups",
+        "n|rel|public.working_groups",
+        "n|type|public.working_groups",
+        "n|rel|public.working_groups_pkey",
+        "n|rel|public.working_groups_organization_id_name_key"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "audit_log_entries"
+      ],
+      "writes": [
+        "s|tbl|public.audit_log_entries",
+        "n|tbl|public.audit_log_entries",
+        "e|tbl|public.audit_log_entries",
+        "n|rel|public.audit_log_entries",
+        "n|type|public.audit_log_entries",
+        "n|rel|public.audit_log_entries_pkey"
+      ],
+      "reads": [
+        "n|sch|public",
+        "n|enum|public.audit_actor_kind"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "users",
+        "is_platform_admin"
+      ],
+      "writes": [
+        "s|col|public.users.is_platform_admin",
+        "n|col|public.users.is_platform_admin",
+        "e|col|public.users.is_platform_admin"
+      ],
+      "reads": [
+        "n|tbl|public.users",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "audit_log_entries",
+        "audit_log_entries_organization_id_occurred_at_idx"
+      ],
+      "writes": [
+        "s|idx|public.audit_log_entries_organization_id_occurred_at_idx",
+        "n|idx|public.audit_log_entries_organization_id_occurred_at_idx",
+        "e|idx|public.audit_log_entries_organization_id_occurred_at_idx",
+        "n|rel|public.audit_log_entries_organization_id_occurred_at_idx"
+      ],
+      "reads": [
+        "n|tbl|public.audit_log_entries",
+        "n|sch|public",
+        "n|col|public.audit_log_entries.organization_id",
+        "n|col|public.audit_log_entries.occurred_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "audit_log_entries",
+        "audit_log_entries_subject_type_subject_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.audit_log_entries_subject_type_subject_id_idx",
+        "n|idx|public.audit_log_entries_subject_type_subject_id_idx",
+        "e|idx|public.audit_log_entries_subject_type_subject_id_idx",
+        "n|rel|public.audit_log_entries_subject_type_subject_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.audit_log_entries",
+        "n|sch|public",
+        "n|col|public.audit_log_entries.subject_type",
+        "n|col|public.audit_log_entries.subject_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "organization_admins"
+      ],
+      "writes": [
+        "s|fk|public.organization_admins.organization_admins_user_id_users_id_fkey",
+        "n|fk|public.organization_admins.organization_admins_user_id_users_id_fkey",
+        "e|fk|public.organization_admins.organization_admins_user_id_users_id_fkey",
+        "n|con|public.organization_admins.organization_admins_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.organization_admins",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.organization_admins.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "organization_admins"
+      ],
+      "writes": [
+        "s|fk|public.organization_admins.organization_admins_organization_id_organizations_id_fkey",
+        "n|fk|public.organization_admins.organization_admins_organization_id_organizations_id_fkey",
+        "e|fk|public.organization_admins.organization_admins_organization_id_organizations_id_fkey",
+        "n|con|public.organization_admins.organization_admins_organization_id_organizations_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.organization_admins",
+        "n|sch|public",
+        "n|tbl|public.organizations",
+        "n|sch|public",
+        "n|col|public.organization_admins.organization_id",
+        "n|col|public.organizations.id",
+        "e|uniqueness|public.organizations.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_group_memberships"
+      ],
+      "writes": [
+        "s|fk|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey",
+        "n|fk|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey",
+        "e|fk|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey",
+        "n|con|public.working_group_memberships.working_group_memberships_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.working_group_memberships",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.working_group_memberships.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_group_memberships"
+      ],
+      "writes": [
+        "s|fk|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey",
+        "n|fk|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey",
+        "e|fk|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey",
+        "n|con|public.working_group_memberships.working_group_memberships_sWENEAqytSwo_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.working_group_memberships",
+        "n|sch|public",
+        "n|tbl|public.working_groups",
+        "n|sch|public",
+        "n|col|public.working_group_memberships.working_group_id",
+        "n|col|public.working_groups.id",
+        "e|uniqueness|public.working_groups.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "working_groups"
+      ],
+      "writes": [
+        "s|fk|public.working_groups.working_groups_organization_id_organizations_id_fkey",
+        "n|fk|public.working_groups.working_groups_organization_id_organizations_id_fkey",
+        "e|fk|public.working_groups.working_groups_organization_id_organizations_id_fkey",
+        "n|con|public.working_groups.working_groups_organization_id_organizations_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.working_groups",
+        "n|sch|public",
+        "n|tbl|public.organizations",
+        "n|sch|public",
+        "n|col|public.working_groups.organization_id",
+        "n|col|public.organizations.id",
+        "e|uniqueness|public.organizations.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "audit_log_entries"
+      ],
+      "writes": [
+        "s|fk|public.audit_log_entries.audit_log_entries_actor_user_id_users_id_fkey",
+        "n|fk|public.audit_log_entries.audit_log_entries_actor_user_id_users_id_fkey",
+        "e|fk|public.audit_log_entries.audit_log_entries_actor_user_id_users_id_fkey",
+        "n|con|public.audit_log_entries.audit_log_entries_actor_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.audit_log_entries",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.audit_log_entries.actor_user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "audit_log_entries"
+      ],
+      "writes": [
+        "s|fk|public.audit_log_entries.audit_log_entries_organization_id_organizations_id_fkey",
+        "n|fk|public.audit_log_entries.audit_log_entries_organization_id_organizations_id_fkey",
+        "e|fk|public.audit_log_entries.audit_log_entries_organization_id_organizations_id_fkey",
+        "n|con|public.audit_log_entries.audit_log_entries_organization_id_organizations_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.audit_log_entries",
+        "n|sch|public",
+        "n|tbl|public.organizations",
+        "n|sch|public",
+        "n|col|public.audit_log_entries.organization_id",
+        "n|col|public.organizations.id",
+        "e|uniqueness|public.organizations.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "organization_admins",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "organizations",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "working_group_memberships",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "working_groups",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "audit_log_entries",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "audit_actor_kind",
+        "values": [
+          "user",
+          "system"
+        ],
+        "entityType": "enums"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "uuidv7()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "uuidv7()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "is_coordinator",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "uuidv7()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "organization_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "city",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "active",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "true",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "users",
+        "name": "is_platform_admin",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "uuidv7()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "occurred_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "actor_kind",
+        "type": "audit_actor_kind",
+        "typeSchema": "public",
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "actor_user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "organization_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "action",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "subject_type",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "subject_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "details",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'{}'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "audit_log_entries_organization_id_occurred_at_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "organization_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "occurred_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "audit_log_entries_subject_type_subject_id_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "subject_type",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "subject_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_admins_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_admins_organization_id_organizations_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "organization_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "organizations",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_sWENEAqytSwo_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "working_group_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "working_groups",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "working_groups_organization_id_organizations_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "organization_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "organizations",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "audit_log_entries_actor_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "actor_user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "audit_log_entries_organization_id_organizations_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "organization_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "organizations",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organization_admins",
+        "name": "organization_admins_pkey",
+        "columns": [
+          "user_id",
+          "organization_id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "organizations_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "working_groups_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "audit_log_entries_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_group_memberships",
+        "name": "working_group_memberships_user_id_working_group_id_key",
+        "nameExplicit": true,
+        "columns": [
+          "user_id",
+          "working_group_id"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "working_groups",
+        "name": "working_groups_organization_id_name_key",
+        "nameExplicit": true,
+        "columns": [
+          "organization_id",
+          "name"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    }
+  ]
+}

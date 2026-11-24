@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { workingGroupSummarySchema } from "./working-groups";
 
 export const meResponseSchema = z
   .object({
@@ -8,7 +9,17 @@ export const meResponseSchema = z
       name: z.string(),
       email: z.string(),
       phone: z.string().nullable(),
+      isPlatformAdmin: z.boolean(),
     }),
+    memberships: z.array(
+      z.object({
+        id: z.string(),
+        /** Every member is a volunteer; a coordinator is one too, with this flag set. */
+        isCoordinator: z.boolean(),
+        workingGroup: workingGroupSummarySchema,
+      }),
+    ),
+    organizationAdminOf: z.array(z.object({ id: z.string(), name: z.string() })),
   })
   .meta({ id: "MeResponse" });
 export type MeResponse = z.infer<typeof meResponseSchema>;
