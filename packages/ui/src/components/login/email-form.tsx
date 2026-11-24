@@ -8,9 +8,11 @@ export type EmailFormProps = {
   pending: boolean;
   /** A message from the server, in Dutch. */
   error?: string;
+  /** A message above the form, for example after the account was deleted. */
+  notice?: string;
 };
 
-export function EmailForm({ onSubmit, pending, error }: EmailFormProps) {
+export function EmailForm({ onSubmit, pending, error, notice }: EmailFormProps) {
   const [email, setEmail] = useState("");
   const [invalid, setInvalid] = useState(false);
 
@@ -28,6 +30,7 @@ export function EmailForm({ onSubmit, pending, error }: EmailFormProps) {
   const message = invalid ? "Vul een geldig e-mailadres in." : error;
   return (
     <Step title="Log in bij PadVinder" intro="Vul je e-mailadres in. Je krijgt een code per mail.">
+      {notice ? <p role="status">{notice}</p> : null}
       <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="login-email" className={labelClass}>

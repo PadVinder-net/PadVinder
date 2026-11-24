@@ -1,0 +1,479 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "2557042f-66e2-40ff-a100-3744f87a40aa",
+  "prevIds": [
+    "7e05db96-694e-4bfc-84f6-60628ec8c723"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "membership_request_status"
+      ],
+      "writes": [
+        "s|enum|public.membership_request_status",
+        "n|enum|public.membership_request_status",
+        "e|enum|public.membership_request_status",
+        "n|type|public.membership_request_status"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "membership_requests"
+      ],
+      "writes": [
+        "s|tbl|public.membership_requests",
+        "n|tbl|public.membership_requests",
+        "e|tbl|public.membership_requests",
+        "n|rel|public.membership_requests",
+        "n|type|public.membership_requests",
+        "n|rel|public.membership_requests_pkey"
+      ],
+      "reads": [
+        "n|sch|public",
+        "n|enum|public.membership_request_status"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "users",
+        "deleted_at"
+      ],
+      "writes": [
+        "s|col|public.users.deleted_at",
+        "n|col|public.users.deleted_at",
+        "e|col|public.users.deleted_at"
+      ],
+      "reads": [
+        "n|tbl|public.users",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "membership_requests",
+        "membership_requests_one_pending_key"
+      ],
+      "writes": [
+        "s|idx|public.membership_requests_one_pending_key",
+        "n|idx|public.membership_requests_one_pending_key",
+        "e|idx|public.membership_requests_one_pending_key",
+        "n|rel|public.membership_requests_one_pending_key"
+      ],
+      "reads": [
+        "n|tbl|public.membership_requests",
+        "n|sch|public",
+        "n|col|public.membership_requests.user_id",
+        "n|col|public.membership_requests.working_group_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "membership_requests",
+        "membership_requests_group_status_idx"
+      ],
+      "writes": [
+        "s|idx|public.membership_requests_group_status_idx",
+        "n|idx|public.membership_requests_group_status_idx",
+        "e|idx|public.membership_requests_group_status_idx",
+        "n|rel|public.membership_requests_group_status_idx"
+      ],
+      "reads": [
+        "n|tbl|public.membership_requests",
+        "n|sch|public",
+        "n|col|public.membership_requests.working_group_id",
+        "n|col|public.membership_requests.status"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "membership_requests"
+      ],
+      "writes": [
+        "s|fk|public.membership_requests.membership_requests_user_id_users_id_fkey",
+        "n|fk|public.membership_requests.membership_requests_user_id_users_id_fkey",
+        "e|fk|public.membership_requests.membership_requests_user_id_users_id_fkey",
+        "n|con|public.membership_requests.membership_requests_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.membership_requests",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.membership_requests.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "membership_requests"
+      ],
+      "writes": [
+        "s|fk|public.membership_requests.membership_requests_working_group_id_working_groups_id_fkey",
+        "n|fk|public.membership_requests.membership_requests_working_group_id_working_groups_id_fkey",
+        "e|fk|public.membership_requests.membership_requests_working_group_id_working_groups_id_fkey",
+        "n|con|public.membership_requests.membership_requests_working_group_id_working_groups_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.membership_requests",
+        "n|sch|public",
+        "n|tbl|public.working_groups",
+        "n|sch|public",
+        "n|col|public.membership_requests.working_group_id",
+        "n|col|public.working_groups.id",
+        "e|uniqueness|public.working_groups.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "membership_requests"
+      ],
+      "writes": [
+        "s|fk|public.membership_requests.membership_requests_decided_by_user_id_users_id_fkey",
+        "n|fk|public.membership_requests.membership_requests_decided_by_user_id_users_id_fkey",
+        "e|fk|public.membership_requests.membership_requests_decided_by_user_id_users_id_fkey",
+        "n|con|public.membership_requests.membership_requests_decided_by_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.membership_requests",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.membership_requests.decided_by_user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "membership_requests",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "membership_request_status",
+        "values": [
+          "pending",
+          "approved",
+          "rejected",
+          "withdrawn"
+        ],
+        "entityType": "enums"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "users",
+        "name": "deleted_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "working_group_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "status",
+        "type": "membership_request_status",
+        "typeSchema": "public",
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'pending'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "requested_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "received_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "decided_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "decided_by_user_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "membership_requests_one_pending_key",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "working_group_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"status\" = 'pending'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "membership_requests_group_status_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "working_group_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "membership_requests_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "membership_requests_working_group_id_working_groups_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "working_group_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "working_groups",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "membership_requests_decided_by_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "decided_by_user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "membership_requests",
+        "name": "membership_requests_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

@@ -1,5 +1,18 @@
-import { grantPlatformAdmin, liveEventsChannel, notify, recordHeartbeat } from "@padvinder/db";
+import {
+  grantCoordinator,
+  grantPlatformAdmin,
+  liveEventsChannel,
+  notify,
+  notifyAccessChanged,
+  notifyMembershipRequestsChanged,
+  recordHeartbeat,
+  revokeCoordinator,
+  sessions,
+  users,
+  workingGroupMemberships,
+} from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
+import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
@@ -10,8 +23,13 @@ import { createCast, type Cast } from "../testing/cast";
 import { loginAs, type TestApp } from "../testing/login";
 import { openEvents, type EventsClient } from "../test-open-events";
 
-// Counts every re-check, and lets a test make it fail as a database failure would.
-const recheck = vi.hoisted(() => ({ calls: 0, failing: false }));
+// Counts every load of the actor by the stream (a check or a reload), lets a test make it fail as
+// a database failure would, and lets a test hold a load's result back.
+const recheck = vi.hoisted(() => ({
+  calls: 0,
+  failing: false,
+  intercept: undefined as ((load: Promise<unknown>) => Promise<unknown>) | undefined,
+}));
 vi.mock("../permissions/actor", async (importOriginal) => {
   const original = await importOriginal<typeof import("../permissions/actor")>();
   return {
@@ -19,18 +37,23 @@ vi.mock("../permissions/actor", async (importOriginal) => {
     loadActor: async (...args: Parameters<typeof original.loadActor>) => {
       recheck.calls++;
       if (recheck.failing) throw new Error("connection terminated unexpectedly");
-      return original.loadActor(...args);
+      const load = original.loadActor(...args);
+      return recheck.intercept ? ((await recheck.intercept(load)) as Awaited<typeof load>) : load;
     },
   };
 });
 
 const RECHECK_MS = 200;
+/** For the app whose streams never check on their own during a test: only events reload. */
+const STEADY_RECHECK_MS = 3_600_000;
 
 let t: TestDatabase | undefined;
 let hub: NotificationHub | undefined;
 let app: FastifyInstance | undefined;
+let steadyApp: FastifyInstance | undefined;
 let ctx: TestApp;
 let baseUrl = "";
+let steadyUrl = "";
 let mailer: ReturnType<typeof createMemoryMailer>;
 let cast: Cast;
 let admin: Record<string, string> = {};
@@ -58,8 +81,20 @@ beforeAll(async () => {
   cast = await createCast(ctx);
   admin = cast.members.platformAdmin.headers;
   baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
+  // A second app on the same database and hub, so the sessions and events are the same.
+  steadyApp = await buildApp({
+    env: testEnv,
+    db: t.db,
+    notifications: hub,
+    mailer,
+    sessionRecheckMs: STEADY_RECHECK_MS,
+    logger: true,
+    logStream: { write: (line) => lines.push(line) },
+  });
+  steadyUrl = await steadyApp.listen({ port: 0, host: "127.0.0.1" });
 });
 afterAll(async () => {
+  await steadyApp?.close();
   await app?.close();
   await hub?.close();
   await t?.drop();
@@ -71,9 +106,12 @@ afterEach(async () => {
 });
 
 /** Opens a stream and waits until the hub has its listener, so no event is sent too early. */
-async function openSubscribed(headers: Record<string, string>): Promise<EventsClient> {
+async function openSubscribed(
+  headers: Record<string, string>,
+  url: string = baseUrl,
+): Promise<EventsClient> {
   const before = hub!.listenerCount(liveEventsChannel);
-  const stream = await openEvents(baseUrl, headers);
+  const stream = await openEvents(url, headers);
   expect(stream.status).toBe(200);
   await expect.poll(() => hub!.listenerCount(liveEventsChannel)).toBe(before + 1);
   return stream;
@@ -287,4 +325,229 @@ test("stops checking once the client disconnects", async () => {
   // Three intervals: a timer that was left behind would have run by now.
   await new Promise((resolve) => setTimeout(resolve, 3 * RECHECK_MS));
   expect(recheck.calls).toBe(after);
+}, 20_000);
+
+// The tests below run on the steady app, whose streams do not check their session on their own
+// during a test: whatever changes there comes from an event.
+
+/** Opens a steady stream for each named member of the cast. */
+async function openForCast<K extends keyof Cast["members"]>(
+  names: readonly K[],
+): Promise<Record<K, EventsClient>> {
+  const streams = {} as Record<K, EventsClient>;
+  for (const name of names) {
+    streams[name] = await openSubscribed(cast.members[name].headers, steadyUrl);
+  }
+  return streams;
+}
+
+function closeAll(streams: Record<string, EventsClient>) {
+  for (const stream of Object.values(streams)) stream.close();
+}
+
+function sendRequestsChanged(group: { workingGroupId: string; organizationId: string }) {
+  return t!.db.transaction((tx) => notifyMembershipRequestsChanged(tx, group));
+}
+
+function requestsChanged(group: { workingGroupId: string; organizationId: string }) {
+  const data = {
+    type: "membership-requests-changed",
+    workingGroupId: group.workingGroupId,
+    organizationId: group.organizationId,
+  };
+  return { event: data.type, data };
+}
+
+/** No stream gets another event; call it after a witness stream has received the last one. */
+async function expectNothing(streams: EventsClient[]) {
+  // The hub hands an event to every stream at once, so once the witness has it, these have had
+  // their chance too; the 500 ms only cover the way through the socket.
+  for (const stream of streams) {
+    await expect(stream.nextEvent(500)).rejects.toThrow("No event within 500 ms");
+  }
+}
+
+test("a coordinator receives membership-requests-changed for their group; the volunteer and the outsiders do not", async () => {
+  const streams = await openForCast([
+    "coordinator",
+    "volunteer",
+    "volunteerOtherGroup",
+    "coordinatorOtherOrganization",
+    "applicant",
+  ] as const);
+  // First an event for another group of the same organization, which the coordinator must skip.
+  await sendRequestsChanged(cast.otherGroup);
+  await sendRequestsChanged(cast.workingGroup);
+  await expect(streams.coordinator.nextEvent()).resolves.toEqual(
+    requestsChanged(cast.workingGroup),
+  );
+  await expectNothing([
+    streams.volunteer,
+    streams.volunteerOtherGroup,
+    streams.coordinatorOtherOrganization,
+    streams.applicant,
+  ]);
+  closeAll(streams);
+});
+
+test("an organization admin receives it too, for every group of the organization", async () => {
+  const streams = await openForCast(["organizationAdmin", "platformAdmin"] as const);
+  await sendRequestsChanged(cast.workingGroup);
+  await sendRequestsChanged(cast.otherGroup);
+  await sendRequestsChanged(cast.foreignGroup);
+  for (const group of [cast.workingGroup, cast.otherGroup]) {
+    await expect(streams.organizationAdmin.nextEvent()).resolves.toEqual(requestsChanged(group));
+  }
+  // The platform admin receives all three; the last one is the witness for the other organization.
+  for (const group of [cast.workingGroup, cast.otherGroup, cast.foreignGroup]) {
+    await expect(streams.platformAdmin.nextEvent()).resolves.toEqual(requestsChanged(group));
+  }
+  await expectNothing([streams.organizationAdmin]);
+  closeAll(streams);
+});
+
+test("access-changed reaches only that user, not even a platform admin", async () => {
+  const streams = await openForCast([
+    "applicant",
+    "volunteer",
+    "coordinator",
+    "platformAdmin",
+  ] as const);
+  const userId = cast.members.applicant.userId;
+  await t!.db.transaction((tx) => notifyAccessChanged(tx, userId));
+  await expect(streams.applicant.nextEvent()).resolves.toEqual({
+    event: "access-changed",
+    data: { type: "access-changed", userId },
+  });
+  await expectNothing([streams.volunteer, streams.coordinator, streams.platformAdmin]);
+  closeAll(streams);
+});
+
+test("after access-changed the stream uses the new rights", async () => {
+  const applicant = cast.members.applicant;
+  const stream = await openSubscribed(applicant.headers, steadyUrl);
+  try {
+    // Not yet a coordinator: this one does not arrive.
+    await sendRequestsChanged(cast.workingGroup);
+    await grantCoordinator(
+      t!.db,
+      { email: applicant.email, workingGroupId: cast.workingGroup.workingGroupId },
+      { kind: "system" },
+    );
+    await expect(stream.nextEvent()).resolves.toMatchObject({ event: "access-changed" });
+    await sendRequestsChanged(cast.workingGroup);
+    await expect(stream.nextEvent()).resolves.toEqual(requestsChanged(cast.workingGroup));
+  } finally {
+    stream.close();
+    // The applicant stays an applicant for the other tests.
+    await t!.db
+      .delete(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.userId, applicant.userId));
+  }
+});
+
+test("after access-changed the stream loses the rights that were revoked", async () => {
+  const email = "events-revoked@example.test";
+  const login = await loginAs(ctx, email);
+  const group = { email, workingGroupId: cast.workingGroup.workingGroupId };
+  await grantCoordinator(t!.db, group, { kind: "system" });
+  const stream = await openSubscribed(login.headers, steadyUrl);
+  const witness = await openSubscribed(cast.members.coordinator.headers, steadyUrl);
+  await revokeCoordinator(t!.db, group, { kind: "system" });
+  await expect(stream.nextEvent()).resolves.toMatchObject({ event: "access-changed" });
+  await sendRequestsChanged(cast.workingGroup);
+  await expect(witness.nextEvent()).resolves.toEqual(requestsChanged(cast.workingGroup));
+  await expectNothing([stream]);
+  stream.close();
+  witness.close();
+});
+
+test("a stream ends when its session no longer exists", async () => {
+  const login = await loginAs(ctx, "events-session-gone@example.test");
+  const stream = await openSubscribed(login.headers, steadyUrl);
+  await t!.db.delete(sessions).where(eq(sessions.userId, login.userId));
+  await t!.db.transaction((tx) => notifyAccessChanged(tx, login.userId));
+  await expect(stream.nextEvent()).rejects.toThrow("Stream ended before the next event");
+  expect(stream.received()).not.toContain("event:");
+  stream.close();
+});
+
+test("a stream ends when its user no longer exists", async () => {
+  const login = await loginAs(ctx, "events-user-gone@example.test");
+  const stream = await openSubscribed(login.headers, steadyUrl);
+  await t!.db.delete(users).where(eq(users.id, login.userId));
+  await t!.db.transaction((tx) => notifyAccessChanged(tx, login.userId));
+  await expect(stream.nextEvent()).rejects.toThrow("Stream ended before the next event");
+  expect(stream.received()).not.toContain("event:");
+  stream.close();
+});
+
+test("a database failure while reloading keeps the stream and the old actor, and still delivers", async () => {
+  const email = "events-reload-failure@example.test";
+  const login = await newPlatformAdmin(email);
+  const stream = await openSubscribed(login.headers, steadyUrl);
+  const before = recheck.calls;
+  lines.length = 0;
+  recheck.failing = true;
+  try {
+    await t!.db.transaction((tx) => notifyAccessChanged(tx, login.userId));
+    await expect(stream.nextEvent()).resolves.toEqual({
+      event: "access-changed",
+      data: { type: "access-changed", userId: login.userId },
+    });
+    expect(recheck.calls - before).toBe(1);
+  } finally {
+    recheck.failing = false;
+  }
+  expect(lines.join("")).toContain("Live events session check failed");
+  // Still a platform admin on this stream.
+  const at = await recordHeartbeat(t!.db);
+  await expect(stream.nextEvent()).resolves.toEqual({
+    event: "worker-heartbeat",
+    data: { type: "worker-heartbeat", beatAt: at.toISOString() },
+  });
+  stream.close();
+});
+
+test("a check that started before access-changed does not overwrite the newer actor", async () => {
+  // On the app that checks every RECHECK_MS.
+  const email = "events-stale-check@example.test";
+  const login = await loginAs(ctx, email);
+  const stream = await openSubscribed(login.headers);
+  const parked = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const done = Promise.withResolvers<void>();
+  let call = 0;
+  recheck.intercept = async (load) => {
+    const index = call++;
+    const result = await load;
+    // The first load is a periodic check: it read the actor from before the grant and is held.
+    if (index === 0) {
+      parked.resolve();
+      await release.promise;
+    }
+    // The second is the reload for access-changed. Every later check waits for the end of the
+    // test, so none of them can repair a wrong actor in the meantime.
+    if (index >= 2) await done.promise;
+    return result;
+  };
+  try {
+    await parked.promise;
+    await grantPlatformAdmin(t!.db, { email }, { kind: "system" });
+    await expect(stream.nextEvent()).resolves.toMatchObject({ event: "access-changed" });
+    expect(call).toBe(2);
+    release.resolve();
+    // The next check starts only once the held one is finished.
+    await expect.poll(() => call, { timeout: 10_000 }).toBe(3);
+    const at = await recordHeartbeat(t!.db);
+    await expect(stream.nextEvent()).resolves.toEqual({
+      event: "worker-heartbeat",
+      data: { type: "worker-heartbeat", beatAt: at.toISOString() },
+    });
+  } finally {
+    recheck.intercept = undefined;
+    release.resolve();
+    done.resolve();
+    stream.close();
+  }
 }, 20_000);

@@ -125,3 +125,17 @@ test("a rejected login shows the connection message and the same code can be sen
   await vi.waitFor(() => expect(onLoggedIn).toHaveBeenCalledOnce());
   expect(logInWithCode).toHaveBeenCalledTimes(2);
 });
+
+test("shows the notice on the email step only", async () => {
+  render(
+    <LoginFlow
+      requestLoginCode={async () => ok}
+      logInWithCode={async () => ok}
+      onLoggedIn={() => {}}
+      notice="Je account is verwijderd."
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("Je account is verwijderd.");
+  await toCodeStep();
+  expect(screen.queryByText("Je account is verwijderd.")).toBeNull();
+});

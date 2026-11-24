@@ -1,94 +1,43 @@
-import { healthyFixture, meFixture, platformAdminMeFixture } from "@padvinder/contracts/fixtures";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { meFixture, workingGroupsFixture } from "@padvinder/contracts/fixtures";
 import { getMeQueryKey } from "@padvinder/api-client";
-import { createTestQueryClient, mockFetch } from "@padvinder/api-client/testing";
-import { AuthGate } from "../auth/auth-gate";
-import { MoreScreen } from "./more-screen";
+import { mockFetch } from "@padvinder/api-client/testing";
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test, vi } from "vitest";
+import { notLoggedIn, renderApp } from "../testing/render-app";
 
-class FakeEventSource {
-  addEventListener() {}
-  close() {}
-}
+vi.mock("../hooks/use-service-worker", () => ({
+  useServiceWorker: () => ({ needRefresh: false, checking: false, applyUpdate: vi.fn() }),
+}));
 
-beforeEach(() => vi.stubGlobal("EventSource", FakeEventSource));
-afterEach(() => vi.unstubAllGlobals());
+const directory = { workingGroups: workingGroupsFixture };
 
-function renderScreen() {
-  render(
-    <QueryClientProvider client={createTestQueryClient()}>
-      <MoreScreen />
-    </QueryClientProvider>,
-  );
-}
-
-test("a platform admin sees the system status", async () => {
-  mockFetch({ "/api/me": platformAdminMeFixture, "/api/health": healthyFixture });
-  renderScreen();
-  expect(screen.getByRole("heading", { level: 1, name: "Meer" })).toBeVisible();
-  expect(await screen.findByText("Alles werkt")).toBeVisible();
-});
-
-test("anyone else sees no system status", async () => {
-  const { calls } = mockFetch({ "/api/me": meFixture, "/api/health": healthyFixture });
-  renderScreen();
-  expect(await screen.findByRole("button", { name: "Log uit" })).toBeVisible();
-  await waitFor(() => expect(calls).toContain("/api/me"));
-  expect(calls).not.toContain("/api/health");
-  expect(screen.queryByRole("heading", { name: "Systeemstatus" })).toBeNull();
-  expect(screen.queryByText("Alles werkt")).toBeNull();
-});
-
-test("more screen shows the load error", async () => {
-  mockFetch({
-    "/api/me": platformAdminMeFixture,
-    "/api/health": new Response("boom", { status: 500 }),
-  });
-  renderScreen();
-  expect(await screen.findByText(/De server is niet bereikbaar/)).toBeVisible();
-});
-
-test("Log uit logs out, clears the cache and shows the login screen", async () => {
+test("Log uit logs out, clears the cache and shows the login screen without a notice", async () => {
   const routes: Record<string, unknown> = {
-    "/api/health": healthyFixture,
     "/api/me": meFixture,
+    "/api/working-groups": directory,
     "/api/auth/sign-out": { success: true },
   };
   mockFetch(routes);
-  const client = createTestQueryClient();
-  render(
-    <QueryClientProvider client={client}>
-      <AuthGate>
-        <MoreScreen />
-      </AuthGate>
-    </QueryClientProvider>,
-  );
+  const { client } = renderApp("/app/more");
   const button = await screen.findByRole("button", { name: "Log uit" });
-  routes["/api/me"] = Response.json(
-    { statusCode: 401, error: "Unauthorized", message: "x", code: "not_logged_in" },
-    { status: 401 },
-  );
+  await screen.findByRole("link", { name: "Leden" });
+  routes["/api/me"] = notLoggedIn();
   await userEvent.click(button);
   expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
-  expect(client.getQueryCache().findAll({ queryKey: [{ _id: "getHealth" }] })).toHaveLength(0);
+  expect(client.getQueryCache().findAll({ queryKey: [{ _id: "listWorkingGroups" }] })).toHaveLength(
+    0,
+  );
+  expect(screen.queryByText("Je account is verwijderd.")).toBeNull();
 });
 
 test("Log uit that fails keeps the user logged in and says so", async () => {
   mockFetch({
-    "/api/health": healthyFixture,
     "/api/me": meFixture,
+    "/api/working-groups": directory,
     "/api/auth/sign-out": new Response("boom", { status: 500 }),
   });
-  const client = createTestQueryClient();
-  render(
-    <QueryClientProvider client={client}>
-      <AuthGate>
-        <MoreScreen />
-      </AuthGate>
-    </QueryClientProvider>,
-  );
+  const { client } = renderApp("/app/more");
   await userEvent.click(await screen.findByRole("button", { name: "Log uit" }));
   expect(
     await screen.findByText(
@@ -101,30 +50,21 @@ test("Log uit that fails keeps the user logged in and says so", async () => {
 
 test("Log uit when the session had already ended goes to the login screen without a message", async () => {
   const routes: Record<string, unknown> = {
-    "/api/health": healthyFixture,
     "/api/me": meFixture,
+    "/api/working-groups": directory,
     "/api/auth/sign-out": Response.json({ code: "FAILED_TO_GET_SESSION" }, { status: 400 }),
   };
   mockFetch(routes);
-  render(
-    <QueryClientProvider client={createTestQueryClient()}>
-      <AuthGate>
-        <MoreScreen />
-      </AuthGate>
-    </QueryClientProvider>,
-  );
+  renderApp("/app/more");
   const button = await screen.findByRole("button", { name: "Log uit" });
-  routes["/api/me"] = Response.json(
-    { statusCode: 401, error: "Unauthorized", message: "x", code: "not_logged_in" },
-    { status: 401 },
-  );
+  routes["/api/me"] = notLoggedIn();
   await userEvent.click(button);
   expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
   expect(screen.queryByText(/Uitloggen lukt nu niet/)).toBeNull();
 });
 
 test("more screen shows the app version and build", async () => {
-  mockFetch({ "/api/me": meFixture });
-  renderScreen();
-  expect(screen.getByText("App-versie 2027.0.0 (dev)")).toBeVisible();
+  mockFetch({ "/api/me": meFixture, "/api/working-groups": directory });
+  renderApp("/app/more");
+  expect(await screen.findByText("App-versie 2027.0.0 (dev)")).toBeVisible();
 });

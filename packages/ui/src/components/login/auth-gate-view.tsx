@@ -6,7 +6,7 @@ import { NameForm, type NameFormProps } from "./name-form";
 
 export type AuthGateViewProps = {
   /** As `useAuthGate` in `@padvinder/api-client` computes it. */
-  state: "loading" | "failed" | "login" | "name" | "app";
+  state: "loading" | "failed" | "login" | "name" | "choose" | "waiting" | "app";
   onRetry(): void;
   login: LoginFlowProps;
   saveName: {
@@ -14,6 +14,11 @@ export type AuthGateViewProps = {
     failed: boolean;
     submit: NameFormProps["onSubmit"];
   };
+  /**
+   * What an applicant sees (`choose` or `waiting`: no membership and no admin role yet), such as
+   * the mobile app's working group picker. Without it, applicants see the app.
+   */
+  applicant?: ReactNode;
   /** The app, shown once the user is logged in and has a name. */
   children: ReactNode;
 };
@@ -24,9 +29,17 @@ const formScreen = "mx-auto w-full max-w-md p-6";
 
 /**
  * The login gate of the mobile app and the portal: loading, a retry screen, the login steps, the
- * name step, or the app. Narrow on a wide screen, the full width of a phone.
+ * name step, the applicant's screens, or the app. Narrow on a wide screen, the full width of a
+ * phone.
  */
-export function AuthGateView({ state, onRetry, login, saveName, children }: AuthGateViewProps) {
+export function AuthGateView({
+  state,
+  onRetry,
+  login,
+  saveName,
+  applicant,
+  children,
+}: AuthGateViewProps) {
   switch (state) {
     case "loading":
       return (
@@ -59,6 +72,9 @@ export function AuthGateView({ state, onRetry, login, saveName, children }: Auth
           />
         </main>
       );
+    case "choose":
+    case "waiting":
+      return applicant ?? children;
     case "app":
       return children;
   }

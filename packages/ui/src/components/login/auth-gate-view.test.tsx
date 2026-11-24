@@ -50,3 +50,17 @@ test("name shows the name step, with the connection message after a failed save"
   expect(screen.getByRole("heading", { name: "Hoe heet je?" })).toBeVisible();
   expect(screen.getByRole("alert")).toHaveTextContent("Het lukt nu niet.");
 });
+
+test.each(["choose", "waiting"] as const)(
+  "%s shows the applicant screens, or the app without them",
+  (state) => {
+    renderView({ state, applicant: <p>kies je werkgroep</p> });
+    expect(screen.getByText("kies je werkgroep")).toBeVisible();
+    expect(screen.queryByText("de app")).toBeNull();
+  },
+);
+
+test("an applicant sees the app when there are no applicant screens", () => {
+  renderView({ state: "choose" });
+  expect(screen.getByText("de app")).toBeVisible();
+});

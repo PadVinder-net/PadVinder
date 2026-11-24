@@ -35,3 +35,8 @@ test("the button is disabled while pending", () => {
   render(<EmailForm onSubmit={vi.fn()} pending />);
   expect(screen.getByRole("button", { name: "Even geduld…" })).toBeDisabled();
 });
+
+test("EmailForm shows the notice", () => {
+  render(<EmailForm onSubmit={() => {}} pending={false} notice="Je account is verwijderd." />);
+  expect(screen.getByText("Je account is verwijderd.")).toBeVisible();
+});

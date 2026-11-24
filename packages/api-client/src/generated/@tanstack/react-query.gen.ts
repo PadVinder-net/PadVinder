@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getHealth, getMe, getVersion, type Options, updateMe } from '../sdk.gen';
-import type { GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMeResponse, GetVersionData, GetVersionResponse, UpdateMeData, UpdateMeError, UpdateMeResponse } from '../types.gen';
+import { approveMembershipRequest, createMembershipRequest, deleteMe, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, withdrawMembershipRequest } from '../sdk.gen';
+import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -75,6 +75,23 @@ export const getVersionOptions = (options?: Options<GetVersionData>) => queryOpt
     queryKey: getVersionQueryKey(options)
 });
 
+/**
+ * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end
+ */
+export const deleteMeMutation = (options?: Partial<Options<DeleteMeData>>): UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> => {
+    const mutationOptions: UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteMe({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
 export const getMeQueryKey = (options?: Options<GetMeData>) => createQueryKey('getMe', options);
 
 /**
@@ -100,6 +117,163 @@ export const updateMeMutation = (options?: Partial<Options<UpdateMeData>>): UseM
     const mutationOptions: UseMutationOptions<UpdateMeResponse, UpdateMeError, Options<UpdateMeData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await updateMe({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listWorkingGroupsQueryKey = (options?: Options<ListWorkingGroupsData>) => createQueryKey('listWorkingGroups', options);
+
+/**
+ * The active working groups of all organizations
+ */
+export const listWorkingGroupsOptions = (options?: Options<ListWorkingGroupsData>) => queryOptions<ListWorkingGroupsResponse, ListWorkingGroupsError, ListWorkingGroupsResponse, ReturnType<typeof listWorkingGroupsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listWorkingGroups({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listWorkingGroupsQueryKey(options)
+});
+
+export const listMembershipRequestsQueryKey = (options: Options<ListMembershipRequestsData>) => createQueryKey('listMembershipRequests', options);
+
+/**
+ * The group's pending requests with the applicants' contact details, oldest first. For its reviewers
+ */
+export const listMembershipRequestsOptions = (options: Options<ListMembershipRequestsData>) => queryOptions<ListMembershipRequestsResponse, ListMembershipRequestsError, ListMembershipRequestsResponse, ReturnType<typeof listMembershipRequestsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listMembershipRequests({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listMembershipRequestsQueryKey(options)
+});
+
+export const listMembersQueryKey = (options: Options<ListMembersData>) => createQueryKey('listMembers', options);
+
+/**
+ * The members of a working group by name. Email and phone only for its coordinators and admins
+ */
+export const listMembersOptions = (options: Options<ListMembersData>) => queryOptions<ListMembersResponse, ListMembersError, ListMembersResponse, ReturnType<typeof listMembersQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listMembers({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listMembersQueryKey(options)
+});
+
+/**
+ * Remove a member from a working group. A coordinator may not remove a coordinator
+ */
+export const removeMembershipMutation = (options?: Partial<Options<RemoveMembershipData>>): UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> => {
+    const mutationOptions: UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await removeMembership({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Ask to join a working group. Sending the same id again returns the stored request
+ */
+export const createMembershipRequestMutation = (options?: Partial<Options<CreateMembershipRequestData>>): UseMutationOptions<CreateMembershipRequestResponse, CreateMembershipRequestError, Options<CreateMembershipRequestData>> => {
+    const mutationOptions: UseMutationOptions<CreateMembershipRequestResponse, CreateMembershipRequestError, Options<CreateMembershipRequestData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createMembershipRequest({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Withdraw your own pending request
+ */
+export const withdrawMembershipRequestMutation = (options?: Partial<Options<WithdrawMembershipRequestData>>): UseMutationOptions<WithdrawMembershipRequestResponse, WithdrawMembershipRequestError, Options<WithdrawMembershipRequestData>> => {
+    const mutationOptions: UseMutationOptions<WithdrawMembershipRequestResponse, WithdrawMembershipRequestError, Options<WithdrawMembershipRequestData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await withdrawMembershipRequest({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getMembershipRequestQueryKey = (options: Options<GetMembershipRequestData>) => createQueryKey('getMembershipRequest', options);
+
+/**
+ * One request, any status, for its reviewers. The applicant's contact details only while pending
+ */
+export const getMembershipRequestOptions = (options: Options<GetMembershipRequestData>) => queryOptions<GetMembershipRequestResponse, GetMembershipRequestError, GetMembershipRequestResponse, ReturnType<typeof getMembershipRequestQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getMembershipRequest({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getMembershipRequestQueryKey(options)
+});
+
+/**
+ * Approve a pending request: the applicant becomes a volunteer of the group. The same decision again returns the stored request
+ */
+export const approveMembershipRequestMutation = (options?: Partial<Options<ApproveMembershipRequestData>>): UseMutationOptions<ApproveMembershipRequestResponse, ApproveMembershipRequestError, Options<ApproveMembershipRequestData>> => {
+    const mutationOptions: UseMutationOptions<ApproveMembershipRequestResponse, ApproveMembershipRequestError, Options<ApproveMembershipRequestData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await approveMembershipRequest({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Reject a pending request. The same decision again returns the stored request
+ */
+export const rejectMembershipRequestMutation = (options?: Partial<Options<RejectMembershipRequestData>>): UseMutationOptions<RejectMembershipRequestResponse, RejectMembershipRequestError, Options<RejectMembershipRequestData>> => {
+    const mutationOptions: UseMutationOptions<RejectMembershipRequestResponse, RejectMembershipRequestError, Options<RejectMembershipRequestData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await rejectMembershipRequest({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

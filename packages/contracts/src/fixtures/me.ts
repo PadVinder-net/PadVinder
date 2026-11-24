@@ -1,4 +1,5 @@
 import type { MeResponse } from "../me";
+import { pendingRequestFixture, rejectedRequestFixture } from "./membership-requests";
 
 const organization = {
   id: "0192f3c0-0000-7000-8000-0000000000a1",
@@ -24,6 +25,7 @@ export const meFixture: MeResponse = {
     { id: "0192f3c0-0000-7000-8000-0000000000c1", isCoordinator: false, workingGroup: northGroup },
   ],
   organizationAdminOf: [],
+  membershipRequest: null,
 };
 
 export const meWithoutNameFixture: MeResponse = {
@@ -43,6 +45,18 @@ export const platformAdminMeFixture: MeResponse = {
 };
 
 export const applicantMeFixture: MeResponse = { ...meFixture, memberships: [] };
+
+/** No membership yet, and a pending request: the waiting screen. */
+export const waitingMeFixture: MeResponse = {
+  ...applicantMeFixture,
+  membershipRequest: pendingRequestFixture,
+};
+
+/** No membership, and the newest request was rejected. */
+export const rejectedMeFixture: MeResponse = {
+  ...applicantMeFixture,
+  membershipRequest: rejectedRequestFixture,
+};
 
 const otherOrganization = {
   id: "0192f3c0-0000-7000-8000-0000000000a2",

@@ -15,6 +15,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail } from "../mail/login-code-mail";
 import type { Mailer } from "../mail/mailer";
+import { describeMailError } from "../mail/send-in-background";
 import {
   checkLoginCodeRequest,
   IP_LIMITS,
@@ -63,17 +64,6 @@ export function forwardLog(log: FastifyBaseLogger) {
   };
 }
 
-/** What may be logged about a failed mail: never the address or the code. */
-function describeMailError(error: unknown) {
-  if (!(error instanceof Error)) return { type: typeof error };
-  const { code, responseCode, command } = error as Error & {
-    code?: unknown;
-    responseCode?: unknown;
-    command?: unknown;
-  };
-  return { type: error.name, code, responseCode, command };
-}
-
 /**
  * Better Auth with the email OTP plugin: one flow for signing up and logging in with a code
  * from the mail. The settings and why are in the design ("Login").
@@ -101,6 +91,7 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         // Ours. Set through our own profile endpoint, never through Better Auth's client.
         phone: { type: "string", required: false, input: false },
         isPlatformAdmin: { type: "boolean", required: false, input: false, defaultValue: false },
+        deletedAt: { type: "date", required: false, input: false },
       },
     },
     session: {

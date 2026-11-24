@@ -16,7 +16,8 @@ test("a new volunteer logs in with a code from the mail", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Hoe heet je?" })).toBeVisible();
   await page.getByLabel("Naam").fill("Noor de Vries");
   await page.getByRole("button", { name: "Ga verder" }).click();
-  await expect(page.getByRole("link", { name: "Meer" })).toBeVisible();
+  // A new account has no working group yet.
+  await expect(page.getByRole("heading", { name: "Kies je werkgroep" })).toBeVisible();
 });
 
 test("a wrong code shows the message", async ({ page }) => {
@@ -50,9 +51,10 @@ test("the session survives a reload", async ({ page }) => {
   await page.getByLabel("Code").fill(await readLoginCode(address));
   await page.getByLabel("Naam").fill("Sem Bakker");
   await page.getByRole("button", { name: "Ga verder" }).click();
-  await expect(page.getByRole("link", { name: "Meer" })).toBeVisible();
+  const picker = page.getByRole("heading", { name: "Kies je werkgroep" });
+  await expect(picker).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole("link", { name: "Meer" })).toBeVisible();
+  await expect(picker).toBeVisible();
   await expect(page.getByRole("heading", { name: "Log in bij PadVinder" })).toHaveCount(0);
 });

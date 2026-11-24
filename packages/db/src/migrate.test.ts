@@ -139,6 +139,50 @@ test("the migration applies to a database that already holds users and sessions"
   }
 });
 
+test("the membership request migration applies to a database that already holds users and memberships", async () => {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  try {
+    const all = join(import.meta.dirname, "..", "drizzle");
+    const names = (await readdir(all, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    const first = names.findIndex((n) => n.endsWith("_membership_requests"));
+    expect(first).toBeGreaterThan(0);
+    for (const name of names.slice(0, first))
+      await cp(join(all, name), join(folder, name), { recursive: true });
+    await old.db.execute(sql`drop schema if exists drizzle cascade`);
+    await old.db.execute(sql`drop schema public cascade`);
+    await old.db.execute(sql`create schema public`);
+    await runMigrations(old.url, folder);
+    const user = await old.pool.query(
+      "insert into users (name, email, email_verified) values ('Oud', 'member@example.test', true) returning id",
+    );
+    const org = await old.pool.query(
+      "insert into organizations (name) values ('Oude organisatie') returning id",
+    );
+    const group = await old.pool.query(
+      "insert into working_groups (organization_id, name, city) values ($1, 'Oud', 'Voorbeeldstad') returning id",
+      [org.rows[0].id],
+    );
+    await old.pool.query(
+      "insert into working_group_memberships (user_id, working_group_id) values ($1, $2)",
+      [user.rows[0].id, group.rows[0].id],
+    );
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query(
+      "select u.deleted_at, (select count(*)::int from working_group_memberships) as memberships, (select count(*)::int from membership_requests) as requests from users u",
+    );
+    expect(rows.rows).toEqual([{ deleted_at: null, memberships: 1, requests: 0 }]);
+  } finally {
+    await rm(folder, { recursive: true });
+    await old.drop();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.

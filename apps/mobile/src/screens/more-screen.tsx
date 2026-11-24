@@ -1,15 +1,9 @@
-import { healthQueryOptions, useHealthLiveUpdates, useLogOut, useMe } from "@padvinder/api-client";
-import { Button, HealthStatus, logOutFailedMessage } from "@padvinder/ui";
-import { useQuery } from "@tanstack/react-query";
+import { useLogOut, useMe } from "@padvinder/api-client";
+import { Button, logOutFailedMessage } from "@padvinder/ui";
 import { APP_BUILD, APP_VERSION } from "../app-version";
+import { MoreMenu } from "./more/more-menu";
 
-/** Only mounted for platform admins, so nobody else fetches or streams the status. */
-function SystemStatus() {
-  const { data, isError } = useQuery(healthQueryOptions());
-  useHealthLiveUpdates();
-  return <HealthStatus health={data} loadFailed={isError} />;
-}
-
+/** The Meer tab: the menu, then Log uit and the app version. */
 export function MoreScreen() {
   const me = useMe();
   const { logOut, failed: logOutFailed } = useLogOut();
@@ -17,7 +11,7 @@ export function MoreScreen() {
   return (
     <section className="p-4">
       <h1 className="mb-4 text-2xl font-bold">Meer</h1>
-      {me.data?.user.isPlatformAdmin ? <SystemStatus /> : null}
+      {me.data ? <MoreMenu me={me.data} /> : null}
       {logOutFailed ? (
         <p role="alert" className="mt-6 text-base text-destructive">
           {logOutFailedMessage}

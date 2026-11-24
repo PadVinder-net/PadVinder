@@ -2,6 +2,12 @@ import type { RouteObject } from "react-router";
 import { AppLayout } from "./app";
 import { MapScreen } from "./screens/map-screen";
 import { MoreScreen } from "./screens/more-screen";
+import { MemberScreen } from "./screens/more/member-screen";
+import { MembersScreen } from "./screens/more/members-screen";
+import { MembershipRequestScreen } from "./screens/more/membership-request-screen";
+import { MembershipRequestsScreen } from "./screens/more/membership-requests-screen";
+import { ProfileScreen } from "./screens/more/profile-screen";
+import { SystemScreen } from "./screens/more/system-screen";
 import { ResultsScreen } from "./screens/results-screen";
 import { TonightScreen } from "./screens/tonight-screen";
 
@@ -18,7 +24,20 @@ export const routes: RouteObject[] = [
       { index: true, element: <TonightScreen /> },
       { path: "map", element: <MapScreen /> },
       { path: "results", element: <ResultsScreen /> },
-      { path: "more", element: <MoreScreen /> },
+      {
+        // English paths, also for the screens a user sees in the address bar.
+        path: "more",
+        children: [
+          { index: true, element: <MoreScreen /> },
+          { path: "profile", element: <ProfileScreen /> },
+          // The link in the coordinator's mail points to one request.
+          { path: "membership-requests", element: <MembershipRequestsScreen /> },
+          { path: "membership-requests/:requestId", element: <MembershipRequestScreen /> },
+          { path: "members", element: <MembersScreen /> },
+          { path: "members/:membershipId", element: <MemberScreen /> },
+          { path: "system", element: <SystemScreen /> },
+        ],
+      },
     ],
   },
 ];

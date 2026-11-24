@@ -11,6 +11,8 @@ export type LoginFlowProps = {
   logInWithCode(email: string, code: string): Promise<LoginResult>;
   onLoggedIn(): void;
   onOpenMail?: () => void;
+  /** A message above the email step, for example after the account was deleted. */
+  notice?: string;
 };
 
 export function LoginFlow({
@@ -18,6 +20,7 @@ export function LoginFlow({
   logInWithCode,
   onLoggedIn,
   onOpenMail,
+  notice,
 }: LoginFlowProps) {
   const [email, setEmail] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -48,6 +51,7 @@ export function LoginFlow({
       <EmailForm
         pending={pending}
         error={error}
+        notice={notice}
         onSubmit={(address) =>
           void run(
             () => requestLoginCode(address),

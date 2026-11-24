@@ -10,10 +10,17 @@ import {
 } from "./admin";
 import type { AuditActor } from "./audit-log";
 import type { Db } from "./client";
+import { createMembershipRequest } from "./membership-requests";
 import { users, workingGroupMemberships } from "./schema";
 import { updateUserProfile } from "./users";
 
 const system: AuditActor = { kind: "system" };
+
+/**
+ * The ID of the applicant's pending request: a fixed, made-up UUIDv7, so a second run finds the
+ * request instead of making another one.
+ */
+export const SEED_MEMBERSHIP_REQUEST_ID = "01a2027b-d680-7000-8000-000000000001";
 
 export function assertLocalSeed(publicOrigin: string | undefined): void {
   if (publicOrigin?.startsWith("https://")) {
@@ -85,5 +92,15 @@ export async function seed(db: Db): Promise<void> {
   await ensureVolunteer(db, "vrijwilliger@example.test", "Vera Vrijwilliger", noord);
   await ensureVolunteer(db, "dubbel@example.test", "Daan Dubbel", zuid);
   await ensureVolunteer(db, "dubbel@example.test", "Daan Dubbel", dorp);
-  await ensureAccount(db, "aanmelder@example.test", "Noor Nieuw");
+  const applicant = await ensureAccount(db, "aanmelder@example.test", "Noor Nieuw");
+  // A second run answers `existing` and changes nothing. A developer who decided, withdrew or
+  // deleted it locally keeps it that way; the seed does not undo it.
+  const now = new Date();
+  await createMembershipRequest(db, {
+    id: SEED_MEMBERSHIP_REQUEST_ID,
+    userId: applicant,
+    workingGroupId: zuid,
+    requestedAt: now,
+    now,
+  });
 }

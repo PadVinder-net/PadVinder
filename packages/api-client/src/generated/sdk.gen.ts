@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMeResponses, GetVersionData, GetVersionResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses } from './types.gen';
+import type { ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetVersionData, GetVersionResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -29,6 +29,11 @@ export const getHealth = <ThrowOnError extends boolean = false>(options?: Option
 export const getVersion = <ThrowOnError extends boolean = false>(options?: Options<GetVersionData, ThrowOnError>): RequestResult<GetVersionResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetVersionResponses, unknown, ThrowOnError>({ url: '/api/version', ...options });
 
 /**
+ * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end
+ */
+export const deleteMe = <ThrowOnError extends boolean = false>(options?: Options<DeleteMeData, ThrowOnError>): RequestResult<DeleteMeResponses, DeleteMeErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteMeResponses, DeleteMeErrors, ThrowOnError>({ url: '/api/me', ...options });
+
+/**
  * The logged-in user
  */
 export const getMe = <ThrowOnError extends boolean = false>(options?: Options<GetMeData, ThrowOnError>): RequestResult<GetMeResponses, GetMeErrors, ThrowOnError> => (options?.client ?? client).get<GetMeResponses, GetMeErrors, ThrowOnError>({ url: '/api/me', ...options });
@@ -44,3 +49,55 @@ export const updateMe = <ThrowOnError extends boolean = false>(options: Options<
         ...options.headers
     }
 });
+
+/**
+ * The active working groups of all organizations
+ */
+export const listWorkingGroups = <ThrowOnError extends boolean = false>(options?: Options<ListWorkingGroupsData, ThrowOnError>): RequestResult<ListWorkingGroupsResponses, ListWorkingGroupsErrors, ThrowOnError> => (options?.client ?? client).get<ListWorkingGroupsResponses, ListWorkingGroupsErrors, ThrowOnError>({ url: '/api/working-groups', ...options });
+
+/**
+ * The group's pending requests with the applicants' contact details, oldest first. For its reviewers
+ */
+export const listMembershipRequests = <ThrowOnError extends boolean = false>(options: Options<ListMembershipRequestsData, ThrowOnError>): RequestResult<ListMembershipRequestsResponses, ListMembershipRequestsErrors, ThrowOnError> => (options.client ?? client).get<ListMembershipRequestsResponses, ListMembershipRequestsErrors, ThrowOnError>({ url: '/api/working-groups/{workingGroupId}/membership-requests', ...options });
+
+/**
+ * The members of a working group by name. Email and phone only for its coordinators and admins
+ */
+export const listMembers = <ThrowOnError extends boolean = false>(options: Options<ListMembersData, ThrowOnError>): RequestResult<ListMembersResponses, ListMembersErrors, ThrowOnError> => (options.client ?? client).get<ListMembersResponses, ListMembersErrors, ThrowOnError>({ url: '/api/working-groups/{workingGroupId}/members', ...options });
+
+/**
+ * Remove a member from a working group. A coordinator may not remove a coordinator
+ */
+export const removeMembership = <ThrowOnError extends boolean = false>(options: Options<RemoveMembershipData, ThrowOnError>): RequestResult<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError> => (options.client ?? client).delete<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError>({ url: '/api/memberships/{membershipId}', ...options });
+
+/**
+ * Ask to join a working group. Sending the same id again returns the stored request
+ */
+export const createMembershipRequest = <ThrowOnError extends boolean = false>(options: Options<CreateMembershipRequestData, ThrowOnError>): RequestResult<CreateMembershipRequestResponses, CreateMembershipRequestErrors, ThrowOnError> => (options.client ?? client).post<CreateMembershipRequestResponses, CreateMembershipRequestErrors, ThrowOnError>({
+    url: '/api/membership-requests',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Withdraw your own pending request
+ */
+export const withdrawMembershipRequest = <ThrowOnError extends boolean = false>(options: Options<WithdrawMembershipRequestData, ThrowOnError>): RequestResult<WithdrawMembershipRequestResponses, WithdrawMembershipRequestErrors, ThrowOnError> => (options.client ?? client).post<WithdrawMembershipRequestResponses, WithdrawMembershipRequestErrors, ThrowOnError>({ url: '/api/membership-requests/{id}/withdraw', ...options });
+
+/**
+ * One request, any status, for its reviewers. The applicant's contact details only while pending
+ */
+export const getMembershipRequest = <ThrowOnError extends boolean = false>(options: Options<GetMembershipRequestData, ThrowOnError>): RequestResult<GetMembershipRequestResponses, GetMembershipRequestErrors, ThrowOnError> => (options.client ?? client).get<GetMembershipRequestResponses, GetMembershipRequestErrors, ThrowOnError>({ url: '/api/membership-requests/{id}', ...options });
+
+/**
+ * Approve a pending request: the applicant becomes a volunteer of the group. The same decision again returns the stored request
+ */
+export const approveMembershipRequest = <ThrowOnError extends boolean = false>(options: Options<ApproveMembershipRequestData, ThrowOnError>): RequestResult<ApproveMembershipRequestResponses, ApproveMembershipRequestErrors, ThrowOnError> => (options.client ?? client).post<ApproveMembershipRequestResponses, ApproveMembershipRequestErrors, ThrowOnError>({ url: '/api/membership-requests/{id}/approve', ...options });
+
+/**
+ * Reject a pending request. The same decision again returns the stored request
+ */
+export const rejectMembershipRequest = <ThrowOnError extends boolean = false>(options: Options<RejectMembershipRequestData, ThrowOnError>): RequestResult<RejectMembershipRequestResponses, RejectMembershipRequestErrors, ThrowOnError> => (options.client ?? client).post<RejectMembershipRequestResponses, RejectMembershipRequestErrors, ThrowOnError>({ url: '/api/membership-requests/{id}/reject', ...options });

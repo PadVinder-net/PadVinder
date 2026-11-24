@@ -1,15 +1,21 @@
-import { healthyFixture, meFixture, meWithoutNameFixture } from "@padvinder/contracts/fixtures";
+import {
+  applicantMeFixture,
+  healthyFixture,
+  meFixture,
+  meWithoutNameFixture,
+  waitingMeFixture,
+} from "@padvinder/contracts/fixtures";
 import {
   createQueryClient,
   getHealthOptions,
   getHealthQueryKey,
   getMeQueryKey,
 } from "@padvinder/api-client";
-import { createTestQueryClient, mockFetch } from "@padvinder/api-client/testing";
+import { createTestQueryClient, FakeEventSource, mockFetch } from "@padvinder/api-client/testing";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { AuthGate } from "./auth-gate";
 
 const unauthorized = () =>
@@ -55,6 +61,80 @@ test("saving the name shows the app", async () => {
   await userEvent.type(await screen.findByLabelText("Naam"), "Noor de Vries");
   await userEvent.click(screen.getByRole("button", { name: "Ga verder" }));
   expect(await screen.findByText("de app")).toBeVisible();
+});
+
+test("an applicant sees the picker, not the app", async () => {
+  mockFetch({ "/api/me": applicantMeFixture, "/api/working-groups": { workingGroups: [] } });
+  renderGate();
+  expect(await screen.findByRole("heading", { name: "Kies je werkgroep" })).toBeVisible();
+  expect(screen.queryByText("de app")).toBeNull();
+});
+
+test("a waiting applicant sees the waiting screen, not the app", async () => {
+  mockFetch({ "/api/me": waitingMeFixture });
+  renderGate();
+  expect(await screen.findByRole("heading", { name: "Welkom!" })).toBeVisible();
+  expect(screen.queryByText("de app")).toBeNull();
+});
+
+test("the live stream is open while someone is logged in, and not on the login screen", async () => {
+  const opened: string[] = [];
+  const Original = globalThis.EventSource;
+  globalThis.EventSource = class extends (Original as unknown as { new (): object }) {
+    constructor(url: string) {
+      super();
+      opened.push(url);
+    }
+  } as unknown as typeof EventSource;
+  try {
+    mockFetch({ "/api/me": unauthorized() });
+    const { unmount } = render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <AuthGate>
+          <p>de app</p>
+        </AuthGate>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("heading", { name: "Log in bij PadVinder" });
+    expect(opened).toEqual([]);
+    unmount();
+    mockFetch({ "/api/me": waitingMeFixture });
+    renderGate();
+    await screen.findByRole("heading", { name: "Welkom!" });
+    expect(opened).toEqual(["/api/events"]);
+  } finally {
+    globalThis.EventSource = Original;
+  }
+});
+
+test("access-changed turns the waiting screen into the app; a refused stream after the session ended shows the login screen and stays closed", async () => {
+  FakeEventSource.instances = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const routes: Record<string, unknown> = { "/api/me": waitingMeFixture };
+    mockFetch(routes);
+    renderGate();
+    await screen.findByRole("heading", { name: "Welkom!" });
+    const source = FakeEventSource.instances[0]!;
+    routes["/api/me"] = meFixture;
+    source.emit(
+      "access-changed",
+      JSON.stringify({ type: "access-changed", userId: waitingMeFixture.user.id }),
+    );
+    expect(await screen.findByText("de app")).toBeVisible();
+
+    // Logged out elsewhere: the server refuses the stream, me is asked again and is gone.
+    routes["/api/me"] = unauthorized();
+    source.fail(true);
+    expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
+    // The gate unmounted the live updates, which cancelled the pause before opening it again.
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });
 
 test("shows the app for a user with a name", async () => {
