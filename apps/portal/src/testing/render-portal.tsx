@@ -10,7 +10,7 @@ export function renderPortal(path = "/", client = createTestQueryClient()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
     <QueryClientProvider client={client}>
-      <AuthGate>
+      <AuthGate onLoggedOut={() => void router.navigate("/", { replace: true })}>
         <RouterProvider router={router} />
       </AuthGate>
     </QueryClientProvider>,

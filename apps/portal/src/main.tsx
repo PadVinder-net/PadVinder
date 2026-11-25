@@ -13,7 +13,7 @@ const router = createBrowserRouter(routes);
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthGate>
+      <AuthGate onLoggedOut={() => void router.navigate("/", { replace: true })}>
         <RouterProvider router={router} />
       </AuthGate>
     </QueryClientProvider>
