@@ -68,9 +68,13 @@ beforeAll(async () => {
   git(main, "init", "--quiet");
   git(main, "add", ".");
   git(main, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-qm", "init");
-  for (const name of ["Seal-2", "orca", "fresh"]) git(main, "worktree", "add", "-q", `../${name}`);
+  for (const name of ["Seal-2", "orca", "fresh", "left", "right"])
+    git(main, "worktree", "add", "-q", `../${name}`);
   await writeFile(join(main, ".env"), "WORKSPACE=padvinder\nAPI_PORT=4100\n");
   await writeFile(join(dir, "orca/.env"), "WORKSPACE=orca\nAPI_PORT=4110\nMOBILE_PORT=4111\n");
+  // Two worktrees with the same port, as setups under the old fixed default left them.
+  await writeFile(join(dir, "left/.env"), "WORKSPACE=left\nAPI_PORT=4130\n");
+  await writeFile(join(dir, "right/.env"), "WORKSPACE=right\nAPI_PORT=4130\n");
 });
 
 afterAll(async () => {
@@ -102,6 +106,11 @@ describe.each(["bash", "zsh"].filter(hasShell))("sourced from %s", (shell) => {
 
   test("a worktree without one takes the first block no other worktree has", () => {
     expect(sourceIn(shell, "fresh").ports).toEqual([4120, 4121, 4122, 4123]);
+  });
+
+  test("a worktree gives up a port another worktree has too", () => {
+    expect(sourceIn(shell, "left").ports).toEqual([4120, 4121, 4122, 4123]);
+    expect(sourceIn(shell, "right").ports).toEqual([4120, 4121, 4122, 4123]);
   });
 
   test("leaves no helper variables or functions behind", () => {
