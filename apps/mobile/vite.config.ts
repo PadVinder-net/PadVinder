@@ -48,6 +48,10 @@ export default defineConfig(({ command, mode }) => {
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
       __APP_BUILD__: JSON.stringify(appBuild),
+      // The portal's dev port, so a request link can go on to it; null in a build (one origin).
+      __PORTAL_DEV_PORT__: JSON.stringify(
+        command === "serve" && env.PORTAL_PORT ? Number(env.PORTAL_PORT) : null,
+      ),
     },
     server: {
       port,

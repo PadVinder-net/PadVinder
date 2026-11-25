@@ -21,6 +21,12 @@ export default defineConfig(({ command, mode }) => {
   return {
     base: "/",
     envDir: rootDir,
+    define: {
+      // The app's dev port, so a requests link can go on to it; null in a build (one origin).
+      __APP_DEV_PORT__: JSON.stringify(
+        command === "serve" && env.MOBILE_PORT ? Number(env.MOBILE_PORT) : null,
+      ),
+    },
     server: {
       port,
       strictPort: true,

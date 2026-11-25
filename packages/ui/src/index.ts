@@ -16,6 +16,7 @@ export { formatDate, formatDateTime } from "./lib/format";
 export { displayName, nameInSentence } from "./lib/display-name";
 export { parseEmailLines, type EmailLines } from "./lib/email-lines";
 export { normalizeCode } from "./lib/code";
+export { isPhoneScreen } from "./lib/is-phone";
 export { capitalizeFirst } from "./lib/text";
 export { CodeForm, type CodeFormProps } from "./components/login/code-form";
 export { EmailForm, type EmailFormProps } from "./components/login/email-form";
