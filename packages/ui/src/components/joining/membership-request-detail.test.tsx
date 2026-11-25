@@ -91,7 +91,7 @@ test("shows an error", () => {
 
 test("a nameless applicant reads well in the dialog", async () => {
   setup({ ...noor!, applicant: { ...noor!.applicant, name: "" } });
-  expect(screen.getByRole("heading", { name: "Naam niet ingevuld" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "(nog geen naam)" })).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "Wijs af" }));
   expect(screen.getByRole("alertdialog")).toHaveTextContent(
     "Deze persoon krijgt hierover een mail.",

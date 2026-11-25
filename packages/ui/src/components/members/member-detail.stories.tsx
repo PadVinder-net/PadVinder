@@ -35,3 +35,4 @@ export const WithError: Story = {
 export const Nameless: Story = {
   args: { member: { ...membersWithContactFixture[1]!, name: "" } },
 };
+export const NeverLoggedIn: Story = { args: { member: membersWithContactFixture[3]! } };

@@ -24,7 +24,7 @@ export function MemberDetail({
   error,
 }: MemberDetailProps) {
   const [asking, setAsking] = useState(false);
-  const name = displayName(member.name);
+  const name = displayName(member.name, member.hasLoggedIn);
   return (
     <section className="flex flex-col gap-4 text-lg">
       <h2 className="text-2xl font-semibold">{name}</h2>
