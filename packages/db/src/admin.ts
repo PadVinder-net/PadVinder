@@ -194,6 +194,13 @@ async function requireWorkingGroup(
  * Finds the account by address, or creates an empty one. Safe when two callers do it at once. A
  * deleted account (reachable only through its replaced address) is `user_not_found`: it never
  * gets a role again.
+ *
+ * The existing row is read `for key share` and stays locked until the transaction ends, so the
+ * account cannot be deleted between this lookup and the insert of the role. A deletion that holds
+ * the row (`for update`) makes this wait; then the address no longer matches, and the result is
+ * `user_not_found`. A deletion that comes later waits for this transaction and counts the new
+ * role. A plain read would not do: the role's foreign key check waits for the deletion too, but
+ * then accepts the row, whose id has not changed.
  */
 async function findOrCreateUser(
   tx: DbTransaction,
@@ -209,7 +216,8 @@ async function findOrCreateUser(
   const [existing] = await tx
     .select({ id: users.id, deletedAt: users.deletedAt })
     .from(users)
-    .where(eq(users.email, address));
+    .where(eq(users.email, address))
+    .for("key share");
   // A concurrent transaction that inserted the row has committed by now (the insert waited for it).
   if (!existing || existing.deletedAt) throw new AdminError("user_not_found");
   return { id: existing.id, created: false };

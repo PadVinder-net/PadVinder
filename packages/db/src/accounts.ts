@@ -204,8 +204,13 @@ export async function deleteAccount(
     // Read the memberships and admin rows again. A role given between the first read and the
     // user row lock is locked now, after the user row (out of the usual order, but the role's
     // writer has committed, and nothing holds a group or organization lock while it waits for a
-    // user row). After the user row lock no role can be added: inserting a membership or an admin
-    // row takes a key share lock on the user row, which waits for this transaction.
+    // user row). After the user row lock no role can be added for this account: every function
+    // that gives a role by address finds the account with `findOrCreateUser`, which holds the
+    // user row `for key share`, so it either committed before this lock or waits for this
+    // transaction and then no longer finds the address (`user_not_found`). A foreign key check
+    // alone would not stop it: it waits for this transaction, then accepts the row, whose id has
+    // not changed. A membership from an approved request is covered by the request row locks
+    // above.
     await lockRolesOfUser(tx, input.userId, held);
 
     if (user.isPlatformAdmin && !(await hasOtherPlatformAdmin(tx, input.userId)))

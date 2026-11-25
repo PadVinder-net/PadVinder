@@ -1057,3 +1057,75 @@ test("a role given while the deletion waits for the user row is counted", async 
   });
   await expectUntouched(user);
 });
+
+// A role given by address while the account is being deleted. The deletion holds the user row
+// `for update` from that lock until it commits; here a transaction holds it the same way, the
+// grant starts, and then the account is deleted as `deleteAccount` does it.
+test.each([
+  [
+    "createWorkingGroup",
+    (email: string) =>
+      createWorkingGroup(
+        db(),
+        { organizationId, name: "Te laat", city: "Voorbeeldstad", coordinatorEmail: email },
+        system,
+      ),
+  ],
+  [
+    "createOrganization",
+    (email: string) => createOrganization(db(), { name: "Te laat Org", adminEmail: email }, system),
+  ],
+  [
+    "grantCoordinator",
+    (email: string) => grantCoordinator(db(), { email, workingGroupId: groups[0]! }, system),
+  ],
+  [
+    "grantOrganizationAdmin",
+    (email: string) => grantOrganizationAdmin(db(), { email, organizationId }, system),
+  ],
+])(
+  "%s naming an account that is being deleted gives no role to the deleted account",
+  async (_, grant) => {
+    const user = await newUser();
+    let continueDeletion!: () => void;
+    const resume = new Promise<void>((resolve) => (continueDeletion = resolve));
+    let locked!: () => void;
+    const ready = new Promise<void>((resolve) => (locked = resolve));
+    const deletion = db().transaction(async (tx) => {
+      await tx.execute(sql`select id from users where id = ${user.id} for update`);
+      locked();
+      await resume;
+      await tx
+        .update(users)
+        .set({
+          name: DELETED_ACCOUNT_NAME,
+          email: deletedAccountEmail(user.id),
+          deletedAt: now,
+        })
+        .where(eq(users.id, user.id));
+    });
+    await ready;
+    const granting = grant(user.email);
+    // Keep a rejection from counting as unhandled while the deletion runs.
+    granting.catch(() => {});
+    await waitUntilBlocked();
+    continueDeletion();
+    await deletion;
+    await expect(granting).rejects.toMatchObject({ code: "user_not_found" });
+    expect(
+      await db()
+        .select()
+        .from(workingGroupMemberships)
+        .where(eq(workingGroupMemberships.userId, user.id)),
+    ).toEqual([]);
+    expect(
+      await db().select().from(organizationAdmins).where(eq(organizationAdmins.userId, user.id)),
+    ).toEqual([]);
+    expect(
+      await db().select().from(organizations).where(eq(organizations.name, "Te laat Org")),
+    ).toEqual([]);
+    expect(
+      await db().select().from(workingGroups).where(eq(workingGroups.name, "Te laat")),
+    ).toEqual([]);
+  },
+);
