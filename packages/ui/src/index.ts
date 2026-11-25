@@ -2,10 +2,20 @@ export { HealthStatus, type HealthStatusProps } from "./components/health-status
 export { Badge } from "./components/ui/badge";
 export { Button } from "./components/ui/button";
 export { Card } from "./components/ui/card";
+export { Checkbox } from "./components/ui/checkbox";
+export {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./components/ui/table";
 export { cn } from "./lib/utils";
 export { formatDate, formatDateTime } from "./lib/format";
 export { displayName, nameInSentence } from "./lib/display-name";
 export { normalizeCode } from "./lib/code";
+export { capitalizeFirst } from "./lib/text";
 export { CodeForm, type CodeFormProps } from "./components/login/code-form";
 export { EmailForm, type EmailFormProps } from "./components/login/email-form";
 export { NameForm, type NameFormProps } from "./components/login/name-form";
@@ -28,6 +38,8 @@ export {
   type WaitingForApprovalProps,
 } from "./components/joining/waiting-for-approval";
 export { ConfirmDialog, type ConfirmDialogProps } from "./components/confirm-dialog";
+export { Modal, type ModalProps } from "./components/modal";
+export { showToast, Toaster } from "./components/toast";
 export {
   MembershipRequestList,
   type MembershipRequestListProps,
