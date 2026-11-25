@@ -34,15 +34,16 @@ function WorkingGroups() {
           <NewWorkingGroup organizations={me.organizationAdminOf} />
         ) : null}
       </div>
-      {workingGroups.isPending ? (
-        <p className="text-lg">Werkgroepen laden…</p>
-      ) : workingGroups.isError ? (
-        <LoadError onRetry={() => void workingGroups.refetch()} />
-      ) : (
+      {/* A failed refetch keeps the list it had; only a list that never loaded is an error. */}
+      {workingGroups.data ? (
         <WorkingGroupTable
           workingGroups={workingGroups.data.workingGroups}
           onOpen={(id) => void navigate(`/working-groups/${id}`)}
         />
+      ) : workingGroups.isError ? (
+        <LoadError onRetry={() => void workingGroups.refetch()} />
+      ) : (
+        <p className="text-lg">Werkgroepen laden…</p>
       )}
     </main>
   );

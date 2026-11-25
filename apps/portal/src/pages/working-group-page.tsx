@@ -237,11 +237,8 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
         ) : null}
       </div>
       <h2 className="mb-4 text-xl font-bold">Leden</h2>
-      {members.isPending ? (
-        <p className="text-lg">Leden laden…</p>
-      ) : members.isError ? (
-        <LoadError onRetry={() => void members.refetch()} />
-      ) : (
+      {/* A failed refetch keeps the members it had; only a list that never loaded is an error. */}
+      {members.data ? (
         <MembersTable
           members={members.data.members}
           canSetCoordinator={manages}
@@ -249,6 +246,10 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
           onSetCoordinator={handleSetCoordinator}
           onRemove={askRemove}
         />
+      ) : members.isError ? (
+        <LoadError onRetry={() => void members.refetch()} />
+      ) : (
+        <p className="text-lg">Leden laden…</p>
       )}
       <Modal open={form.open} title="Werkgroep wijzigen" onClose={closeFormUnlessSaving}>
         <WorkingGroupForm

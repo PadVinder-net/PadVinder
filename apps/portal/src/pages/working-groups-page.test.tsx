@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { renderPortal } from "../testing/render-portal";
 import {
+  emitAccessChanged,
   errorResponse,
   holdRequests,
   neverAnswer,
@@ -259,4 +260,23 @@ test("a volunteer who opens a group's page sees the not-found page", async () =>
   await expectNotFound();
   expect(calls).not.toContain("/api/managed-working-groups");
   expect(calls).not.toContain(`/api/working-groups/${noord.id}/members`);
+});
+
+test("when a refetch of the list fails, the table stays and no error shows", async () => {
+  const requests = recordRequests();
+  const routes: Record<string, unknown> = {
+    "/api/me": coordinatorMeFixture,
+    "/api/managed-working-groups": { workingGroups: [noord] },
+  };
+  mockFetch(routes);
+  renderPortal("/working-groups");
+  expect(await screen.findByRole("button", { name: "Noord" })).toBeVisible();
+  routes["/api/managed-working-groups"] = new Response("boom", { status: 500 });
+  emitAccessChanged(coordinatorMeFixture.user.id);
+  await waitFor(() =>
+    expect(requestsTo(requests, "GET", "/api/managed-working-groups").length).toBeGreaterThan(1),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.getByRole("button", { name: "Noord" })).toBeVisible();
+  expect(screen.queryByText(connection)).toBeNull();
 });

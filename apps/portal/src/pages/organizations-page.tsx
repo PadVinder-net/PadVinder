@@ -16,6 +16,7 @@ import {
   showToast,
   type OrganizationFormValues,
 } from "@padvinder/ui";
+import type { MeResponse } from "@padvinder/contracts";
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 import { LoadError } from "./load-error";
@@ -29,7 +30,7 @@ export function OrganizationsPage() {
   const me = useMe().data;
   if (!me) return <NotFoundPage />;
   const [onlyOrganization, ...otherOrganizations] = me.organizationAdminOf;
-  if (me.user.isPlatformAdmin || otherOrganizations.length > 0) return <Organizations />;
+  if (me.user.isPlatformAdmin || otherOrganizations.length > 0) return <Organizations me={me} />;
   if (onlyOrganization) return <Navigate to={`/organizations/${onlyOrganization.id}`} replace />;
   return <NotFoundPage />;
 }
@@ -47,8 +48,7 @@ function createErrors(error: unknown): { fieldErrors?: FieldErrors; error?: stri
   return { error: apiErrorMessage(code) };
 }
 
-function Organizations() {
-  const me = useMe().data!;
+function Organizations({ me }: { me: MeResponse }) {
   const navigate = useNavigate();
   const organizations = useOrganizations();
   return (
@@ -57,15 +57,16 @@ function Organizations() {
         <h1 className="text-2xl font-bold">Organisaties</h1>
         {me.user.isPlatformAdmin ? <NewOrganization /> : null}
       </div>
-      {organizations.isPending ? (
-        <p className="text-lg">Organisaties laden…</p>
-      ) : organizations.isError ? (
-        <LoadError onRetry={() => void organizations.refetch()} />
-      ) : (
+      {/* A failed refetch keeps the list it had; only a list that never loaded is an error. */}
+      {organizations.data ? (
         <OrganizationTable
           organizations={organizations.data.organizations}
           onOpen={(id) => void navigate(`/organizations/${id}`)}
         />
+      ) : organizations.isError ? (
+        <LoadError onRetry={() => void organizations.refetch()} />
+      ) : (
+        <p className="text-lg">Organisaties laden…</p>
       )}
     </main>
   );

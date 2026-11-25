@@ -379,3 +379,19 @@ test("when the group leaves the list while its page is open, the page turns into
   await expectNotFound();
   expect(screen.queryByRole("heading", { name: "Noord" })).toBeNull();
 });
+
+test("when a refetch of the members fails, the members stay and no error shows", async () => {
+  const requests = recordRequests();
+  const routes = routesFor(coordinatorMeFixture, {
+    "GET /api/managed-working-groups": { workingGroups: [noord] },
+  });
+  mockFetch(routes);
+  renderPortal(noordPath);
+  expect(await screen.findByRole("cell", { name: /Bram Jansen/ })).toBeVisible();
+  routes[`GET ${membersPath}`] = new Response("boom", { status: 500 });
+  emitAccessChanged(coordinatorMeFixture.user.id);
+  await waitFor(() => expect(requestsTo(requests, "GET", membersPath).length).toBeGreaterThan(1));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.getByRole("cell", { name: /Bram Jansen/ })).toBeVisible();
+  expect(screen.queryByText(connection)).toBeNull();
+});

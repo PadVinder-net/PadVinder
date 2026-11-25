@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { renderPortal } from "../testing/render-portal";
 import {
+  emitAccessChanged,
   errorResponse,
   holdRequests,
   neverAnswer,
@@ -184,4 +185,24 @@ test("a coordinator who opens /organizations sees the not-found page", async () 
     await screen.findByRole("heading", { level: 1, name: "Deze pagina bestaat niet" }),
   ).toBeVisible();
   expect(calls).not.toContain("/api/organizations");
+});
+
+test("when a refetch of the list fails, the table stays and no error shows", async () => {
+  const requests = recordRequests();
+  const routes: Record<string, unknown> = {
+    "/api/me": platformAdminMeFixture,
+    "/api/organizations": { organizations: organizationsFixture },
+    "/api/managed-working-groups": { workingGroups: [] },
+  };
+  mockFetch(routes);
+  renderPortal("/organizations");
+  expect(await screen.findByRole("button", { name: voorbeeldstad.name })).toBeVisible();
+  routes["/api/organizations"] = new Response("boom", { status: 500 });
+  emitAccessChanged(platformAdminMeFixture.user.id);
+  await waitFor(() =>
+    expect(requestsTo(requests, "GET", "/api/organizations").length).toBeGreaterThan(1),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.getByRole("button", { name: voorbeeldstad.name })).toBeVisible();
+  expect(screen.queryByText(connection)).toBeNull();
 });
