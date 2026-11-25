@@ -10,6 +10,7 @@ import type { MembershipRequestForReview, WorkingGroupSummary } from "@padvinder
 import {
   apiErrorMessage,
   displayName,
+  isUuid,
   MembershipRequestDetail,
   MembershipRequestTable,
   Modal,
@@ -22,7 +23,7 @@ import { useSearchParams } from "react-router";
 import { RequireManagesSomething } from "../layout/require-manages-something";
 import { LoadError } from "./load-error";
 
-const alreadyDecidedMessage = "Deze aanmelding is al behandeld.";
+const alreadyDecidedMessage = apiErrorMessage("already_decided");
 const goneMessage = "Deze aanmelding bestaat niet meer.";
 
 type Group = { workingGroup: WorkingGroupSummary; requests: MembershipRequestForReview[] };
@@ -63,7 +64,8 @@ export function MembershipRequestsPage() {
 function MembershipRequests() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestId = searchParams.get("request");
+  // The API takes a UUID in any case; the page compares IDs in lower case.
+  const requestId = searchParams.get("request")?.toLowerCase() ?? null;
   const list = useReviewableMembershipRequests();
   const approve = useApproveMembershipRequest();
   const reject = useRejectMembershipRequest();
@@ -80,6 +82,15 @@ function MembershipRequests() {
   }, [inList]);
   const decidingId = (approve.isPending ? approve.variables : reject.variables)?.id;
   const open = inList ?? (deciding && shown.current?.id === decidingId ? shown.current : null);
+
+  // A failed decision's error must not show when a request is opened again, however it closed.
+  const failedAny = approve.isError || reject.isError;
+  useEffect(() => {
+    if (open !== null || !failedAny) return;
+    approve.reset();
+    reject.reset();
+    // reset is stable; the mutations' own objects change on every render.
+  }, [open === null, failedAny]);
 
   // Requests this page decided or reported on itself: their disappearance from the list is not news.
   const handled = useRef(new Set<string>());
@@ -122,7 +133,16 @@ function MembershipRequests() {
   }
 
   const listHasLoaded = requests !== undefined;
-  const missing = requestId !== null && listHasLoaded && !inList && !deciding;
+  // A hand-edited address: not a UUID, so there is nothing to ask the API.
+  const invalidId = requestId !== null && !isUuid(requestId);
+  useEffect(() => {
+    if (!invalidId || requestId === null) return;
+    showToast(goneMessage);
+    closeRequest(requestId);
+    // closeRequest only uses refs and setters.
+  }, [invalidId, requestId]);
+
+  const missing = requestId !== null && !invalidId && listHasLoaded && !inList && !deciding;
   useEffect(() => {
     if (!missing || requestId === null || inFlight.current.has(requestId)) return;
     // Already said what became of it (a decision here, a toast before): just tidy the address.

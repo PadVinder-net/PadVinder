@@ -6,6 +6,13 @@ const id = "0192f3c0-0000-7000-8000-0000000000d1";
 test.each([
   ["/membership-requests", `?request=${id}`, true, `/app/more/membership-requests/${id}`],
   ["/membership-requests", "", true, "/app/more/membership-requests"],
+  [
+    "/membership-requests",
+    `?request=${id.toUpperCase()}`,
+    true,
+    `/app/more/membership-requests/${id}`,
+  ],
+  ["/membership-requests/", `?request=${id}`, true, `/app/more/membership-requests/${id}`],
   ["/membership-requests", "?request=../../x", true, "/app/more/membership-requests"],
   ["/membership-requests", `?request=${id}`, false, null],
   ["/working-groups", "", true, null],

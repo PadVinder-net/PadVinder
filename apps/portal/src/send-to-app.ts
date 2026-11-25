@@ -1,6 +1,5 @@
-import { isPhoneScreen } from "@padvinder/ui";
+import { isPhoneScreen, isUuid } from "@padvinder/ui";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIST = "/app/more/membership-requests";
 
 /**
@@ -13,7 +12,7 @@ export function appAddressFor(
 ): string | null {
   if (!phone || location.pathname.replace(/\/$/, "") !== "/membership-requests") return null;
   const id = new URLSearchParams(location.search).get("request");
-  return id && UUID.test(id) ? `${LIST}/${id}` : LIST;
+  return id && isUuid(id) ? `${LIST}/${id.toLowerCase()}` : LIST;
 }
 
 /** The full address to send this browser to, or null to stay in the portal. */

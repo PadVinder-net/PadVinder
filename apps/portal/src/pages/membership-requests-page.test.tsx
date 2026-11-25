@@ -561,3 +561,37 @@ test("a volunteer who opens /membership-requests sees the not-found page", async
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(requestsTo(requests, "GET", listPath)).toEqual([]);
 });
+
+test("an uppercase ?request of a listed request opens its modal", async () => {
+  const requests = recordRequests();
+  mockFetch(routesFor(adminMe));
+  renderPortal(`${pagePath}?request=${daan.id.toUpperCase()}`);
+  expect(await screen.findByRole("dialog", { name: "Daan Smit" })).toBeVisible();
+  expect(requestsTo(requests, "GET", `${listPath}/`)).toEqual([]);
+});
+
+test("a ?request that is not a UUID says it is gone, clears the address and asks the API nothing", async () => {
+  const requests = recordRequests();
+  mockFetch(routesFor(adminMe));
+  const { router } = renderPortal(`${pagePath}?request=not-an-id`);
+  expect(await screen.findByText("Deze aanmelding bestaat niet meer.")).toBeVisible();
+  await waitFor(() => expect(searchOf(router)).toBe(""));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(requestsTo(requests, "GET", `${listPath}/`)).toEqual([]);
+});
+
+test("reopening a request after a failed decision shows no old error", async () => {
+  mockFetch(
+    routesFor(adminMe, reviewableRequestsFixture, {
+      [`POST ${listPath}/${lotte.id}/approve`]: new Response("boom", { status: 500 }),
+    }),
+  );
+  renderPortal(pagePath);
+  const dialog = await openRequest("Lotte Visser");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Keur goed" }));
+  expect(await within(dialog).findByText(/Het lukt nu niet/)).toBeVisible();
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  const again = await openRequest("Lotte Visser");
+  expect(within(again).queryByText(/Het lukt nu niet/)).toBeNull();
+});
