@@ -2,6 +2,7 @@ import { DELETED_ACCOUNT_EMAIL_DOMAIN, emailAddressSchema } from "@padvinder/con
 import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
 import { recordAudit, type AuditAction, type AuditActor, type AuditDetails } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
+import type { QueueMail } from "./mail-jobs";
 import { notifyAccessChanged } from "./notifications";
 import {
   organizationAdmins,
@@ -95,6 +96,26 @@ function isUniqueViolation(error: unknown, constraintName: string): boolean {
 
 /** `created` is true when the grant made a new, empty account for the address. */
 export type RoleChange = { userId: string; changed: boolean; created?: boolean };
+
+/**
+ * What the portal's endpoints pass so that an appointment mails the appointed person. The tool,
+ * the seed and the tests pass nothing, and nothing is sent.
+ */
+export type AppointmentOptions = { queueMail?: QueueMail };
+
+/**
+ * The user who appoints someone and so tells them by mail, or null when no mail goes: without a
+ * queue, when the system appoints (the tool, which passes none anyway: only the portal mails),
+ * and when someone appoints themself.
+ */
+function mailingAppointer(
+  actor: AuditActor,
+  appointedUserId: string,
+  options: AppointmentOptions | undefined,
+): { queueMail: QueueMail; byUserId: string } | null {
+  if (!options?.queueMail || actor.kind !== "user" || actor.userId === appointedUserId) return null;
+  return { queueMail: options.queueMail, byUserId: actor.userId };
+}
 
 const PLATFORM_ADMIN_LOCK = 7_301_100_001;
 
@@ -277,12 +298,14 @@ async function requireUser(tx: DbTransaction, email: string): Promise<string> {
  * organization has, in any capitals or spacing, is `name_taken`; that includes one created at the
  * same moment. Throws `invalid_name` for a name that is empty after normalizing, `invalid_email`
  * for an address that is not valid, and `user_not_found` for the replaced address of a deleted
- * account; then nothing is written.
+ * account; then nothing is written. With a queue (the portal), it queues `organization-admin` for
+ * the admin in the same transaction, unless the actor named themself.
  */
 export async function createOrganization(
   db: Db,
   input: { name: string; adminEmail: string; contactEmail?: string | null },
   actor: AuditActor,
+  options?: AppointmentOptions,
 ): Promise<{ id: string; adminUserId: string; adminCreated: boolean }> {
   const name = parseName(input.name, "name");
   const adminEmail = parseEmail(input.adminEmail);
@@ -304,6 +327,14 @@ export async function createOrganization(
     const admin = await findOrCreateUser(tx, adminEmail);
     await tx.insert(organizationAdmins).values({ userId: admin.id, organizationId: row.id });
     await recordRoleChange(tx, actor, row.id, "role.organization_admin_granted", admin.id);
+    const mailing = mailingAppointer(actor, admin.id, options);
+    if (mailing) {
+      await mailing.queueMail(tx, {
+        kind: "organization-admin",
+        userId: admin.id,
+        organizationId: row.id,
+      });
+    }
     return { id: row.id, adminUserId: admin.id, adminCreated: admin.created };
   });
 }
@@ -480,12 +511,14 @@ async function assertMayNameFirstCoordinator(
  * `organization_not_found`, `invalid_email`, `user_not_found` (the replaced address of a deleted
  * account) and `person_outside_organization` (see `assertMayNameFirstCoordinator`; the system
  * may name anyone), and `invalid_name` (with `field`) for an empty name or city. Then nothing is
- * written.
+ * written. With a queue (the portal), it queues `first-coordinator` for the coordinator in the
+ * same transaction, unless the actor named themself.
  */
 export async function createWorkingGroup(
   db: Db,
   input: { organizationId: string; name: string; city: string; coordinatorEmail: string },
   actor: AuditActor,
+  options?: AppointmentOptions,
 ): Promise<{ id: string; coordinatorUserId: string; coordinatorCreated: boolean }> {
   const name = parseName(input.name, "name");
   const city = parseName(input.city, "city");
@@ -507,9 +540,10 @@ export async function createWorkingGroup(
     });
     await assertMayNameFirstCoordinator(tx, input.organizationId, coordinatorEmail, actor);
     const coordinator = await findOrCreateUser(tx, coordinatorEmail);
-    await tx
+    const [membership] = await tx
       .insert(workingGroupMemberships)
-      .values({ userId: coordinator.id, workingGroupId: row.id, isCoordinator: true });
+      .values({ userId: coordinator.id, workingGroupId: row.id, isCoordinator: true })
+      .returning({ id: workingGroupMemberships.id });
     await recordRoleChange(
       tx,
       actor,
@@ -518,6 +552,14 @@ export async function createWorkingGroup(
       coordinator.id,
       { workingGroupId: row.id },
     );
+    const mailing = mailingAppointer(actor, coordinator.id, options);
+    if (mailing) {
+      await mailing.queueMail(tx, {
+        kind: "first-coordinator",
+        membershipId: membership!.id,
+        byUserId: mailing.byUserId,
+      });
+    }
     return {
       id: row.id,
       coordinatorUserId: coordinator.id,
@@ -773,10 +815,16 @@ export async function revokePlatformAdmin(
   });
 }
 
+/**
+ * Makes the person an admin of the organization, by address; an address without an account gets
+ * one. `changed: false` when they were already. With a queue (the portal), a new admin row queues
+ * `organization-admin` for them, unless they appointed themself.
+ */
 export async function grantOrganizationAdmin(
   db: Db,
   input: { email: string; organizationId: string },
   actor: AuditActor,
+  options?: AppointmentOptions,
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
     await requireOrganization(tx, input.organizationId);
@@ -794,6 +842,14 @@ export async function grantOrganizationAdmin(
       "role.organization_admin_granted",
       userId,
     );
+    const mailing = mailingAppointer(actor, userId, options);
+    if (mailing) {
+      await mailing.queueMail(tx, {
+        kind: "organization-admin",
+        userId,
+        organizationId: input.organizationId,
+      });
+    }
     return { userId, changed: true, created };
   });
 }

@@ -1,7 +1,7 @@
 import { createDb } from "@padvinder/db";
 import { expect, test } from "vitest";
 import { buildApp } from "./app";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "./realtime/notification-hub";
 import { testEnv } from "./test-env";
 
@@ -12,6 +12,7 @@ test("documents getHealth and getVersion with named components", async () => {
     db,
     notifications: createNoopNotificationHub(),
     mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
   });
   await app.ready();
   const doc = app.swagger();
@@ -34,6 +35,7 @@ test("documents getMe and updateMe with their error responses as ApiError", asyn
     db,
     notifications: createNoopNotificationHub(),
     mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
   });
   await app.ready();
   const doc = app.swagger();

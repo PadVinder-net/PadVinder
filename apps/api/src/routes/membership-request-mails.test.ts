@@ -11,7 +11,7 @@ import { Writable } from "node:stream";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { createCast, type Cast } from "../testing/cast";
@@ -26,11 +26,13 @@ const logLines: string[] = [];
 beforeAll(async () => {
   t = await createTestDatabase();
   const mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   app = await buildApp({
     env: testEnv,
     db: t.db,
     notifications: createNoopNotificationHub(),
     mailer,
+    queueMail: mailQueue.queueMail,
     logger: true,
     logStream: new Writable({
       write(chunk, _encoding, callback) {
@@ -39,7 +41,7 @@ beforeAll(async () => {
       },
     }),
   });
-  ctx = { app, mailer, t, close: async () => {} };
+  ctx = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
 });
 afterAll(async () => {

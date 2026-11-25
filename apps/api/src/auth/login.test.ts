@@ -12,7 +12,7 @@ import { createTestDatabase } from "@padvinder/db/testing";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import {
@@ -376,17 +376,20 @@ test("the code never appears in the log, and Better Auth logs only through ours"
   });
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   const app = await buildApp({
     env: { ...testEnv, LOG_LEVEL: "debug" },
     db: t.db,
     notifications: createNoopNotificationHub(),
     mailer,
+    queueMail: mailQueue.queueMail,
     logger: true,
     logStream,
   });
   ctx = {
     app,
     mailer,
+    mailQueue,
     t,
     async close() {
       await app.close();

@@ -1,5 +1,5 @@
 import swagger from "@fastify/swagger";
-import type { Db } from "@padvinder/db";
+import type { Db, QueueMail } from "@padvinder/db";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
   jsonSchemaTransform,
@@ -32,6 +32,11 @@ export type AppDeps = {
   notifications: NotificationHub;
   /** Sends the login code mails and the mails about requests. Tests pass the memory mailer. */
   mailer: Mailer;
+  /**
+   * Queues the mails the worker sends (appointments), in the transaction of the change. Tests
+   * pass the memory queue.
+   */
+  queueMail: QueueMail;
   /** Turns on Fastify's request logging at `env.LOG_LEVEL`. Off by default (tests). */
   logger?: boolean;
   /** Where the log goes instead of stdout, when `logger` is on (tests that read the log). */
@@ -86,7 +91,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(meRoutes, { db: deps.db });
       await api.register(workingGroupRoutes, { db: deps.db });
       await api.register(membershipRoutes, { db: deps.db });
-      await api.register(organizationRoutes, { db: deps.db });
+      await api.register(organizationRoutes, { db: deps.db, queueMail: deps.queueMail });
       await api.register(speciesRoutes, { db: deps.db });
       await api.register(membershipRequestRoutes, {
         db: deps.db,

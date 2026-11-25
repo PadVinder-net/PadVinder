@@ -3,15 +3,17 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import type { ApiEnv } from "./env";
 import { createSmtpMailer } from "@padvinder/mail";
+import { startMailQueue } from "./mail/mail-queue";
 import { startNotificationHub, type NotificationHub } from "./realtime/notification-hub";
 
 export type RunningApi = { app: FastifyInstance; stop(): Promise<void> };
 
 /**
  * Opens the database pool, builds the app and starts listening. A database that is down does not
- * stop the start: the pool connects lazily and the notification hub keeps retrying, so
- * `/api/health` can report it. On any other startup failure (such as a port in use) it logs,
- * closes what it opened and rethrows; the caller exits 1 so the service supervisor restarts us.
+ * stop the start: the pool connects lazily, the notification hub keeps retrying and the mail
+ * queue connects on its first use, so `/api/health` can report it. On any other startup failure
+ * (such as a port in use) it logs, closes what it opened and rethrows; the caller exits 1 so the
+ * service supervisor restarts us.
  */
 export async function startApi(env: ApiEnv): Promise<RunningApi> {
   // The pool needs a logger before the app exists; the app needs the pool. Errors in that
@@ -23,10 +25,16 @@ export async function startApi(env: ApiEnv): Promise<RunningApi> {
   });
   let notifications: NotificationHub | undefined;
   const mailer = createSmtpMailer(env);
+  // Connects on the first queued mail, not here: see startMailQueue.
+  const mailQueue = startMailQueue(env, {
+    onError: (error) =>
+      app ? app.log.error({ err: error }, "Mail queue error") : console.error(error),
+  });
 
   const stop = async () => {
     await app?.close();
     await notifications?.close();
+    await mailQueue.stop();
     // A login code mail still in flight (sent without waiting) can be lost; no retries by design.
     mailer.close();
     await pool.end();
@@ -39,7 +47,14 @@ export async function startApi(env: ApiEnv): Promise<RunningApi> {
       // The hub starts before the app exists. An unused Fastify instance gives the same JSON logger.
       logger: Fastify({ logger: { level: env.LOG_LEVEL } }).log,
     });
-    app = await buildApp({ env, db, notifications, mailer, logger: true });
+    app = await buildApp({
+      env,
+      db,
+      notifications,
+      mailer,
+      queueMail: mailQueue.queueMail,
+      logger: true,
+    });
     await app.listen({ host: env.API_HOST, port: env.API_PORT });
   } catch (error) {
     if (app) app.log.error({ err: error }, "API failed to start");

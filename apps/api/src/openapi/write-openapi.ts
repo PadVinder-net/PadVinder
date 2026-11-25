@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createDb } from "@padvinder/db";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 
 // Written explicitly, never read from the environment: the file must not depend on who runs this.
@@ -37,6 +37,7 @@ const app = await buildApp({
   db,
   notifications: createNoopNotificationHub(),
   mailer: createMemoryMailer(),
+  queueMail: createMemoryMailQueue().queueMail,
 });
 try {
   await app.ready();

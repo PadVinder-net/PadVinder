@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { buildApp } from "../app";
 import { createDb } from "@padvinder/db";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
@@ -13,6 +13,7 @@ test("reports the minimum app version and commit", async () => {
     db,
     notifications: createNoopNotificationHub(),
     mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
   });
   expect((await app.inject("/api/version")).json()).toEqual({
     minimumAppVersion: "2027.0.0",

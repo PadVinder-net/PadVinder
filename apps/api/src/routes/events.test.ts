@@ -16,7 +16,7 @@ import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { createCast, type Cast } from "../testing/cast";
@@ -68,16 +68,18 @@ beforeAll(async () => {
     logger,
   });
   mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   app = await buildApp({
     env: testEnv,
     db: t.db,
     notifications: hub,
     mailer,
+    queueMail: mailQueue.queueMail,
     sessionRecheckMs: RECHECK_MS,
     logger: true,
     logStream: { write: (line) => lines.push(line) },
   });
-  ctx = { app, mailer, t, close: async () => {} };
+  ctx = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
   admin = cast.members.platformAdmin.headers;
   baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
@@ -87,6 +89,7 @@ beforeAll(async () => {
     db: t.db,
     notifications: hub,
     mailer,
+    queueMail: mailQueue.queueMail,
     sessionRecheckMs: STEADY_RECHECK_MS,
     logger: true,
     logStream: { write: (line) => lines.push(line) },
@@ -215,9 +218,22 @@ test("app.close() ends open streams promptly", async () => {
     logger: app!.log,
   });
   const mailer2 = createMemoryMailer();
-  const app2 = await buildApp({ env: testEnv, db: t2.db, notifications: hub2, mailer: mailer2 });
+  const mailQueue2 = createMemoryMailQueue();
+  const app2 = await buildApp({
+    env: testEnv,
+    db: t2.db,
+    notifications: hub2,
+    mailer: mailer2,
+    queueMail: mailQueue2.queueMail,
+  });
   const url = await app2.listen({ port: 0, host: "127.0.0.1" });
-  const ctx2: TestApp = { app: app2, mailer: mailer2, t: t2, close: async () => {} };
+  const ctx2: TestApp = {
+    app: app2,
+    mailer: mailer2,
+    mailQueue: mailQueue2,
+    t: t2,
+    close: async () => {},
+  };
   const login2 = await loginAs(ctx2, "events2@example.test");
   const stream = await openEvents(url, login2.headers);
   await expect.poll(() => hub2.listenerCount(liveEventsChannel)).toBe(1);

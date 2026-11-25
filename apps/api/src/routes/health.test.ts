@@ -4,7 +4,7 @@ import { startStallingProxy, type StallingProxy, type TestDatabase } from "@padv
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { createCast, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
@@ -162,6 +162,7 @@ test("503 with reachable:false when the database is down, also with a session co
       db: down.db,
       notifications: createNoopNotificationHub(),
       mailer: createMemoryMailer(),
+      queueMail: createMemoryMailQueue().queueMail,
     });
     try {
       const started = Date.now();
@@ -192,6 +193,7 @@ test("503 with reachable:false when the database hangs, within 5 s", async () =>
       db: hung.db,
       notifications: createNoopNotificationHub(),
       mailer: createMemoryMailer(),
+      queueMail: createMemoryMailQueue().queueMail,
     });
     try {
       // Open a pooled connection while the proxy still forwards, then let the server go silent.

@@ -26,6 +26,7 @@ import { getAccess } from "./access";
 import { liveEventsChannel, notify } from "./notifications";
 import type { AuditActor } from "./audit-log";
 import type { DbTransaction } from "./client";
+import type { MailJob, QueueMail } from "./mail-jobs";
 import {
   auditLogEntries,
   organizationAdmins,
@@ -1632,4 +1633,218 @@ test("listOrganizations says whether an active working group has a coordinator",
     .where(eq(workingGroupMemberships.userId, firstCoordinatorId));
   const [organization] = await listOrganizations(db());
   expect(organization?.workingGroups).toMatchObject([{ id: groupId, hasCoordinator: false }]);
+});
+
+/** A queue that keeps what was queued. `@padvinder/mail` has one, but it depends on this package. */
+function recordingQueue(): { queueMail: QueueMail; jobs: MailJob[] } {
+  const jobs: MailJob[] = [];
+  return {
+    jobs,
+    async queueMail(_tx, job) {
+      jobs.push(job);
+    },
+  };
+}
+
+test("without a queue nothing is queued", async () => {
+  // The tool, the seed and the cast call these without a queue; they must keep working.
+  const org = await newOrganization("Org", "beheer@example.test");
+  const granted = await grantOrganizationAdmin(
+    db(),
+    { email: "tweede@example.test", organizationId: org.id },
+    asUser(org.adminUserId),
+  );
+  expect(granted.changed).toBe(true);
+  const group = await createWorkingGroup(
+    db(),
+    { organizationId: org.id, name: "Noord", city: "Enschede", coordinatorEmail: "c@example.test" },
+    asUser(org.adminUserId),
+  );
+  expect(group.coordinatorCreated).toBe(true);
+});
+
+test("a new organization queues organization-admin for its first admin", async () => {
+  const platformAdmin = await loggedInUser("hoofd@example.test");
+  const queue = recordingQueue();
+  const org = await createOrganization(
+    db(),
+    { name: "Org", adminEmail: "beheer@example.test" },
+    asUser(platformAdmin),
+    { queueMail: queue.queueMail },
+  );
+  expect(queue.jobs).toEqual([
+    { kind: "organization-admin", userId: org.adminUserId, organizationId: org.id },
+  ]);
+
+  const granted = await grantOrganizationAdmin(
+    db(),
+    { email: "tweede@example.test", organizationId: org.id },
+    asUser(platformAdmin),
+    { queueMail: queue.queueMail },
+  );
+  expect(queue.jobs.slice(1)).toEqual([
+    { kind: "organization-admin", userId: granted.userId, organizationId: org.id },
+  ]);
+});
+
+test("an admin who names themself gets no mail", async () => {
+  const platformAdmin = await loggedInUser("hoofd@example.test");
+  const queue = recordingQueue();
+  const org = await createOrganization(
+    db(),
+    { name: "Org", adminEmail: "hoofd@example.test" },
+    asUser(platformAdmin),
+    { queueMail: queue.queueMail },
+  );
+  expect(org.adminUserId).toBe(platformAdmin);
+  const other = await createOrganization(
+    db(),
+    { name: "Ander", adminEmail: "a@example.test" },
+    system,
+  );
+  await grantOrganizationAdmin(
+    db(),
+    { email: "hoofd@example.test", organizationId: other.id },
+    asUser(platformAdmin),
+    { queueMail: queue.queueMail },
+  );
+  expect(queue.jobs).toEqual([]);
+});
+
+test("appointing someone who is an admin already queues nothing", async () => {
+  const platformAdmin = await loggedInUser("hoofd@example.test");
+  const org = await newOrganization("Org", "beheer@example.test");
+  const queue = recordingQueue();
+  const again = await grantOrganizationAdmin(
+    db(),
+    { email: "beheer@example.test", organizationId: org.id },
+    asUser(platformAdmin),
+    { queueMail: queue.queueMail },
+  );
+  expect(again.changed).toBe(false);
+  expect(queue.jobs).toEqual([]);
+});
+
+test("a new working group queues first-coordinator, unless the creator is the coordinator", async () => {
+  const org = await newOrganization("Org", "beheer@example.test");
+  const admin = org.adminUserId;
+  await db().update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, admin));
+  const queue = recordingQueue();
+  const group = await createWorkingGroup(
+    db(),
+    { organizationId: org.id, name: "Noord", city: "Enschede", coordinatorEmail: "c@example.test" },
+    asUser(admin),
+    { queueMail: queue.queueMail },
+  );
+  const membershipId = await membershipIdOf(group.coordinatorUserId, group.id);
+  expect(queue.jobs).toEqual([{ kind: "first-coordinator", membershipId, byUserId: admin }]);
+
+  await createWorkingGroup(
+    db(),
+    {
+      organizationId: org.id,
+      name: "Zuid",
+      city: "Enschede",
+      coordinatorEmail: "beheer@example.test",
+    },
+    asUser(admin),
+    { queueMail: queue.queueMail },
+  );
+  expect(queue.jobs).toHaveLength(1);
+});
+
+test("the system queues nothing, also when it is handed a queue", async () => {
+  const queue = recordingQueue();
+  const org = await createOrganization(
+    db(),
+    { name: "Org", adminEmail: "beheer@example.test" },
+    system,
+    { queueMail: queue.queueMail },
+  );
+  await grantOrganizationAdmin(
+    db(),
+    { email: "tweede@example.test", organizationId: org.id },
+    system,
+    { queueMail: queue.queueMail },
+  );
+  await createWorkingGroup(
+    db(),
+    { organizationId: org.id, name: "Noord", city: "Enschede", coordinatorEmail: "c@example.test" },
+    system,
+    { queueMail: queue.queueMail },
+  );
+  expect(queue.jobs).toEqual([]);
+});
+
+test("a create that fails queues nothing", async () => {
+  const platformAdmin = await loggedInUser("hoofd@example.test");
+  const org = await newOrganization("Org", "beheer@example.test");
+  await createWorkingGroup(
+    db(),
+    { organizationId: org.id, name: "Noord", city: "Enschede", coordinatorEmail: "c@example.test" },
+    system,
+  );
+  const queue = recordingQueue();
+  await expect(
+    createOrganization(
+      db(),
+      { name: "org", adminEmail: "nieuw@example.test" },
+      asUser(platformAdmin),
+      { queueMail: queue.queueMail },
+    ),
+  ).rejects.toMatchObject({ code: "name_taken" });
+  await expect(
+    createWorkingGroup(
+      db(),
+      {
+        organizationId: org.id,
+        name: "noord",
+        city: "Enschede",
+        coordinatorEmail: "nieuw@example.test",
+      },
+      asUser(platformAdmin),
+      { queueMail: queue.queueMail },
+    ),
+  ).rejects.toMatchObject({ code: "name_taken" });
+  expect(queue.jobs).toEqual([]);
+});
+
+test("a queue that fails undoes the change: the job is queued in its transaction", async () => {
+  const platformAdmin = await loggedInUser("hoofd@example.test");
+  const failing: QueueMail = async () => {
+    throw new Error("queue down");
+  };
+  await expect(
+    createOrganization(
+      db(),
+      { name: "Org", adminEmail: "beheer@example.test" },
+      asUser(platformAdmin),
+      { queueMail: failing },
+    ),
+  ).rejects.toThrow("queue down");
+  expect(await db().select().from(organizations)).toEqual([]);
+  const org = await newOrganization("Org", "beheer@example.test");
+  await expect(
+    grantOrganizationAdmin(
+      db(),
+      { email: "tweede@example.test", organizationId: org.id },
+      asUser(platformAdmin),
+      { queueMail: failing },
+    ),
+  ).rejects.toThrow("queue down");
+  expect(await adminRows(org.id)).toEqual([{ userId: org.adminUserId }]);
+  await expect(
+    createWorkingGroup(
+      db(),
+      {
+        organizationId: org.id,
+        name: "Noord",
+        city: "Enschede",
+        coordinatorEmail: "c@example.test",
+      },
+      asUser(platformAdmin),
+      { queueMail: failing },
+    ),
+  ).rejects.toThrow("queue down");
+  expect(await groupsOf(org.id)).toEqual([]);
 });

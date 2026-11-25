@@ -1,4 +1,10 @@
-import { auditLogEntries, organizationAdmins, organizations, users } from "@padvinder/db";
+import {
+  auditLogEntries,
+  organizationAdmins,
+  organizations,
+  users,
+  workingGroupMemberships,
+} from "@padvinder/db";
 import { and, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
@@ -379,4 +385,126 @@ test("a POST from a foreign Origin is refused", async () => {
     newBody(),
   );
   expect(own.statusCode).toBe(201);
+});
+
+/** The jobs queued while `act` runs. */
+async function jobsQueuedBy(act: () => Promise<unknown>) {
+  const before = ctx.mailQueue.jobs.length;
+  await act();
+  return ctx.mailQueue.jobs.slice(before);
+}
+
+test("creating an organization queues one job with IDs only", async () => {
+  let res: Awaited<ReturnType<typeof post>> | undefined;
+  const jobs = await jobsQueuedBy(async () => {
+    res = await post(cast.members.platformAdmin, newBody());
+  });
+  expect(res!.statusCode).toBe(201);
+  expect(jobs).toEqual([
+    {
+      kind: "organization-admin",
+      userId: expect.any(String),
+      organizationId: expect.any(String),
+    },
+  ]);
+  expect(jobs[0]).toEqual({
+    kind: "organization-admin",
+    userId: res!.json().admins[0].userId,
+    organizationId: res!.json().id,
+  });
+});
+
+test("a platform admin who names themself as first admin gets no mail", async () => {
+  const jobs = await jobsQueuedBy(async () => {
+    const res = await post(cast.members.platformAdmin, {
+      name: uniqueName(),
+      adminEmail: cast.members.platformAdmin.email,
+    });
+    expect(res.statusCode).toBe(201);
+  });
+  expect(jobs).toEqual([]);
+});
+
+test("appointing an admin queues one job, appointing them again none", async () => {
+  const org = await makeOrganization();
+  const email = uniqueAddress("benoemd");
+  let userId = "";
+  const first = await jobsQueuedBy(async () => {
+    const res = await addAdmin(cast.members.platformAdmin, org.id, email);
+    expect(res.statusCode).toBe(200);
+    userId = (res.json() as { admins: { userId: string; email: string }[] }).admins.find(
+      (admin) => admin.email === email,
+    )!.userId;
+  });
+  expect(first).toEqual([{ kind: "organization-admin", userId, organizationId: org.id }]);
+  const again = await jobsQueuedBy(async () => {
+    expect((await addAdmin(cast.members.platformAdmin, org.id, email)).statusCode).toBe(200);
+  });
+  expect(again).toEqual([]);
+});
+
+test("a refused or failed request queues nothing", async () => {
+  const org = await makeOrganization();
+  const jobs = await jobsQueuedBy(async () => {
+    expect((await post(cast.members.organizationAdmin, newBody())).statusCode).toBe(403);
+    expect((await post(cast.members.platformAdmin, newBody({ name: org.name }))).statusCode).toBe(
+      409,
+    );
+    expect(
+      (await addAdmin(cast.members.organizationAdmin, org.id, uniqueAddress("x"))).statusCode,
+    ).toBe(404);
+  });
+  expect(jobs).toEqual([]);
+});
+
+test("a new working group queues first-coordinator; making a member coordinator queues nothing", async () => {
+  const organizationId = cast.organization.id;
+  const admin = cast.members.organizationAdmin;
+  let group = { id: "" };
+  const created = await jobsQueuedBy(async () => {
+    const res = await send(admin, "POST", `/api/organizations/${organizationId}/working-groups`, {
+      name: uniqueName(),
+      city: "Enschede",
+      coordinatorEmail: uniqueAddress("eerste"),
+    });
+    expect(res.statusCode).toBe(201);
+    group = res.json();
+  });
+  const [coordinatorMembership] = await ctx.t.db
+    .select({ id: workingGroupMemberships.id })
+    .from(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.workingGroupId, group.id));
+  expect(created).toEqual([
+    {
+      kind: "first-coordinator",
+      membershipId: coordinatorMembership!.id,
+      byUserId: admin.userId,
+    },
+  ]);
+
+  const own = await jobsQueuedBy(async () => {
+    const res = await send(admin, "POST", `/api/organizations/${organizationId}/working-groups`, {
+      name: uniqueName(),
+      city: "Enschede",
+      coordinatorEmail: admin.email,
+    });
+    expect(res.statusCode).toBe(201);
+  });
+  expect(own).toEqual([]);
+
+  const [volunteer] = await ctx.t.db
+    .insert(workingGroupMemberships)
+    .values({
+      userId: cast.members.volunteerOtherGroup.userId,
+      workingGroupId: group.id,
+      isCoordinator: false,
+    })
+    .returning({ id: workingGroupMemberships.id });
+  const raised = await jobsQueuedBy(async () => {
+    const res = await send(admin, "PATCH", `/api/memberships/${volunteer!.id}`, {
+      isCoordinator: true,
+    });
+    expect(res.statusCode).toBe(200);
+  });
+  expect(raised).toEqual([]);
 });

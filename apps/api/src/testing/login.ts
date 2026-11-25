@@ -3,31 +3,39 @@ import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
-import { createMemoryMailer } from "@padvinder/mail";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
 export type TestApp = {
   app: FastifyInstance;
   mailer: ReturnType<typeof createMemoryMailer>;
+  /** The mail jobs the app queued, in order; the tests read `jobs`. */
+  mailQueue: ReturnType<typeof createMemoryMailQueue>;
   t: TestDatabase;
   close(): Promise<void>;
 };
 
-/** An app on its own cloned test database, with `testEnv` and a mailer that keeps mails in memory. */
+/**
+ * An app on its own cloned test database, with `testEnv`, and a mailer and a mail queue that keep
+ * mails and jobs in memory.
+ */
 export async function createTestApp(overrides: Partial<ApiEnv> = {}): Promise<TestApp> {
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   try {
     const app = await buildApp({
       env: { ...testEnv, ...overrides },
       db: t.db,
       notifications: createNoopNotificationHub(),
       mailer,
+      queueMail: mailQueue.queueMail,
     });
     return {
       app,
       mailer,
+      mailQueue,
       t,
       async close() {
         try {
