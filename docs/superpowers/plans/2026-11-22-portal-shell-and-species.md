@@ -474,3 +474,25 @@ test("a volunteer sees that the portal is not for them", async ({ page, context 
 - [ ] **Step 4: Check the CI rules.** If this plan added a file that the `visual`, `e2e` or `release` jobs depend on outside the paths in `scripts/lib/ci-jobs.ts`, add it to the rules and their test (AGENTS.md, "CI").
 - [ ] **Step 5: Run everything.** `pnpm check && pnpm build && pnpm test:e2e && pnpm test:visual:docker`. Expected: PASS.
 - [ ] **Step 6: Commit.** `git commit -m "Add the species end-to-end test and document the portal shell"`
+
+## Deviations
+
+Recorded while building, 25 November 2026. One line each: what, and why.
+
+- Names from the joining plan: `apiErrorMessage`, `connectionMessage` and the new texts (`name_taken`, `speciesNameTakenMessage`) live in `packages/ui/src/lib/messages.ts`, not `packages/api-client/src/error-messages.ts`; `apiErrorIssues` sits next to `apiErrorCode` in `packages/api-client/src/error-messages.ts`. That is where the real code keeps them.
+- Task 1: `recordAudit` refuses every details key that contains `name`, so `audit-log.ts` exports `THING_NAME_AUDIT_KEYS`, the exact keys allowed although they contain `name` because they hold the name of a thing, never of a person (the six species keys). Every other such key, and every text value with an `@`, is still refused. Asked for by the maintainer's session.
+- Task 1: the species tests count audit entries per subject instead of in the whole table, and use their own species for changes, because one test database per file and the append-only log make whole-table counts depend on test order.
+- Task 1: the table migration is called `species`; the "official list, not scoped by organization" note is a code comment in `schema/species.ts` and an SQL comment in the custom migration, not `COMMENT ON TABLE`.
+- Task 2: a species name may not contain `@` (400 `invalid_request`), because `recordAudit` refuses an `@` in a value and would otherwise make it a 500. The form refuses it too, with "Een naam mag geen @ bevatten."
+- Task 2: `apiErrorBody` takes the optional `issues` as well as `apiError`, so the error handler builds the body in one place.
+- Task 2: the switched-off "vuursalamander" in `speciesFixture` has a made-up fixed ID; the plan gives none.
+- Task 3: the hook test is `species.test.tsx` (it holds JSX) and mocks fetch through `client.setConfig`, as `me-query.test.ts` does. `speciesNameTakenMessage` gives "Deze naam bestaat al." for an unknown field.
+- Task 4: inline SVG icons instead of `lucide-react`, which the repository does not use; the cross is a 44 px `DialogCloseButton` named "Sluiten"; shadcn's English "Close" footer option and the animation classes are removed; sonner's `next-themes` import is removed (fixed light theme); `sonner` is a dependency of `packages/ui` only, like `radix-ui`.
+- Task 5: the scientific name gets the same checks as the Dutch name; a `ResizeObserver` stub in `packages/ui/vitest.setup.ts` for the Radix checkbox under jsdom.
+- Task 5: the visual tests run in a 390×844 phone viewport, which cut the species table to two columns. A story can now ask for a wider viewport with the parameter `visualViewport` (`stories.visual.test.tsx`); the table story uses 1024×768.
+- Task 6: three extra files: `layout/require-platform-admin.tsx`, the test helper `testing/render-portal.tsx`, and a global `FakeEventSource` in `apps/portal/vitest.setup.ts`, because the layout opens the event stream in every portal test. The rights-change tests send a real `access-changed` event instead of writing the me cache.
+- Task 7: `dismissAllToasts()` in `@padvinder/ui`, called after each portal test, because sonner keeps toasts between tests; a `ResizeObserver` stub in `apps/portal/vitest.setup.ts`. A failed "Zet uit" shows its text in the dialog, a failed "Zet aan" as a toast.
+- Task 8: the volunteer test makes a real volunteer (`makeVolunteer`) instead of using a fresh address, which would be an applicant; both see the same text, and the test's name says volunteer.
+- Task 8: the portal tests run in a second Playwright project, `portal` (Desktop Chrome, 1280×800, `baseURL` on `PORTAL_PORT`, only `portal-*.spec.ts`), and a second `webServer` entry waits until the portal's dev server answers, so they go to `/` and `/species` instead of `${portal}/`.
+- Task 8: AGENTS.md gets a "Species" section under the architecture rules and a glossary row for "betrouwbaarheidscheck" (`needsVerification`), which the glossary did not have. The CI rules needed no change: the files this plan added are all under paths the rules already cover.
+- Task 8: the first test checks "Gewone pad" as a table cell (`getByRole("cell", exact)`) rather than `getByText`, so it cannot match a test species or a toast.
