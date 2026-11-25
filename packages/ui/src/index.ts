@@ -54,6 +54,10 @@ export {
   MembershipRequestDetail,
   type MembershipRequestDetailProps,
 } from "./components/joining/membership-request-detail";
+export {
+  MembershipRequestTable,
+  type MembershipRequestTableProps,
+} from "./components/joining/membership-request-table";
 export { MemberList, type MemberListProps } from "./components/members/member-list";
 export { MemberDetail, type MemberDetailProps } from "./components/members/member-detail";
 export { ProfileForm, type ProfileFormProps } from "./components/profile/profile-form";

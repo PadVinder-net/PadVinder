@@ -6,13 +6,18 @@ import { MembershipRequestDetail } from "./membership-request-detail";
 
 const [noor, sem] = requestsForReviewFixture;
 
-function setup(request = noor!, extra: { pending?: boolean; error?: string } = {}) {
+function setup(
+  request = noor!,
+  extra: { pending?: boolean; error?: string; confirmReject?: boolean; heading?: boolean } = {},
+) {
   const handlers = { onApprove: vi.fn(), onReject: vi.fn() };
   render(
     <MembershipRequestDetail
       request={request}
       pending={extra.pending ?? false}
       error={extra.error}
+      confirmReject={extra.confirmReject}
+      heading={extra.heading}
       {...handlers}
     />,
   );
@@ -106,4 +111,23 @@ test("an error that arrives while the dialog is open shows inside it", async () 
   expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toHaveTextContent(
     "Het lukt nu niet.",
   );
+});
+
+test("without confirmReject, Wijs af calls onReject at once and there is no Annuleer", async () => {
+  const { onReject } = setup(noor!, { confirmReject: false });
+  await userEvent.click(screen.getByRole("button", { name: "Wijs af" }));
+  expect(onReject).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Annuleer" })).toBeNull();
+});
+
+test("without heading the name is not repeated", () => {
+  setup(noor!, { heading: false });
+  expect(screen.queryByRole("heading")).toBeNull();
+  expect(screen.getByRole("link", { name: "noor@example.test" })).toBeVisible();
+});
+
+test("without confirmReject an error shows in the detail", () => {
+  setup(noor!, { confirmReject: false, error: "Het lukt nu niet." });
+  expect(screen.getByRole("alert")).toHaveTextContent("Het lukt nu niet.");
 });
