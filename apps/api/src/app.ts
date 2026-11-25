@@ -89,7 +89,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(healthRoutes, { env, db: deps.db });
       await api.register(versionRoutes, { env });
       await api.register(meRoutes, { db: deps.db });
-      await api.register(workingGroupRoutes, { db: deps.db });
+      await api.register(workingGroupRoutes, {
+        db: deps.db,
+        mailer: deps.mailer,
+        queueMail: deps.queueMail,
+        publicOrigin: env.PUBLIC_ORIGIN,
+      });
       await api.register(membershipRoutes, { db: deps.db });
       await api.register(organizationRoutes, { db: deps.db, queueMail: deps.queueMail });
       await api.register(speciesRoutes, { db: deps.db });

@@ -27,6 +27,10 @@ export const apiErrorCodes = {
   personOutsideOrganization: "person_outside_organization",
   /** Another species has this name (`issues[0].path` says which field). */
   nameTaken: "name_taken",
+  /** A list of more than `MAX_ADDRESSES_PER_REQUEST` addresses. */
+  tooManyAddresses: "too_many_addresses",
+  /** The user added or invited too many people in 24 hours. */
+  tooManyAdditions: "too_many_additions",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];

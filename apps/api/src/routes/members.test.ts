@@ -319,3 +319,27 @@ test("an admin still lists the members of a group that is off, and makes one coo
   expect(made.statusCode).toBe(200);
   expect(made.json()).toMatchObject({ userId: session.userId, isCoordinator: true });
 });
+
+test("removing a person who was added by mistake and never logged in frees the address", async () => {
+  const address = `per-ongeluk-${added++}@example.test`;
+  const post = (headers: Record<string, string>) =>
+    ctx.app.inject({
+      method: "POST",
+      url: `/api/working-groups/${cast.workingGroup.workingGroupId}/members`,
+      headers,
+      payload: { emails: [address] },
+    });
+  const first = await post(cast.members.coordinator.headers);
+  expect(first.json().results).toEqual([{ email: address, outcome: "added" }]);
+  const [account] = await ctx.t.db.select().from(users).where(eq(users.email, address));
+  const [membership] = await ctx.t.db
+    .select()
+    .from(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.userId, account!.id));
+  expect((await remove(cast.members.coordinator, membership!.id)).statusCode).toBe(204);
+
+  const again = await post(cast.members.coordinator.headers);
+  expect(again.json().results).toEqual([{ email: address, outcome: "added" }]);
+  const [newAccount] = await ctx.t.db.select().from(users).where(eq(users.email, address));
+  expect(newAccount!.id).not.toBe(account!.id);
+});

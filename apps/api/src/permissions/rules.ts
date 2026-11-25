@@ -32,6 +32,7 @@ export type Permission =
   | { action: "workingGroup.listMembers"; target: WorkingGroupTarget }
   | { action: "workingGroup.viewMemberContact"; target: WorkingGroupTarget }
   | { action: "workingGroup.reviewRequests"; target: WorkingGroupTarget }
+  | { action: "workingGroup.addMembers"; target: WorkingGroupTarget }
   | {
       action: "workingGroup.removeMember";
       target: WorkingGroupTarget;
@@ -112,6 +113,7 @@ export function decide(actor: Actor, permission: Permission): Decision {
         : "forbidden";
     case "workingGroup.viewMemberContact":
     case "workingGroup.reviewRequests":
+    case "workingGroup.addMembers":
       return staff.includes(relation) ? "allowed" : "forbidden";
     case "workingGroup.removeMember":
       if (relation === "coordinator") {

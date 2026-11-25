@@ -20,13 +20,8 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { FastifyBaseLogger } from "fastify";
 import { z } from "zod";
 import { apiError, errorResponses } from "../errors";
-import {
-  buildApprovedMail,
-  buildNewRequestMail,
-  buildRejectedMail,
-  describeMailError,
-  type Mailer,
-} from "@padvinder/mail";
+import { buildNewRequestMail, describeMailError, type Mailer } from "@padvinder/mail";
+import { sendRequestDecidedMail } from "../mail/request-decided-mail";
 import { sendInBackground } from "../mail/send-in-background";
 import { authorize } from "../permissions/rules";
 import {
@@ -94,24 +89,6 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
           "Finding the recipients of a mail failed",
         );
       });
-  }
-
-  /**
-   * Called once for each request that was really approved or rejected, after the commit; never
-   * for the same decision again. Mails the applicant. Not awaited by the request.
-   */
-  function afterMembershipRequestDecided(request: MembershipRequestReviewRecord): void {
-    // A deleted account has no address; its pending requests are withdrawn, so this is only a guard.
-    if (request.applicant.email === undefined) return;
-    const input = {
-      to: request.applicant.email,
-      recipientName: request.applicant.name,
-      workingGroupName: request.workingGroup.name,
-      appUrl: `${publicOrigin}/app/`,
-    };
-    sendInBackground(mailer, log, [
-      request.status === "approved" ? buildApprovedMail(input) : buildRejectedMail(input),
-    ]);
   }
 
   // Every logged-in user may ask to join a group and withdraw their own request, so these two
@@ -274,7 +251,7 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
         });
         switch (result.outcome) {
           case "decided":
-            afterMembershipRequestDecided(result.request);
+            sendRequestDecidedMail({ mailer, log, publicOrigin }, result.request);
             return toMembershipRequestForReview(result.request);
           case "unchanged":
             return toMembershipRequestForReview(result.request);

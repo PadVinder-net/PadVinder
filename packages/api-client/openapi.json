@@ -6,6 +6,60 @@
   },
   "components": {
     "schemas": {
+      "AddMemberOutcomeInput": {
+        "type": "string",
+        "enum": [
+          "added",
+          "approved",
+          "invited",
+          "already_member",
+          "invalid"
+        ]
+      },
+      "AddMembersRequestInput": {
+        "type": "object",
+        "properties": {
+          "emails": {
+            "minItems": 1,
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 320
+            }
+          }
+        },
+        "required": [
+          "emails"
+        ],
+        "additionalProperties": false
+      },
+      "AddMembersResponseInput": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "$ref": "#/components/schemas/AddMemberOutcomeInput"
+                }
+              },
+              "required": [
+                "email",
+                "outcome"
+              ]
+            }
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
       "ApiErrorInput": {
         "type": "object",
         "properties": {
@@ -901,6 +955,62 @@
           "minimumAppVersion",
           "commit"
         ]
+      },
+      "AddMemberOutcome": {
+        "type": "string",
+        "enum": [
+          "added",
+          "approved",
+          "invited",
+          "already_member",
+          "invalid"
+        ]
+      },
+      "AddMembersRequest": {
+        "type": "object",
+        "properties": {
+          "emails": {
+            "minItems": 1,
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 320
+            }
+          }
+        },
+        "required": [
+          "emails"
+        ],
+        "additionalProperties": false
+      },
+      "AddMembersResponse": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "$ref": "#/components/schemas/AddMemberOutcome"
+                }
+              },
+              "required": [
+                "email",
+                "outcome"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "additionalProperties": false
       },
       "ApiError": {
         "type": "object",
@@ -2154,6 +2264,94 @@
             }
           },
           "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addMembers",
+        "summary": "Add people to a working group by email address (its coordinators, the admins of its organization and platform admins). One outcome per address; the same list again changes nothing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMembersRequestInput"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "workingGroupId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddMembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
             "description": "Default Response",
             "content": {
               "application/json": {
