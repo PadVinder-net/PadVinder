@@ -74,7 +74,8 @@ async function loadByName(db: Db, userId: string): Promise<string | null> {
 /**
  * Loads the receiver's address and the names for a queued mail. Null, and the mail is dropped,
  * when the receiver's account is gone or deleted, or when what the mail is about is gone: the
- * membership, the admin row, or the working group of an invitation.
+ * membership (for the first coordinator also its coordinator flag), the admin row, or the working
+ * group of an invitation, which must still be active.
  */
 export async function loadMailJobData(db: Db, job: MailJob): Promise<MailJobData | null> {
   switch (job.kind) {
@@ -86,6 +87,7 @@ export async function loadMailJobData(db: Db, job: MailJob): Promise<MailJobData
           recipientName: users.name,
           workingGroupName: workingGroups.name,
           contactEmail: organizations.contactEmail,
+          isCoordinator: workingGroupMemberships.isCoordinator,
         })
         .from(workingGroupMemberships)
         .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
@@ -93,7 +95,10 @@ export async function loadMailJobData(db: Db, job: MailJob): Promise<MailJobData
         .innerJoin(organizations, eq(organizations.id, workingGroups.organizationId))
         .where(and(eq(workingGroupMemberships.id, job.membershipId), isNull(users.deletedAt)));
       if (!row) return null;
-      return { kind: job.kind, ...row, byName: await loadByName(db, job.byUserId) };
+      // The flag may have been cleared again before the mail was sent.
+      if (job.kind === "first-coordinator" && !row.isCoordinator) return null;
+      const { isCoordinator: _isCoordinator, ...rest } = row;
+      return { kind: job.kind, ...rest, byName: await loadByName(db, job.byUserId) };
     }
     case "invited-to-working-group": {
       const [receiver] = await db
@@ -101,10 +106,11 @@ export async function loadMailJobData(db: Db, job: MailJob): Promise<MailJobData
         .from(users)
         .where(and(eq(users.id, job.userId), isNull(users.deletedAt)));
       const [group] = await db
-        .select({ workingGroupName: workingGroups.name })
+        .select({ workingGroupName: workingGroups.name, active: workingGroups.active })
         .from(workingGroups)
         .where(eq(workingGroups.id, job.workingGroupId));
-      if (!receiver || !group) return null;
+      // The mail points to the list of working groups, which holds active groups only.
+      if (!receiver || !group || !group.active) return null;
       return {
         kind: job.kind,
         ...receiver,

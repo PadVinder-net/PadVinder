@@ -6,6 +6,9 @@ import { FieldError, WideButton, labelClass } from "../login/form-parts";
 import { Label } from "../ui/label";
 import { Hint } from "./field";
 
+/** More wrong lines than this are summed up in one line, so the list stays readable. */
+const MAX_SHOWN_ERRORS = 10;
+
 export type AddMembersFormProps = {
   /** Called with the right addresses, as typed and trimmed. */
   onSubmit(emails: string[]): void;
@@ -27,6 +30,9 @@ export function AddMembersForm({
   // The API counts an address once, whatever its capitals.
   const different = new Set(emails.map((email) => email.toLowerCase())).size;
   const tooMany = different > MAX_ADDRESSES_PER_REQUEST;
+  const shownErrors = errors.slice(0, MAX_SHOWN_ERRORS);
+  const hidden = errors.length - shownErrors.length;
+  const hasErrors = errors.length > 0 || tooMany;
   const blocked = errors.length > 0 || tooMany || emails.length === 0;
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
@@ -48,21 +54,38 @@ export function AddMembersForm({
           value={text}
           onChange={(event) => setText(event.target.value)}
           aria-invalid={errors.length > 0 || tooMany ? true : undefined}
-          aria-describedby="add-members-emails-hint"
+          aria-describedby={
+            hasErrors
+              ? "add-members-emails-hint add-members-emails-errors"
+              : "add-members-emails-hint"
+          }
           className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-lg shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive"
         />
         <Hint id="add-members-emails-hint">Eén adres per regel. Iedereen krijgt een mail.</Hint>
-        {errors.map((wrong) => (
-          <FieldError
-            key={wrong.line}
-            id={`add-members-line-${wrong.line}`}
-            message={`Regel ${wrong.line}: '${wrong.text}' is geen geldig e-mailadres.`}
-          />
-        ))}
-        <FieldError
-          id="add-members-too-many"
-          message={tooMany ? apiErrorMessage("too_many_addresses") : undefined}
-        />
+        {hasErrors ? (
+          // One live region for the whole block, so a long list is not read out line by line.
+          <div id="add-members-emails-errors" role="alert" className="flex flex-col gap-1">
+            {shownErrors.map((wrong) => (
+              <p
+                key={wrong.line}
+                id={`add-members-line-${wrong.line}`}
+                className="font-medium text-destructive"
+              >
+                {`Regel ${wrong.line}: '${wrong.text}' is geen geldig e-mailadres.`}
+              </p>
+            ))}
+            {hidden > 0 ? (
+              <p id="add-members-more-errors" className="font-medium text-destructive">
+                {`En nog ${hidden} ${hidden === 1 ? "regel" : "regels"} met een ongeldig e-mailadres.`}
+              </p>
+            ) : null}
+            {tooMany ? (
+              <p id="add-members-too-many" className="font-medium text-destructive">
+                {apiErrorMessage("too_many_addresses")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <FieldError id="add-members-error" message={error} />
       <WideButton type="submit" pending={pending} disabled={pending || blocked}>

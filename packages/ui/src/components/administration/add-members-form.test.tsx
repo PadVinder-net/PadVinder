@@ -62,3 +62,25 @@ test("pending disables the button and an error shows above it", () => {
   expect(screen.getByText("Het lukt nu niet.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Even geduld…" })).toBeDisabled();
 });
+
+test("twelve wrong lines show ten and one summary line; one left over says regel", () => {
+  setup();
+  paste(Array.from({ length: 12 }, (_, i) => `fout${i}@`).join("\n"));
+  expect(screen.getAllByText(/is geen geldig e-mailadres\.$/)).toHaveLength(10);
+  expect(screen.getByText("En nog 2 regels met een ongeldig e-mailadres.")).toBeVisible();
+  expect(button()).toBeDisabled();
+  paste(Array.from({ length: 11 }, (_, i) => `fout${i}@`).join("\n"));
+  expect(screen.getByText("En nog 1 regel met een ongeldig e-mailadres.")).toBeVisible();
+  paste(Array.from({ length: 10 }, (_, i) => `fout${i}@`).join("\n"));
+  expect(screen.queryByText(/En nog/)).toBeNull();
+});
+
+test("the field is described by the hint and the errors, in one live region", () => {
+  setup();
+  expect(field()).toHaveAccessibleDescription("Eén adres per regel. Iedereen krijgt een mail.");
+  paste("jan@\nbram@");
+  const description = field().getAttribute("aria-describedby") ?? "";
+  expect(description.split(" ")).toContain("add-members-emails-errors");
+  expect(field()).toHaveAccessibleDescription(/Regel 2: 'bram@' is geen geldig e-mailadres\./);
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+});
