@@ -5,7 +5,7 @@ import {
   useSpecies,
   useUpdateSpecies,
 } from "@padvinder/api-client";
-import type { Species } from "@padvinder/contracts";
+import type { Species, UpdateSpeciesRequest } from "@padvinder/contracts";
 import {
   apiErrorMessage,
   Button,
@@ -46,6 +46,20 @@ function formErrors(error: unknown): {
 
 const nameOf = (species: Species) => capitalizeFirst(species.dutchName);
 
+/** As the server stores a name (`normalizeSpeciesName` in `@padvinder/db`): trimmed, single spaces. */
+const normalizeName = (name: string) => name.trim().replace(/\s+/g, " ");
+
+/** The fields of `values` that differ from `species`, as the server would store them. */
+function changedFields(species: Species, values: SpeciesFormValues): UpdateSpeciesRequest {
+  const patch: UpdateSpeciesRequest = {};
+  if (normalizeName(values.dutchName) !== species.dutchName) patch.dutchName = values.dutchName;
+  if (normalizeName(values.scientificName) !== species.scientificName)
+    patch.scientificName = values.scientificName;
+  if (values.needsVerification !== species.needsVerification)
+    patch.needsVerification = values.needsVerification;
+  return patch;
+}
+
 /**
  * The official species list, for platform admins (`RequirePlatformAdmin`): add, rename, and switch
  * off or on. A species is never deleted.
@@ -67,8 +81,14 @@ export function SpeciesPage() {
 
   function save(values: SpeciesFormValues) {
     if (form.species) {
+      const patch = changedFields(form.species, values);
+      // Nothing to save: "is gewijzigd" would not be true, so close without a request or a toast.
+      if (Object.keys(patch).length === 0) {
+        closeForm();
+        return;
+      }
       edit.mutate(
-        { speciesId: form.species.id, patch: values },
+        { speciesId: form.species.id, patch },
         {
           onSuccess: (saved) => {
             closeForm();
@@ -120,6 +140,14 @@ export function SpeciesPage() {
   }
 
   const saving = form.species ? edit : create;
+  // While a save runs, the dialogs stay open: closed, the answer would show nowhere, and reopening
+  // would reset the mutation and allow a second save.
+  const closeFormUnlessSaving = () => {
+    if (!saving.isPending) closeForm();
+  };
+  const cancelTurnOff = () => {
+    if (!setActive.isPending) setTurnOff((current) => ({ ...current, open: false }));
+  };
   return (
     <main className="mx-auto max-w-5xl p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
@@ -152,7 +180,7 @@ export function SpeciesPage() {
       <Modal
         open={form.open}
         title={form.species ? "Soort wijzigen" : "Nieuwe soort"}
-        onClose={closeForm}
+        onClose={closeFormUnlessSaving}
       >
         <SpeciesForm
           key={form.key}
@@ -179,7 +207,7 @@ export function SpeciesPage() {
         pending={setActive.isPending}
         error={setActive.error ? apiErrorMessage(apiErrorCode(setActive.error)) : undefined}
         onConfirm={confirmTurnOff}
-        onCancel={() => setTurnOff((current) => ({ ...current, open: false }))}
+        onCancel={cancelTurnOff}
       />
     </main>
   );

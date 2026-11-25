@@ -32,6 +32,25 @@ function recordRequests() {
   return requests;
 }
 
+/**
+ * Holds back every request that `match` picks until the test calls `release`, so the test can act
+ * while a save runs.
+ */
+function holdRequests(match: (request: Request) => boolean) {
+  const inner = globalThis.fetch;
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init);
+    if (match(request)) await released;
+    return inner(request);
+  };
+  restoreFetch = () => (globalThis.fetch = inner);
+  return release;
+}
+
+const isPatch = (request: Request) => request.method === "PATCH";
+
 const speciesRequests = (requests: RecordedRequest[], method: string) =>
   requests.filter(
     (request) => request.method === method && request.path.startsWith("/api/species"),
@@ -207,11 +226,7 @@ test("editing starts with the species' values", async () => {
     {
       method: "PATCH",
       path: `/api/species/${kamsalamander.id}`,
-      body: {
-        dutchName: renamed.dutchName,
-        scientificName: kamsalamander.scientificName,
-        needsVerification: true,
-      },
+      body: { dutchName: renamed.dutchName },
     },
   ]);
 
@@ -220,6 +235,96 @@ test("editing starts with the species' values", async () => {
   const second = await screen.findByRole("dialog", { name: "Soort wijzigen" });
   expect(within(second).getByLabelText("Nederlandse naam")).toHaveValue("gewone pad");
   expect(within(second).getByRole("checkbox")).not.toBeChecked();
+});
+
+test("an edit sends only the fields that changed, comparing names as the server stores them", async () => {
+  const requests = recordRequests();
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    "GET /api/species": { species: speciesFixture },
+    [`PATCH /api/species/${kamsalamander.id}`]: { ...kamsalamander, needsVerification: false },
+  });
+  renderPortal("/species");
+  await userEvent.click(
+    within(await rowOf("Kamsalamander")).getByRole("button", { name: "Wijzig" }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: "Soort wijzigen" });
+  const scientificName = within(dialog).getByLabelText("Wetenschappelijke naam");
+  await userEvent.clear(scientificName);
+  await userEvent.type(scientificName, "  Triturus   cristatus ");
+  await userEvent.click(within(dialog).getByRole("checkbox"));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Bewaar" }));
+  expect(await screen.findByText("Kamsalamander is gewijzigd.")).toBeVisible();
+  expect(speciesRequests(requests, "PATCH").map((request) => request.body)).toEqual([
+    { needsVerification: false },
+  ]);
+});
+
+test("saving an unchanged form sends nothing, closes the modal and shows no toast", async () => {
+  const requests = recordRequests();
+  mockFetch({ "/api/me": platformAdminMeFixture, "GET /api/species": { species: speciesFixture } });
+  renderPortal("/species");
+  await userEvent.click(within(await rowOf("Gewone pad")).getByRole("button", { name: "Wijzig" }));
+  const dialog = await screen.findByRole("dialog", { name: "Soort wijzigen" });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Bewaar" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(speciesRequests(requests, "PATCH")).toEqual([]);
+  expect(screen.queryByText(/is gewijzigd/)).toBeNull();
+});
+
+test("while a save runs, Escape and the cross do not close the modal; the answer shows after", async () => {
+  const renamed = { ...kamsalamander, dutchName: "kamsalamander (groot)" };
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    "GET /api/species": { species: speciesFixture },
+    [`PATCH /api/species/${kamsalamander.id}`]: renamed,
+  });
+  const release = holdRequests(isPatch);
+  renderPortal("/species");
+  await userEvent.click(
+    within(await rowOf("Kamsalamander")).getByRole("button", { name: "Wijzig" }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: "Soort wijzigen" });
+  const dutchName = within(dialog).getByLabelText("Nederlandse naam");
+  await userEvent.clear(dutchName);
+  await userEvent.type(dutchName, renamed.dutchName);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Bewaar" }));
+  await waitFor(() =>
+    expect(within(dialog).getByRole("button", { name: "Even geduld…" })).toBeVisible(),
+  );
+  await userEvent.keyboard("{Escape}");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Sluiten" }));
+  expect(screen.getByRole("dialog", { name: "Soort wijzigen" })).toBeVisible();
+
+  release();
+  expect(await screen.findByText("Kamsalamander (groot) is gewijzigd.")).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+test("while Zet uit runs, Escape does not close the question; a failure shows in it after", async () => {
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    "GET /api/species": { species: speciesFixture },
+    [`PATCH /api/species/${gewonePad.id}`]: new Response("boom", { status: 502 }),
+  });
+  const release = holdRequests(isPatch);
+  renderPortal("/species");
+  await userEvent.click(within(await rowOf("Gewone pad")).getByRole("button", { name: "Zet uit" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Gewone pad uitzetten?" });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Zet uit" }));
+  await waitFor(() =>
+    expect(within(dialog).getByRole("button", { name: "Even geduld…" })).toBeVisible(),
+  );
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByRole("alertdialog", { name: "Gewone pad uitzetten?" })).toBeVisible();
+
+  release();
+  expect(
+    await within(dialog).findByText(
+      "Het lukt nu niet. Controleer je verbinding en probeer het opnieuw.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByRole("alertdialog", { name: "Gewone pad uitzetten?" })).toBeVisible();
 });
 
 test("Zet uit asks first; Annuleer changes nothing; confirming sends active false", async () => {

@@ -1,9 +1,18 @@
 import { toast } from "sonner";
 import { Toaster as SonnerToaster } from "./ui/sonner";
 
-/** Render once per app; `showToast` shows its messages. */
+/**
+ * Render once per app; `showToast` shows its messages. Sonner names its region "Notifications"
+ * unless told otherwise, and a screen reader reads that name aloud.
+ */
 export function Toaster() {
-  return <SonnerToaster position="bottom-right" toastOptions={{ style: { fontSize: "1rem" } }} />;
+  return (
+    <SonnerToaster
+      position="bottom-right"
+      containerAriaLabel="Meldingen"
+      toastOptions={{ style: { fontSize: "1rem" } }}
+    />
+  );
 }
 
 /** A short message in Dutch that disappears by itself. */
