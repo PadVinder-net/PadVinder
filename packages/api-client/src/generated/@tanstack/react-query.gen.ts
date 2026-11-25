@@ -76,7 +76,7 @@ export const getVersionOptions = (options?: Options<GetVersionData>) => queryOpt
 });
 
 /**
- * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end
+ * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end. Refused for the only platform admin, and for the only coordinator of an active working group or admin of an organization (with `blockers`)
  */
 export const deleteMeMutation = (options?: Partial<Options<DeleteMeData>>): UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> => {
     const mutationOptions: UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> = {

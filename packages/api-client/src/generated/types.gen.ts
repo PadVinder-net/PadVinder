@@ -15,6 +15,25 @@ export type ApiErrorInput = {
     }>;
 };
 
+export type AccountDeletionBlockerInput = {
+    role: 'coordinator' | 'organizationAdmin';
+    workingGroupName: string | null;
+    organizationName: string;
+    contactEmail: string | null;
+};
+
+export type AccountDeletionBlockedInput = {
+    statusCode: number;
+    error: string;
+    message: string;
+    code: string;
+    issues?: Array<{
+        path: string;
+        message: string;
+    }>;
+    blockers?: Array<AccountDeletionBlockerInput>;
+};
+
 export type HealthResponseInput = {
     status: 'ok' | 'degraded';
     commit: string;
@@ -160,6 +179,25 @@ export type ApiError = {
         path: string;
         message: string;
     }>;
+};
+
+export type AccountDeletionBlocker = {
+    role: 'coordinator' | 'organizationAdmin';
+    workingGroupName: string | null;
+    organizationName: string;
+    contactEmail: string | null;
+};
+
+export type AccountDeletionBlocked = {
+    statusCode: number;
+    error: string;
+    message: string;
+    code: string;
+    issues?: Array<{
+        path: string;
+        message: string;
+    }>;
+    blockers?: Array<AccountDeletionBlocker>;
 };
 
 export type HealthResponse = {
@@ -354,7 +392,7 @@ export type DeleteMeErrors = {
     /**
      * Default Response
      */
-    409: ApiError;
+    409: AccountDeletionBlocked;
 };
 
 export type DeleteMeError = DeleteMeErrors[keyof DeleteMeErrors];

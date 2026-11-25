@@ -1,6 +1,9 @@
 import {
   auditLogEntries,
+  grantCoordinator,
+  grantOrganizationAdmin,
   grantPlatformAdmin,
+  organizations,
   verifications,
   liveEventsChannel,
   membershipRequests,
@@ -73,17 +76,18 @@ async function requestToJoin(who: CastLogin, workingGroupId: string): Promise<st
 const requestMails = () => ctx.mailer.sent.filter((mail) => !mail.subject.includes("inlogcode"));
 
 test("who may delete their account", async () => {
-  // In this order: the platform admin is still the only one when they try.
+  // The platform admin is the only one; the admins and coordinators are the only ones of their
+  // organization or working group.
   await expectStatuses(
     cast,
     {
       platformAdmin: 409,
-      organizationAdmin: 204,
-      coordinator: 204,
+      organizationAdmin: 409,
+      coordinator: 409,
       volunteer: 204,
       volunteerOtherGroup: 204,
-      coordinatorOtherOrganization: 204,
-      organizationAdminOtherOrganization: 204,
+      coordinatorOtherOrganization: 409,
+      organizationAdminOtherOrganization: 409,
       applicant: 204,
       anonymous: 401,
     },
@@ -165,6 +169,19 @@ test("the old session no longer works", async () => {
 test("memberships and admin rows are gone; a pending request is withdrawn", async () => {
   const coordinator = cast.members.coordinator;
   const organizationAdmin = cast.members.organizationAdmin;
+  // Neither is the only one: the volunteer is a second coordinator and a second admin.
+  const system = { kind: "system" } as const;
+  const volunteerEmail = cast.members.volunteer.email;
+  await grantCoordinator(
+    ctx.t.db,
+    { email: volunteerEmail, workingGroupId: cast.workingGroup.workingGroupId },
+    system,
+  );
+  await grantOrganizationAdmin(
+    ctx.t.db,
+    { email: volunteerEmail, organizationId: cast.organization.id },
+    system,
+  );
   // The organization admin is also a coordinator of the other group, with a pending request.
   await ctx.t.db.insert(workingGroupMemberships).values({
     userId: organizationAdmin.userId,
@@ -233,6 +250,96 @@ test("the only platform admin is refused with 409 last_platform_admin", async ()
     deletedAt: null,
   });
   expect((await me(admin)).statusCode).toBe(200);
+});
+
+test("a blocked deletion answers 409 last_coordinator with the blockers, and the session stays", async () => {
+  const coordinator = cast.members.coordinator;
+  const res = await del(coordinator);
+  expect(res.statusCode).toBe(409);
+  expect(res.json()).toEqual({
+    statusCode: 409,
+    error: "Conflict",
+    message: expect.any(String),
+    code: "last_coordinator",
+    blockers: [
+      {
+        role: "coordinator",
+        workingGroupName: "Cast Werkgroep",
+        organizationName: "Cast Organisatie",
+        contactEmail: null,
+      },
+    ],
+  });
+  expect(setCookies(res).join("\n")).not.toContain("session_token");
+  expect(await userRow(coordinator.userId)).toMatchObject({
+    email: coordinator.email.toLowerCase(),
+    deletedAt: null,
+  });
+  expect((await me(coordinator)).statusCode).toBe(200);
+  const entries = await ctx.t.db
+    .select()
+    .from(auditLogEntries)
+    .where(eq(auditLogEntries.action, "account.deleted"));
+  expect(entries).toEqual([]);
+});
+
+test("the last admin gets 409 last_organization_admin, with the contact address to ask", async () => {
+  await ctx.t.db
+    .update(organizations)
+    .set({ contactEmail: "contact-cast@example.test" })
+    .where(eq(organizations.id, cast.organization.id));
+  const res = await del(cast.members.organizationAdmin);
+  expect(res.statusCode).toBe(409);
+  expect(res.json()).toMatchObject({
+    code: "last_organization_admin",
+    blockers: [
+      {
+        role: "organizationAdmin",
+        workingGroupName: null,
+        organizationName: "Cast Organisatie",
+        contactEmail: "contact-cast@example.test",
+      },
+    ],
+  });
+});
+
+test("an admin who is also the only coordinator: the code follows the first blocker, a group", async () => {
+  const admin = cast.members.organizationAdmin;
+  await grantCoordinator(
+    ctx.t.db,
+    { email: admin.email, workingGroupId: cast.otherGroup.workingGroupId },
+    { kind: "system" },
+  );
+  // otherGroup now has two coordinators; foreignGroup gets the admin as its only one.
+  await ctx.t.db
+    .delete(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.workingGroupId, cast.foreignGroup.workingGroupId));
+  await ctx.t.db.insert(workingGroupMemberships).values({
+    userId: admin.userId,
+    workingGroupId: cast.foreignGroup.workingGroupId,
+    isCoordinator: true,
+  });
+  const res = await del(admin);
+  expect(res.statusCode).toBe(409);
+  expect(res.json()).toMatchObject({
+    code: "last_coordinator",
+    blockers: [
+      { role: "coordinator", workingGroupName: "Cast Vreemde werkgroep" },
+      { role: "organizationAdmin", organizationName: "Cast Organisatie" },
+    ],
+  });
+});
+
+test("the last platform admin still gets 409 last_platform_admin without blockers", async () => {
+  const res = await del(cast.members.platformAdmin);
+  expect(res.statusCode).toBe(409);
+  expect(res.json()).toEqual({
+    statusCode: 409,
+    error: "Conflict",
+    message: expect.any(String),
+    code: "last_platform_admin",
+  });
+  expect(res.body).not.toContain("blockers");
 });
 
 test("with a second platform admin it works", async () => {
@@ -333,15 +440,19 @@ test("a request the deleted user sent still exists and shows Verwijderd account 
 
 test("a deleted coordinator no longer receives request mails", async () => {
   const coordinator = cast.members.coordinator;
+  // The volunteer is the second coordinator, so the first may go.
+  await grantCoordinator(
+    ctx.t.db,
+    { email: cast.members.volunteer.email, workingGroupId: cast.workingGroup.workingGroupId },
+    { kind: "system" },
+  );
   expect((await del(coordinator)).statusCode).toBe(204);
   const before = requestMails().length;
   await requestToJoin(cast.members.applicant, cast.workingGroup.workingGroupId);
-  // Without a coordinator the organization's admins get it.
+  // Only the remaining coordinator gets it.
   await expect.poll(() => requestMails().length - before).toBe(1);
   const mails = requestMails().slice(before);
-  expect(mails.map((mail) => mail.to)).toEqual([
-    cast.members.organizationAdmin.email.toLowerCase(),
-  ]);
+  expect(mails.map((mail) => mail.to)).toEqual([cast.members.volunteer.email.toLowerCase()]);
   const deleted = (await userRow(coordinator.userId)).email;
   expect(mails.map((mail) => mail.to)).not.toContain(deleted);
 });

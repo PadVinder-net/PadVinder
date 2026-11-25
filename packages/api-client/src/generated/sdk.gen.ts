@@ -29,7 +29,7 @@ export const getHealth = <ThrowOnError extends boolean = false>(options?: Option
 export const getVersion = <ThrowOnError extends boolean = false>(options?: Options<GetVersionData, ThrowOnError>): RequestResult<GetVersionResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetVersionResponses, unknown, ThrowOnError>({ url: '/api/version', ...options });
 
 /**
- * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end
+ * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end. Refused for the only platform admin, and for the only coordinator of an active working group or admin of an organization (with `blockers`)
  */
 export const deleteMe = <ThrowOnError extends boolean = false>(options?: Options<DeleteMeData, ThrowOnError>): RequestResult<DeleteMeResponses, DeleteMeErrors, ThrowOnError> => (options?.client ?? client).delete<DeleteMeResponses, DeleteMeErrors, ThrowOnError>({ url: '/api/me', ...options });
 

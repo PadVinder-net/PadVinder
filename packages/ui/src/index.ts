@@ -22,6 +22,7 @@ export { NameForm, type NameFormProps } from "./components/login/name-form";
 export { LoginFlow, type LoginFlowProps, type LoginResult } from "./components/login/login-flow";
 export { AuthGateView, type AuthGateViewProps } from "./components/login/auth-gate-view";
 export {
+  accountDeletionBlockedMessage,
   apiErrorMessage,
   connectionMessage,
   loginErrorMessage,

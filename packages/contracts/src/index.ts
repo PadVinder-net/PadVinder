@@ -1,3 +1,4 @@
+export * from "./account-deletion";
 export * from "./email";
 export * from "./errors";
 export * from "./events";

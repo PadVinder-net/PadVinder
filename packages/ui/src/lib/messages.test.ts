@@ -1,6 +1,8 @@
 import { loginErrors } from "@padvinder/contracts";
 import { expect, test } from "vitest";
+import type { AccountDeletionBlocker } from "@padvinder/contracts";
 import {
+  accountDeletionBlockedMessage,
   apiErrorMessage,
   connectionMessage,
   loginErrorMessage,
@@ -33,6 +35,15 @@ test.each([
   ["not_allowed", "Dit mag je niet doen."],
   ["not_found", "Dit bestaat niet meer."],
   ["membership_changed", "Deze persoon heeft intussen een andere rol. Kijk opnieuw."],
+  [
+    "last_organization_admin",
+    "Een organisatie heeft altijd een beheerder. Maak eerst iemand anders beheerder.",
+  ],
+  [
+    "last_coordinator",
+    "Een werkgroep heeft altijd een coördinator. Maak eerst iemand anders coördinator.",
+  ],
+  ["no_coordinator", "Deze werkgroep heeft geen coördinator. Maak eerst iemand coördinator."],
   ["internal_error", connectionMessage],
   ["something_new", connectionMessage],
   ["toString", connectionMessage],
@@ -51,4 +62,45 @@ test("name_taken has a general text, and each species field its own", () => {
   );
   expect(speciesNameTakenMessage("somethingElse")).toBe("Deze naam bestaat al.");
   expect(speciesNameTakenMessage("toString")).toBe("Deze naam bestaat al.");
+});
+
+test.each<[AccountDeletionBlocker, string]>([
+  [
+    {
+      role: "coordinator",
+      workingGroupName: "Noord",
+      organizationName: "Paddentrek Voorbeeldstad",
+      contactEmail: "contact-voorbeeldstad@example.test",
+    },
+    "Je bent de enige coördinator van Noord. Vraag contact-voorbeeldstad@example.test om eerst iemand anders coördinator te maken.",
+  ],
+  [
+    {
+      role: "coordinator",
+      workingGroupName: "Dorp",
+      organizationName: "Paddenwerkgroep Fictiefdorp",
+      contactEmail: null,
+    },
+    "Je bent de enige coördinator van Dorp. Vraag de beheerder van Paddenwerkgroep Fictiefdorp om eerst iemand anders coördinator te maken.",
+  ],
+  [
+    {
+      role: "organizationAdmin",
+      workingGroupName: null,
+      organizationName: "Paddentrek Voorbeeldstad",
+      contactEmail: "contact-voorbeeldstad@example.test",
+    },
+    "Je bent de enige beheerder van Paddentrek Voorbeeldstad. Vraag contact-voorbeeldstad@example.test om eerst iemand anders beheerder te maken.",
+  ],
+  [
+    {
+      role: "organizationAdmin",
+      workingGroupName: null,
+      organizationName: "Paddenwerkgroep Fictiefdorp",
+      contactEmail: null,
+    },
+    "Je bent de enige beheerder van Paddenwerkgroep Fictiefdorp. Vraag een hoofdbeheerder om eerst iemand anders beheerder te maken.",
+  ],
+])("accountDeletionBlockedMessage(%j) gives %j", (blocker, text) => {
+  expect(accountDeletionBlockedMessage(blocker)).toBe(text);
 });

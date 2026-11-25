@@ -1,4 +1,8 @@
-import { apiErrorSchema } from "@padvinder/contracts";
+import {
+  accountDeletionBlockedSchema,
+  apiErrorSchema,
+  type AccountDeletionBlocker,
+} from "@padvinder/contracts";
 
 /**
  * The stable `code` of an error the generated client threw, when it is our API's error body.
@@ -17,4 +21,14 @@ export function apiErrorCode(error: unknown): string | null {
 export function apiErrorIssues(error: unknown): { path: string; message: string }[] {
   const parsed = apiErrorSchema.safeParse(error);
   return parsed.success ? (parsed.data.issues ?? []) : [];
+}
+
+/**
+ * The `blockers` of a refused `DELETE /api/me`: the working groups the user is the only
+ * coordinator of, then the organizations they are the only admin of. An empty list for any other
+ * error. The Dutch text for one is `accountDeletionBlockedMessage` in `@padvinder/ui`.
+ */
+export function accountDeletionBlockers(error: unknown): AccountDeletionBlocker[] {
+  const parsed = accountDeletionBlockedSchema.safeParse(error);
+  return parsed.success ? (parsed.data.blockers ?? []) : [];
 }

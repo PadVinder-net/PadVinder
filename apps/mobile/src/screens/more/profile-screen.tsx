@@ -1,12 +1,28 @@
 import {
+  accountDeletionBlockers,
   apiErrorCode,
   useDeleteAccount,
   useMe,
   useUpdateMe,
   type GetMeResponse,
 } from "@padvinder/api-client";
-import { apiErrorMessage, connectionMessage, ProfileForm } from "@padvinder/ui";
+import {
+  accountDeletionBlockedMessage,
+  apiErrorMessage,
+  connectionMessage,
+  ProfileForm,
+} from "@padvinder/ui";
 import { SubScreen } from "./sub-screen";
+
+/**
+ * Why the deletion failed. A blocked one (the only coordinator or admin) says, per group and
+ * organization, whom to ask, in place of the text for the code.
+ */
+function deleteAccountMessage(error: unknown): string {
+  const blockers = accountDeletionBlockers(error);
+  if (blockers.length > 0) return blockers.map(accountDeletionBlockedMessage).join(" ");
+  return apiErrorMessage(apiErrorCode(error));
+}
 
 /**
  * The profile with saving and deleting the account. Also used by the applicant screens. After a
@@ -16,7 +32,7 @@ export function ProfileEditor({ me }: { me: GetMeResponse }) {
   const updateMe = useUpdateMe();
   const deleteAccount = useDeleteAccount();
   const error = deleteAccount.isError
-    ? apiErrorMessage(apiErrorCode(deleteAccount.error))
+    ? deleteAccountMessage(deleteAccount.error)
     : updateMe.isError
       ? connectionMessage
       : undefined;

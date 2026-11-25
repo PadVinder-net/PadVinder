@@ -49,6 +49,84 @@
           "code"
         ]
       },
+      "AccountDeletionBlockerInput": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "coordinator",
+              "organizationAdmin"
+            ]
+          },
+          "workingGroupName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "workingGroupName",
+          "organizationName",
+          "contactEmail"
+        ]
+      },
+      "AccountDeletionBlockedInput": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ]
+            }
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountDeletionBlockerInput"
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "code"
+        ]
+      },
       "HealthResponseInput": {
         "type": "object",
         "properties": {
@@ -605,6 +683,87 @@
                 "message"
               ],
               "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "AccountDeletionBlocker": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "coordinator",
+              "organizationAdmin"
+            ]
+          },
+          "workingGroupName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "workingGroupName",
+          "organizationName",
+          "contactEmail"
+        ],
+        "additionalProperties": false
+      },
+      "AccountDeletionBlocked": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountDeletionBlocker"
             }
           }
         },
@@ -1282,7 +1441,7 @@
       },
       "delete": {
         "operationId": "deleteMe",
-        "summary": "Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end",
+        "summary": "Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end. Refused for the only platform admin, and for the only coordinator of an active working group or admin of an organization (with `blockers`)",
         "responses": {
           "204": {
             "description": "Default Response",
@@ -1313,7 +1472,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiError"
+                  "$ref": "#/components/schemas/AccountDeletionBlocked"
                 }
               }
             }

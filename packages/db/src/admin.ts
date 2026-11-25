@@ -131,6 +131,21 @@ export async function lockOrganization(
 }
 
 /**
+ * The number of admins of the organization. One who never logged in counts; a deleted account
+ * has no admin rows left. Call it under `lockOrganization`.
+ */
+export async function countOrganizationAdmins(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<number> {
+  const [{ admins } = { admins: 0 }] = await tx
+    .select({ admins: count() })
+    .from(organizationAdmins)
+    .where(eq(organizationAdmins.organizationId, organizationId));
+  return admins;
+}
+
+/**
  * Removes the admin row of the user, under the organization's lock; `last_organization_admin`
  * when no other admin of the organization would remain. An admin who never logged in counts.
  * The organization must be locked by the caller.
