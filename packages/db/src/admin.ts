@@ -117,6 +117,12 @@ async function requireOrganization(tx: DbTransaction, organizationId: string): P
  * `for no key update`, so inserts that reference the organization (a working group, an admin row)
  * do not wait for it. Every function that removes an admin row takes it before it counts the
  * admins, so two removals at the same moment cannot both see "another admin remains".
+ *
+ * Take it before any user row lock. A transaction that holds it may wait for a user row: an audit
+ * entry's `actor_user_id` and a role's `user_id` take a key share lock on the user (foreign keys),
+ * and `findOrCreateUser` holds one. A function that locks a user row first and this lock second
+ * can deadlock with it. `deleteAccount` does so only for a role that appeared between its two
+ * reads, and accepts that narrow deadlock (PostgreSQL aborts one side, nothing is half written).
  */
 export async function lockOrganization(
   tx: DbTransaction,
@@ -198,8 +204,9 @@ async function requireWorkingGroup(
  * The existing row is read `for key share` and stays locked until the transaction ends, so the
  * account cannot be deleted between this lookup and the insert of the role. A deletion that holds
  * the row (`for update`) makes this wait; then the address no longer matches, and the result is
- * `user_not_found`. A deletion that comes later waits for this transaction and counts the new
- * role. A plain read would not do: the role's foreign key check waits for the deletion too, but
+ * `user_not_found`. When the deletion has already replaced the address, the insert waits for it
+ * to commit and then makes a new account at the freed address. A deletion that comes later waits
+ * for this transaction and counts the new role. A plain read would not do: the role's foreign key check waits for the deletion too, but
  * then accepts the row, whose id has not changed.
  */
 async function findOrCreateUser(
@@ -343,6 +350,12 @@ export async function updateOrganization(
  * it before it reads the coordinators, so two such changes at the same moment cannot both see
  * "another coordinator remains". A function that needs several takes them in the order of their
  * IDs.
+ *
+ * Take it before any user row lock. A transaction that holds it may wait for a user row: an audit
+ * entry's `actor_user_id` and a role's `user_id` take a key share lock on the user (foreign keys),
+ * and `findOrCreateUser` holds one. A function that locks a user row first and this lock second
+ * can deadlock with it. `deleteAccount` does so only for a role that appeared between its two
+ * reads, and accepts that narrow deadlock (PostgreSQL aborts one side, nothing is half written).
  */
 export async function lockWorkingGroup(
   tx: DbTransaction,

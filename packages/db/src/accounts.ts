@@ -202,15 +202,25 @@ export async function deleteAccount(
       .for("update");
     if (!user) return { outcome: "not_found" };
     // Read the memberships and admin rows again. A role given between the first read and the
-    // user row lock is locked now, after the user row (out of the usual order, but the role's
-    // writer has committed, and nothing holds a group or organization lock while it waits for a
-    // user row). After the user row lock no role can be added for this account: every function
-    // that gives a role by address finds the account with `findOrCreateUser`, which holds the
-    // user row `for key share`, so it either committed before this lock or waits for this
-    // transaction and then no longer finds the address (`user_not_found`). A foreign key check
-    // alone would not stop it: it waits for this transaction, then accepts the row, whose id has
-    // not changed. A membership from an approved request is covered by the request row locks
-    // above.
+    // user row lock is locked now, after the user row: out of the usual order (group and
+    // organization locks before user rows). The role's writer has committed, but another
+    // transaction can hold that group's or organization's lock and wait for this user row:
+    // `setCoordinator`, `updateWorkingGroup` and `removeAdminRow` take the lock first and then
+    // write an audit entry, whose `actor_user_id` (a foreign key) takes a key share lock on the
+    // actor's user row. If this user is that actor at that moment, in a group or organization that
+    // became theirs between the two reads, the two transactions deadlock. PostgreSQL detects it
+    // and aborts one of them (that request answers 500); nothing is half written. Narrow enough to
+    // accept.
+    //
+    // After the user row lock no role can be added for this account. Every function that gives a
+    // role by address finds the account with `findOrCreateUser`. One that reached the row before
+    // the update below holds it `for key share`, so it either committed before this lock or waits
+    // for this transaction and then no longer finds the address (`user_not_found`). One whose
+    // insert comes after the update below waits for this transaction too, and then makes a new
+    // account at the freed address: correct, because the same address later is a new account and
+    // the deleted one gets no role. A foreign key check alone would not stop the first case: it
+    // waits for this transaction, then accepts the row, whose id has not changed. A membership
+    // from an approved request is covered by the request row locks above.
     await lockRolesOfUser(tx, input.userId, held);
 
     if (user.isPlatformAdmin && !(await hasOtherPlatformAdmin(tx, input.userId)))
