@@ -1,5 +1,6 @@
 import type { RouteObject } from "react-router";
 import { AppLayout } from "./app";
+import { JoinAnotherScreen } from "./screens/more/join-another-screen";
 import { MapScreen } from "./screens/map-screen";
 import { MoreScreen } from "./screens/more-screen";
 import { MemberScreen } from "./screens/more/member-screen";
@@ -30,6 +31,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <MoreScreen /> },
           { path: "profile", element: <ProfileScreen /> },
+          { path: "profile/join", element: <JoinAnotherScreen /> },
           // The link in the coordinator's mail points to one request.
           { path: "membership-requests", element: <MembershipRequestsScreen /> },
           { path: "membership-requests/:requestId", element: <MembershipRequestScreen /> },

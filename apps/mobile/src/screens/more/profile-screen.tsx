@@ -4,6 +4,7 @@ import {
   useDeleteAccount,
   useMe,
   useUpdateMe,
+  useWithdrawMembershipRequest,
   type GetMeResponse,
 } from "@padvinder/api-client";
 import {
@@ -12,6 +13,7 @@ import {
   connectionMessage,
   ProfileForm,
 } from "@padvinder/ui";
+import { useNavigate } from "react-router";
 import { SubScreen } from "./sub-screen";
 
 /**
@@ -28,14 +30,27 @@ function deleteAccountMessage(error: unknown): string {
  * The profile with saving and deleting the account. Also used by the applicant screens. After a
  * deletion the gate shows the login screen with "Je account is verwijderd.".
  */
-export function ProfileEditor({ me }: { me: GetMeResponse }) {
+export function ProfileEditor({
+  me,
+  onJoinAnother,
+}: {
+  me: GetMeResponse;
+  /** Only for a member: asking for another working group. Not passed on the applicant's profile. */
+  onJoinAnother?(): void;
+}) {
   const updateMe = useUpdateMe();
+  const withdraw = useWithdrawMembershipRequest();
+  const request = me.membershipRequest;
+  // A rejected request shows nothing here. The applicant's profile has neither prop.
+  const pending = onJoinAnother && request?.status === "pending" ? request : undefined;
   const deleteAccount = useDeleteAccount();
   const error = deleteAccount.isError
     ? deleteAccountMessage(deleteAccount.error)
     : updateMe.isError
       ? connectionMessage
-      : undefined;
+      : withdraw.isError
+        ? apiErrorMessage(apiErrorCode(withdraw.error))
+        : undefined;
   return (
     <ProfileForm
       me={me}
@@ -45,16 +60,21 @@ export function ProfileEditor({ me }: { me: GetMeResponse }) {
       error={error}
       onSave={({ name, phone }) => updateMe.mutate({ name, phone })}
       onDelete={() => deleteAccount.mutate()}
+      pendingRequest={pending ? { workingGroupName: pending.workingGroup.name } : undefined}
+      withdrawing={withdraw.isPending}
+      onWithdrawRequest={pending ? () => withdraw.mutate({ id: pending.id }) : undefined}
+      onJoinAnother={pending ? undefined : onJoinAnother}
     />
   );
 }
 
 export function ProfileScreen() {
   const me = useMe().data;
+  const navigate = useNavigate();
   if (!me) return null;
   return (
     <SubScreen back="/more">
-      <ProfileEditor me={me} />
+      <ProfileEditor me={me} onJoinAnother={() => void navigate("/more/profile/join")} />
     </SubScreen>
   );
 }

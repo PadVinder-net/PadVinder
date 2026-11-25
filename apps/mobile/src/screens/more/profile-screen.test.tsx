@@ -1,4 +1,9 @@
-import { meFixture, workingGroupsFixture } from "@padvinder/contracts/fixtures";
+import {
+  meFixture,
+  rejectedRequestFixture,
+  waitingMeFixture,
+  workingGroupsFixture,
+} from "@padvinder/contracts/fixtures";
 import { mockFetch } from "@padvinder/api-client/testing";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -123,4 +128,35 @@ test("the deletion notice is gone after logging in again and out", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Log uit" }));
   expect(await screen.findByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
   expect(screen.queryByText("Je account is verwijderd.")).toBeNull();
+});
+
+test("a member with a pending request reads the waiting text and can withdraw it", async () => {
+  const pending = { ...meFixture, membershipRequest: waitingMeFixture.membershipRequest };
+  const routes: Record<string, unknown> = {
+    "/api/me": pending,
+    [`POST /api/membership-requests/${pending.membershipRequest!.id}/withdraw`]: new Response(
+      null,
+      { status: 204 },
+    ),
+  };
+  mockFetch(routes);
+  renderApp("/app/more/profile");
+  const name = pending.membershipRequest!.workingGroup.name;
+  expect(await screen.findByText(`Je aanmelding bij ${name} wacht op goedkeuring.`)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Meld je aan bij nog een werkgroep" })).toBeNull();
+  routes["/api/me"] = meFixture;
+  await userEvent.click(screen.getByRole("button", { name: "Trek aanmelding in" }));
+  expect(
+    await screen.findByRole("button", { name: "Meld je aan bij nog een werkgroep" }),
+  ).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Trek aanmelding in" })).toBeNull();
+});
+
+test("a rejected request shows nothing on Profiel of a member", async () => {
+  mockFetch({ "/api/me": { ...meFixture, membershipRequest: rejectedRequestFixture } });
+  renderApp("/app/more/profile");
+  expect(
+    await screen.findByRole("button", { name: "Meld je aan bij nog een werkgroep" }),
+  ).toBeVisible();
+  expect(screen.queryByText(/wacht op goedkeuring|niet goedgekeurd/)).toBeNull();
 });

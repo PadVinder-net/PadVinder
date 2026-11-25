@@ -54,6 +54,7 @@ test("no route under /more is Dutch, and every sub-screen links back", async () 
   expect(morePaths()).toEqual([
     "",
     "profile",
+    "profile/join",
     "membership-requests",
     "membership-requests/:requestId",
     "members",
@@ -70,6 +71,7 @@ test("no route under /more is Dutch, and every sub-screen links back", async () 
   };
   const subScreens: Array<[string, string]> = [
     ["/app/more/profile", "/app/more"],
+    ["/app/more/profile/join", "/app/more/profile"],
     ["/app/more/membership-requests", "/app/more"],
     [`/app/more/membership-requests/${request.id}`, "/app/more/membership-requests"],
     ["/app/more/members", "/app/more"],
