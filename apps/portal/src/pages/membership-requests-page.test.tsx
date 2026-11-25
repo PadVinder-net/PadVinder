@@ -361,6 +361,85 @@ test("a request in the address that cannot be asked for says so, opens nothing a
   expect(requestsTo(requests, "GET", `${listPath}/${otherOrganizationRequest.id}`)).toHaveLength(1);
 });
 
+test("a late answer for a request in the address does not close the request chosen since", async () => {
+  const requests = recordRequests();
+  mockFetch(
+    routesFor(adminMe, reviewableRequestsFixture, {
+      [`GET ${listPath}/${otherOrganizationRequest.id}`]: decided(
+        otherOrganizationRequest,
+        "approved",
+      ),
+    }),
+  );
+  const release = holdRequests((request) =>
+    request.url.endsWith(`${listPath}/${otherOrganizationRequest.id}`),
+  );
+  const { router } = renderPortal(`${pagePath}?request=${otherOrganizationRequest.id}`);
+  await openRequest("Lotte Visser");
+  expect(searchOf(router)).toBe(`?request=${lotte.id}`);
+  release();
+  await waitFor(() =>
+    expect(requestsTo(requests, "GET", `${listPath}/${otherOrganizationRequest.id}`)).toHaveLength(
+      1,
+    ),
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("dialog", { name: "Lotte Visser" })).toBeVisible();
+  expect(searchOf(router)).toBe(`?request=${lotte.id}`);
+  expect(screen.queryByText("Deze aanmelding is al behandeld.")).toBeNull();
+});
+
+test("a late answer after the user left the page keeps them where they went, without a toast", async () => {
+  const requests = recordRequests();
+  mockFetch(
+    routesFor(adminMe, reviewableRequestsFixture, {
+      [`GET ${listPath}/${otherOrganizationRequest.id}`]: decided(
+        otherOrganizationRequest,
+        "approved",
+      ),
+    }),
+  );
+  const release = holdRequests((request) =>
+    request.url.endsWith(`${listPath}/${otherOrganizationRequest.id}`),
+  );
+  const { router } = renderPortal(`${pagePath}?request=${otherOrganizationRequest.id}`);
+  await screen.findByRole("button", { name: "Lotte Visser" });
+  await userEvent.click(screen.getByRole("link", { name: "Werkgroepen" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Werkgroepen" })).toBeVisible();
+  release();
+  await waitFor(() =>
+    expect(requestsTo(requests, "GET", `${listPath}/${otherOrganizationRequest.id}`)).toHaveLength(
+      1,
+    ),
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(router.state.location.pathname).toBe("/working-groups");
+  expect(router.state.location.search).toBe("");
+  expect(screen.getByRole("heading", { level: 1, name: "Werkgroepen" })).toBeVisible();
+  expect(screen.queryByText(/al behandeld|bestaat niet meer/)).toBeNull();
+});
+
+test("a decision that ends after the user left still shows its toast, and leaves the address alone", async () => {
+  mockFetch(
+    routesFor(adminMe, reviewableRequestsFixture, {
+      [`POST ${listPath}/${lotte.id}/approve`]: decided(lotte, "approved"),
+    }),
+  );
+  const release = holdRequests((request) => request.method === "POST");
+  const { router } = renderPortal(pagePath);
+  const dialog = await openRequest("Lotte Visser");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Keur goed" }));
+  await waitFor(() =>
+    expect(within(dialog).getAllByRole("button", { name: "Even geduld…" })).toHaveLength(2),
+  );
+  await act(() => router.navigate("/working-groups"));
+  expect(await screen.findByRole("heading", { level: 1, name: "Werkgroepen" })).toBeVisible();
+  release();
+  expect(await screen.findByText("Lotte Visser is toegelaten tot Noord.")).toBeVisible();
+  expect(router.state.location.pathname).toBe("/working-groups");
+  expect(screen.queryByText("Deze aanmelding is al behandeld.")).toBeNull();
+});
+
 test("a request that is newer than the list refetches the list and then opens its modal", async () => {
   const newer = { ...otherOrganizationRequest, workingGroup: lotte.workingGroup };
   const requests = recordRequests();

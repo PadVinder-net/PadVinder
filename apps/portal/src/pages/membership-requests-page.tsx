@@ -17,7 +17,7 @@ import {
   showToast,
 } from "@padvinder/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { RequireManagesSomething } from "../layout/require-manages-something";
 import { LoadError } from "./load-error";
@@ -85,16 +85,38 @@ function MembershipRequests() {
   const handled = useRef(new Set<string>());
   // Requests asked for once because the address named one the list lacks.
   const asked = useRef(new Set<string>());
+  // Decisions whose answer has not been handled yet; `settled` counts the handled ones, so the
+  // check below runs again after a decision that failed.
+  const inFlight = useRef(new Set<string>());
+  const [settled, setSettled] = useState(0);
 
-  // Replaces the entry, so Back after a close does not open the modal again.
+  // An answer can come after the user chose another request or left the page. The updater of
+  // `setSearchParams` sees the address of the render that made it, not the current one, and its
+  // `navigate` still works after the page is gone; so a late answer checks these refs first.
+  const mounted = useRef(false);
+  useEffect(() => {
+    // Set in the effect, not only at creation: StrictMode's second mount runs it again.
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const latestRequestId = useRef(requestId);
+  useLayoutEffect(() => {
+    latestRequestId.current = requestId;
+  }, [requestId]);
+  /** Whether the page is still open on this request. */
+  const stillOn = (id: string) => mounted.current && latestRequestId.current === id;
+
   function closeRequest(id: string) {
+    if (!stillOn(id)) return;
     setSearchParams(
       (current) => {
-        if (current.get("request") !== id) return current;
         const next = new URLSearchParams(current);
         next.delete("request");
         return next;
       },
+      // Replaces the entry, so Back after a close does not open the modal again.
       { replace: true },
     );
   }
@@ -102,7 +124,7 @@ function MembershipRequests() {
   const listHasLoaded = requests !== undefined;
   const missing = requestId !== null && listHasLoaded && !inList && !deciding;
   useEffect(() => {
-    if (!missing || requestId === null) return;
+    if (!missing || requestId === null || inFlight.current.has(requestId)) return;
     // Already said what became of it (a decision here, a toast before): just tidy the address.
     if (handled.current.has(requestId)) return closeRequest(requestId);
     if (shown.current?.id === requestId) {
@@ -117,15 +139,23 @@ function MembershipRequests() {
     asked.current.add(requestId);
     void checkRequest(requestId);
     // closeRequest and checkRequest only use refs, setters and the query client.
-  }, [missing, requestId]);
+  }, [missing, requestId, settled]);
 
   /** The address names a request the list lacks: ask for it once, and say what became of it. */
   async function checkRequest(id: string) {
     const { data, error } = await getMembershipRequest({ path: { id } });
+    // The user chose another request or left: say nothing, and ask again if they come back to it.
+    const movedOn = () => {
+      if (stillOn(id)) return false;
+      asked.current.delete(id);
+      return true;
+    };
+    if (movedOn()) return;
     if (data?.status === "pending") {
       // The list is older than the request: once the new list holds it, the modal opens.
       const fresh = await list.refetch();
       if (fresh.data?.membershipRequests.some((request) => request.id === id)) return;
+      if (movedOn()) return;
       if (fresh.isError) {
         // The list did not load again: keep the address, so a reload tries again.
         showToast(apiErrorMessage(apiErrorCode(fresh.error)));
@@ -157,10 +187,13 @@ function MembershipRequests() {
   function decide(request: MembershipRequestForReview, decision: "approve" | "reject") {
     const mutation = decision === "approve" ? approve : reject;
     (decision === "approve" ? reject : approve).reset();
-    mutation.mutate(
-      { id: request.id },
-      {
-        onSuccess: () => {
+    // Not `mutate`'s callbacks: those do not run once the page is gone, and a decision that was
+    // made is said also after the user left (the toast shows in the layout).
+    inFlight.current.add(request.id);
+    void mutation
+      .mutateAsync({ id: request.id })
+      .then(
+        () => {
           handled.current.add(request.id);
           showToast(
             decision === "approve"
@@ -169,16 +202,20 @@ function MembershipRequests() {
           );
           closeRequest(request.id);
         },
-        onError: (error) => {
+        (error: unknown) => {
+          // Any other error stays in the modal, as the detail's error.
           if (apiErrorCode(error) !== "already_decided") return;
           handled.current.add(request.id);
           showToast(alreadyDecidedMessage);
           closeRequest(request.id);
         },
+      )
+      .finally(() => {
+        inFlight.current.delete(request.id);
+        setSettled((count) => count + 1);
         // The open counts in the navigation.
-        onSettled: () => void refetchAdministration(queryClient),
-      },
-    );
+        void refetchAdministration(queryClient);
+      });
   }
 
   // The error of a failed decision belongs to the request it was about.
