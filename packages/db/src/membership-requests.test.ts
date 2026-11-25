@@ -54,7 +54,18 @@ beforeAll(async () => {
   groups = [];
   for (const name of ["Noord", "Zuid", "Oost", "West", "Centrum", "Dorp", "Haven"]) {
     groups.push(
-      (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system)).id,
+      (
+        await createWorkingGroup(
+          db(),
+          {
+            organizationId,
+            name,
+            city: "Voorbeeldstad",
+            coordinatorEmail: "eerste-coordinator@example.test",
+          },
+          system,
+        )
+      ).id,
     );
   }
 });
@@ -216,7 +227,12 @@ test("an unknown or inactive working group is working_group_not_found", async ()
   });
   const inactive = await createWorkingGroup(
     db(),
-    { organizationId, name: "Opgeheven", city: "Voorbeeldstad" },
+    {
+      organizationId,
+      name: "Opgeheven",
+      city: "Voorbeeldstad",
+      coordinatorEmail: "eerste-coordinator@example.test",
+    },
     system,
   );
   await db().update(workingGroups).set({ active: false }).where(eq(workingGroups.id, inactive.id));
@@ -563,8 +579,18 @@ async function newApplicant(phone: string | null = "06 12345678") {
 
 /** A fresh group, so a list holds only the requests of the test. */
 async function newGroup(name: string): Promise<string> {
-  return (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system))
-    .id;
+  return (
+    await createWorkingGroup(
+      db(),
+      {
+        organizationId,
+        name,
+        city: "Voorbeeldstad",
+        coordinatorEmail: "eerste-coordinator@example.test",
+      },
+      system,
+    )
+  ).id;
 }
 
 const decide = (id: string, decision: "approved" | "rejected", decidedBy: string, at = decidedAt) =>
@@ -839,8 +865,26 @@ test("a withdrawal waits for a decision that holds the row, then sees it", async
 });
 
 describe("listRequestNotificationRecipients", () => {
-  const fresh = async (name: string) =>
-    (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system)).id;
+  /**
+   * A group without its first coordinator, so each test chooses the coordinators itself. The row
+   * is removed by hand, as in data from before every active group had a coordinator.
+   */
+  const fresh = async (name: string) => {
+    const { id } = await createWorkingGroup(
+      db(),
+      {
+        organizationId,
+        name,
+        city: "Voorbeeldstad",
+        coordinatorEmail: "eerste-coordinator@example.test",
+      },
+      system,
+    );
+    await db()
+      .delete(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.workingGroupId, id));
+    return id;
+  };
   const person = async (email: string) => {
     await db().insert(users).values({ name: "Persoon", email, emailVerified: true });
     return email;

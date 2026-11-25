@@ -68,15 +68,49 @@ async function ensureOrganization(
   return organizationId;
 }
 
+/**
+ * The working group with its coordinator. One that exists already (seeded before every working
+ * group had a coordinator) gets the coordinator too; a second run changes nothing. A group a
+ * developer switched off locally is left as it is: it may be without a coordinator. Without a
+ * `coordinatorName` the coordinator stays as the tool makes them: no name, never logged in.
+ */
 async function ensureWorkingGroup(
   db: Db,
   organizationId: string,
-  name: string,
-  city: string,
+  input: { name: string; city: string; coordinatorEmail: string; coordinatorName: string | null },
 ): Promise<string> {
   const organization = (await listOrganizations(db)).find((org) => org.id === organizationId);
-  const existing = organization?.workingGroups.find((group) => group.name === name);
-  return existing?.id ?? (await createWorkingGroup(db, { organizationId, name, city }, system)).id;
+  const existing = organization?.workingGroups.find((group) => group.name === input.name);
+  let id: string;
+  let coordinatorId: string | undefined;
+  if (!existing) {
+    const created = await createWorkingGroup(
+      db,
+      {
+        organizationId,
+        name: input.name,
+        city: input.city,
+        coordinatorEmail: input.coordinatorEmail,
+      },
+      system,
+    );
+    id = created.id;
+    coordinatorId = created.coordinatorUserId;
+  } else {
+    id = existing.id;
+    if (existing.active) {
+      const granted = await grantCoordinator(
+        db,
+        { email: input.coordinatorEmail, workingGroupId: id },
+        system,
+      );
+      coordinatorId = granted.userId;
+    }
+  }
+  if (coordinatorId !== undefined && input.coordinatorName !== null) {
+    await setName(db, coordinatorId, input.coordinatorName);
+  }
+  return id;
 }
 
 /**
@@ -122,18 +156,28 @@ export async function seed(db: Db): Promise<void> {
     adminName: "Fenna Fictief",
     contactEmail: null,
   });
-  const noord = await ensureWorkingGroup(db, voorbeeldstad, "Noord", "Voorbeeldstad");
-  const zuid = await ensureWorkingGroup(db, voorbeeldstad, "Zuid", "Voorbeeldstad");
-  const dorp = await ensureWorkingGroup(db, fictiefdorp, "Dorp", "Fictiefdorp");
+  const noord = await ensureWorkingGroup(db, voorbeeldstad, {
+    name: "Noord",
+    city: "Voorbeeldstad",
+    coordinatorEmail: "coordinator@example.test",
+    coordinatorName: "Carla Coördinator",
+  });
+  const zuid = await ensureWorkingGroup(db, voorbeeldstad, {
+    name: "Zuid",
+    city: "Voorbeeldstad",
+    coordinatorEmail: "coordinator-zuid@example.test",
+    coordinatorName: "Zoë Zuid",
+  });
+  // The example of a coordinator who never logged in: no name, no last_login_at.
+  const dorp = await ensureWorkingGroup(db, fictiefdorp, {
+    name: "Dorp",
+    city: "Fictiefdorp",
+    coordinatorEmail: "coordinator-dorp@example.test",
+    coordinatorName: null,
+  });
 
   const admin = await grantPlatformAdmin(db, { email: "hoofdbeheerder@example.test" }, system);
   await setName(db, admin.userId, "Hanna Hoofd");
-  const coordinator = await grantCoordinator(
-    db,
-    { email: "coordinator@example.test", workingGroupId: noord },
-    system,
-  );
-  await setName(db, coordinator.userId, "Carla Coördinator");
 
   await ensureVolunteer(db, "vrijwilliger@example.test", "Vera Vrijwilliger", noord);
   await ensureVolunteer(db, "dubbel@example.test", "Daan Dubbel", zuid);

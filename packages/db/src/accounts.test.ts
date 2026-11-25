@@ -54,7 +54,18 @@ beforeAll(async () => {
   groups = [];
   for (const name of ["Noord", "Zuid", "Oost"]) {
     groups.push(
-      (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system)).id,
+      (
+        await createWorkingGroup(
+          db(),
+          {
+            organizationId,
+            name,
+            city: "Voorbeeldstad",
+            coordinatorEmail: "eerste-coordinator@example.test",
+          },
+          system,
+        )
+      ).id,
     );
   }
   // Every test that is not about the last platform admin has another one around, who has

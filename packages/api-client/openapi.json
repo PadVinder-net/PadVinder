@@ -1482,7 +1482,7 @@
     "/api/memberships/{membershipId}": {
       "delete": {
         "operationId": "removeMembership",
-        "summary": "Remove a member from a working group. A coordinator may not remove a coordinator",
+        "summary": "Remove a member from a working group. A coordinator may not remove a coordinator, and the last coordinator of an active group stays",
         "parameters": [
           {
             "schema": {

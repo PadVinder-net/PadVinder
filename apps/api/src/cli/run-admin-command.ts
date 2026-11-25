@@ -37,6 +37,12 @@ const adminErrorText: Record<AdminErrorCode, string> = {
     "That is the last platform admin who has logged in. Make another one, and let them log in first.",
   last_organization_admin:
     "That is the last admin of the organization. Make someone else admin first.",
+  membership_not_found: "There is no membership with that ID.",
+  last_coordinator:
+    "That is the last coordinator of the working group. Make someone else coordinator first.",
+  no_coordinator: "That working group has no coordinator. Make someone coordinator first.",
+  person_outside_organization:
+    "That person has an account outside the organization. Choose someone else.",
 };
 
 const helpLines = [
@@ -45,7 +51,7 @@ const helpLines = [
   "  list                                              Organizations with their working groups",
   "  create-organization --name <name> --admin-email <address> [--contact-email <address>]",
   "                                                    Prints the new ID",
-  "  create-working-group --organization <id> --name <name> --city <city>",
+  "  create-working-group --organization <id> --name <name> --city <city> --coordinator-email <address>",
   "                                                    Prints the new ID",
   "  grant-platform-admin --email <address>            Prints changed or unchanged",
   "  revoke-platform-admin --email <address>",
@@ -54,6 +60,8 @@ const helpLines = [
   "  grant-coordinator --email <address> --working-group <id>",
   "  revoke-coordinator --email <address> --working-group <id>",
   "",
+  "An organization always has an admin, and an active working group a coordinator: the last one",
+  "cannot be revoked. list marks data from before that rule with [no admin] or [no coordinator].",
   "The grant commands create the account when the address is unknown: check the address carefully.",
   "Every change is written to the audit log as the system.",
 ];
@@ -82,9 +90,12 @@ const commands: Record<string, Handler> = {
           `organization ${organization.id} ${organization.name}${organization.hasAdmin ? "" : " [no admin]"}`,
         );
         for (const group of organization.workingGroups) {
-          out(
-            `  working group ${group.id} ${group.name} (${group.city})${group.active ? "" : " [inactive]"}`,
-          );
+          const mark = !group.active
+            ? " [inactive]"
+            : group.hasCoordinator
+              ? ""
+              : " [no coordinator]";
+          out(`  working group ${group.id} ${group.name} (${group.city})${mark}`);
         }
       }
     },
@@ -104,10 +115,19 @@ const commands: Record<string, Handler> = {
     },
   },
   "create-working-group": {
-    options: ["organization", "name", "city"],
+    options: ["organization", "name", "city", "coordinator-email"],
     async run(v, { db, out }) {
-      const input = { organizationId: v.organization!, name: v.name!, city: v.city! };
-      out((await createWorkingGroup(db, input, system)).id);
+      const input = {
+        organizationId: v.organization!,
+        name: v.name!,
+        city: v.city!,
+        coordinatorEmail: v["coordinator-email"]!,
+      };
+      const result = await createWorkingGroup(db, input, system);
+      out(result.id);
+      if (result.coordinatorCreated) {
+        out(`new account for ${normalizeEmail(input.coordinatorEmail)}`);
+      }
     },
   },
   "grant-platform-admin": {

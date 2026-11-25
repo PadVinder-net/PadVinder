@@ -1,4 +1,10 @@
-import { auditLogEntries, liveEventsChannel, users, workingGroupMemberships } from "@padvinder/db";
+import {
+  auditLogEntries,
+  createWorkingGroup,
+  liveEventsChannel,
+  users,
+  workingGroupMemberships,
+} from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -213,4 +219,25 @@ test("removing twice is 404 the second time", async () => {
 
 test("a malformed id is 400", async () => {
   expect((await remove(cast.members.platformAdmin, "nope")).statusCode).toBe(400);
+});
+
+test("removing the last coordinator answers 409 last_coordinator", async () => {
+  const group = await createWorkingGroup(
+    ctx.t.db,
+    {
+      organizationId: cast.organization.id,
+      name: "Eén coördinator",
+      city: "Enschede",
+      coordinatorEmail: "enige-coordinator@example.test",
+    },
+    { kind: "system" },
+  );
+  const [membership] = await ctx.t.db
+    .select({ id: workingGroupMemberships.id })
+    .from(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.workingGroupId, group.id));
+  const res = await remove(cast.members.organizationAdmin, membership!.id);
+  expect(res.statusCode).toBe(409);
+  expect(res.json()).toMatchObject({ statusCode: 409, code: "last_coordinator" });
+  expect(await membershipRows(membership!.id)).toHaveLength(1);
 });

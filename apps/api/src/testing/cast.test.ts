@@ -1,6 +1,13 @@
-import { getAccess, getOrganization } from "@padvinder/db";
+import { getAccess, getOrganization, listMembers, users } from "@padvinder/db";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { type Cast, type CastMember, createCast, expectStatuses } from "./cast";
+import {
+  type Cast,
+  type CastMember,
+  createCast,
+  expectStatuses,
+  OTHER_GROUP_COORDINATOR_EMAIL,
+} from "./cast";
 import { createTestApp, type TestApp } from "./login";
 
 let ctx: TestApp;
@@ -50,6 +57,27 @@ test("the cast has eight members, and each organization exactly its own admin", 
   expect(await admins(cast.otherOrganization.id)).toEqual([
     cast.members.organizationAdminOtherOrganization.userId,
   ]);
+});
+
+test("every working group has its first coordinator; otherGroup's never logged in", async () => {
+  const coordinators = async (workingGroupId: string) =>
+    (await listMembers(ctx.t.db, workingGroupId, { contact: true }))
+      .filter((member) => member.isCoordinator)
+      .map((member) => member.email);
+  expect(await coordinators(cast.workingGroup.workingGroupId)).toEqual([
+    cast.members.coordinator.email.toLowerCase(),
+  ]);
+  expect(await coordinators(cast.foreignGroup.workingGroupId)).toEqual([
+    cast.members.coordinatorOtherOrganization.email.toLowerCase(),
+  ]);
+  expect(await coordinators(cast.otherGroup.workingGroupId)).toEqual([
+    OTHER_GROUP_COORDINATOR_EMAIL,
+  ]);
+  const [other] = await ctx.t.db
+    .select()
+    .from(users)
+    .where(eq(users.email, OTHER_GROUP_COORDINATOR_EMAIL));
+  expect(other?.lastLoginAt).toBeNull();
 });
 
 test("every member's cookie is a working session", async () => {

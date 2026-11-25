@@ -1,5 +1,5 @@
 import type { LiveEvent } from "@padvinder/contracts";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import pg from "pg";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import {
@@ -11,13 +11,16 @@ import {
   grantPlatformAdmin,
   listOrganizations,
   lockOrganization,
+  lockWorkingGroup,
   normalizeEmail,
   normalizeName,
   removeOrganizationAdmin,
   revokeCoordinator,
   revokeOrganizationAdmin,
   revokePlatformAdmin,
+  setCoordinator,
   updateOrganization,
+  updateWorkingGroup,
 } from "./admin";
 import { getAccess } from "./access";
 import { liveEventsChannel, notify } from "./notifications";
@@ -52,10 +55,15 @@ async function setup() {
   );
   const group = await createWorkingGroup(
     db(),
-    { organizationId: org.id, name: "Noord", city: "Enschede" },
+    {
+      organizationId: org.id,
+      name: "Noord",
+      city: "Enschede",
+      coordinatorEmail: "eerste@example.test",
+    },
     system,
   );
-  return { orgId: org.id, groupId: group.id };
+  return { orgId: org.id, groupId: group.id, firstCoordinatorId: group.coordinatorUserId };
 }
 
 test("normalizeEmail trims and lowercases", () => {
@@ -67,6 +75,7 @@ test("creates an organization and a working group, each with an audit entry", as
   const entries = await db().select().from(auditLogEntries);
   expect(entries.map((e) => e.action).sort()).toEqual([
     "organization.created",
+    "role.coordinator_granted",
     "role.organization_admin_granted",
     "working_group.created",
   ]);
@@ -76,7 +85,9 @@ test("creates an organization and a working group, each with an audit entry", as
       id: orgId,
       name: "Paddentrek Enschede",
       hasAdmin: true,
-      workingGroups: [{ id: groupId, name: "Noord", city: "Enschede", active: true }],
+      workingGroups: [
+        { id: groupId, name: "Noord", city: "Enschede", active: true, hasCoordinator: true },
+      ],
     },
   ]);
 });
@@ -85,9 +96,13 @@ test("creates an organization and a working group, each with an audit entry", as
 test("a second working group with the same name in one organization is name_taken", async () => {
   const { orgId } = await setup();
   await expect(
-    createWorkingGroup(db(), { organizationId: orgId, name: "Noord", city: "Hengelo" }, system),
+    createWorkingGroup(
+      db(),
+      { organizationId: orgId, name: "Noord", city: "Hengelo", coordinatorEmail: "b@example.test" },
+      system,
+    ),
   ).rejects.toMatchObject({ code: "name_taken" });
-  expect(await db().select().from(auditLogEntries)).toHaveLength(3);
+  expect(await db().select().from(auditLogEntries)).toHaveLength(4);
 });
 
 test("the same name in another organization is fine", async () => {
@@ -98,7 +113,16 @@ test("the same name in another organization is fine", async () => {
     system,
   );
   await expect(
-    createWorkingGroup(db(), { organizationId: other.id, name: "Noord", city: "Hengelo" }, system),
+    createWorkingGroup(
+      db(),
+      {
+        organizationId: other.id,
+        name: "Noord",
+        city: "Hengelo",
+        coordinatorEmail: "b@example.test",
+      },
+      system,
+    ),
   ).resolves.toHaveProperty("id");
 });
 
@@ -232,7 +256,9 @@ test("grantCoordinator refuses an inactive working group, and writes nothing", a
     grantCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system),
   ).rejects.toMatchObject({ code: "working_group_inactive" });
   expect(await entries()).toEqual(before);
-  expect(await db().select().from(workingGroupMemberships)).toHaveLength(0);
+  // Only the first coordinator's membership.
+  expect(await db().select().from(workingGroupMemberships)).toHaveLength(1);
+  expect(await db().select().from(users).where(eq(users.email, "c@example.test"))).toEqual([]);
 });
 
 test("revoking for an unknown address is user_not_found", async () => {
@@ -257,12 +283,12 @@ test("grantCoordinator creates the membership, with one entry, and a repeat adds
     subjectId: first.userId,
     details: { workingGroupId: groupId },
   };
-  expect((await entries()).slice(3)).toEqual([granted]);
+  expect((await entries()).slice(4)).toEqual([granted]);
   expect(
     (await grantCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system))
       .changed,
   ).toBe(false);
-  expect(await entries()).toHaveLength(4);
+  expect(await entries()).toHaveLength(5);
 });
 
 test("grantCoordinator raises a volunteer, with one entry", async () => {
@@ -286,7 +312,7 @@ test("grantCoordinator raises a volunteer, with one entry", async () => {
       .from(workingGroupMemberships)
       .where(eq(workingGroupMemberships.userId, v!.id)),
   ).toMatchObject([{ isCoordinator: true }]);
-  expect((await entries()).slice(3)).toEqual([
+  expect((await entries()).slice(4)).toEqual([
     {
       action: "role.coordinator_granted",
       organizationId: orgId,
@@ -309,7 +335,7 @@ test("revokeCoordinator leaves a volunteer membership, with one entry, and a rep
       .changed,
   ).toBe(true);
   expect((await getAccess(db(), userId))?.memberships).toMatchObject([{ isCoordinator: false }]);
-  expect((await entries()).slice(4)).toEqual([
+  expect((await entries()).slice(5)).toEqual([
     {
       action: "role.coordinator_revoked",
       organizationId: orgId,
@@ -322,7 +348,7 @@ test("revokeCoordinator leaves a volunteer membership, with one entry, and a rep
     (await revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system))
       .changed,
   ).toBe(false);
-  expect(await entries()).toHaveLength(5);
+  expect(await entries()).toHaveLength(6);
 });
 
 test("organization admin can be granted and revoked, each with one entry", async () => {
@@ -331,7 +357,7 @@ test("organization admin can be granted and revoked, each with one entry", async
   const granted = await grantOrganizationAdmin(db(), input, system);
   expect(granted.changed).toBe(true);
   expect((await getAccess(db(), granted.userId))?.adminOfOrganizationIds).toEqual([orgId]);
-  expect((await entries()).slice(3)).toEqual([
+  expect((await entries()).slice(4)).toEqual([
     {
       action: "role.organization_admin_granted",
       organizationId: orgId,
@@ -341,11 +367,11 @@ test("organization admin can be granted and revoked, each with one entry", async
     },
   ]);
   expect((await grantOrganizationAdmin(db(), input, system)).changed).toBe(false);
-  expect(await entries()).toHaveLength(4);
+  expect(await entries()).toHaveLength(5);
 
   expect((await revokeOrganizationAdmin(db(), input, system)).changed).toBe(true);
   expect((await getAccess(db(), granted.userId))?.adminOfOrganizationIds).toEqual([]);
-  expect((await entries()).slice(4)).toEqual([
+  expect((await entries()).slice(5)).toEqual([
     {
       action: "role.organization_admin_revoked",
       organizationId: orgId,
@@ -355,13 +381,17 @@ test("organization admin can be granted and revoked, each with one entry", async
     },
   ]);
   expect((await revokeOrganizationAdmin(db(), input, system)).changed).toBe(false);
-  expect(await entries()).toHaveLength(5);
+  expect(await entries()).toHaveLength(6);
 });
 
 test("an unknown organization or working group is reported by code", async () => {
   const missing = "01900000-0000-7000-8000-000000000000";
   await expect(
-    createWorkingGroup(db(), { organizationId: missing, name: "X", city: "Y" }, system),
+    createWorkingGroup(
+      db(),
+      { organizationId: missing, name: "X", city: "Y", coordinatorEmail: "c@example.test" },
+      system,
+    ),
   ).rejects.toMatchObject({ code: "organization_not_found" });
   await expect(
     grantOrganizationAdmin(db(), { email: "o@example.test", organizationId: missing }, system),
@@ -401,7 +431,12 @@ test("the audit entry of a coordinator grant names the organization and the grou
   const [entry] = await db()
     .select()
     .from(auditLogEntries)
-    .where(eq(auditLogEntries.action, "role.coordinator_granted"));
+    .where(
+      and(
+        eq(auditLogEntries.action, "role.coordinator_granted"),
+        eq(auditLogEntries.subjectId, userId),
+      ),
+    );
   expect(entry).toMatchObject({
     organizationId: orgId,
     subjectType: "user",
@@ -914,4 +949,596 @@ test("listOrganizations says whether an organization has an admin", async () => 
   const { id, adminUserId } = await newOrganization();
   await db().delete(organizationAdmins).where(eq(organizationAdmins.userId, adminUserId));
   expect(await listOrganizations(db())).toMatchObject([{ id, hasAdmin: false }]);
+});
+
+// --- An active working group always has a coordinator ---
+
+const asUser = (userId: string): AuditActor => ({ kind: "user", userId });
+
+/** An account that has logged in, as the login flow leaves it. */
+async function loggedInUser(email: string): Promise<string> {
+  const [row] = await db()
+    .insert(users)
+    .values({ name: "Iemand", email, emailVerified: true, lastLoginAt: new Date() })
+    .returning({ id: users.id });
+  return row!.id;
+}
+
+async function addMembership(userId: string, workingGroupId: string, isCoordinator = false) {
+  const [row] = await db()
+    .insert(workingGroupMemberships)
+    .values({ userId, workingGroupId, isCoordinator })
+    .returning({ id: workingGroupMemberships.id });
+  return row!.id;
+}
+
+async function membershipsOf(workingGroupId: string) {
+  return db()
+    .select({
+      id: workingGroupMemberships.id,
+      userId: workingGroupMemberships.userId,
+      isCoordinator: workingGroupMemberships.isCoordinator,
+    })
+    .from(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.workingGroupId, workingGroupId));
+}
+
+async function membershipIdOf(userId: string, workingGroupId: string) {
+  const row = (await membershipsOf(workingGroupId)).find((m) => m.userId === userId);
+  return row!.id;
+}
+
+async function coordinatorCount(workingGroupId: string) {
+  return (await membershipsOf(workingGroupId)).filter((m) => m.isCoordinator).length;
+}
+
+async function groupsOf(organizationId: string) {
+  return db().select().from(workingGroups).where(eq(workingGroups.organizationId, organizationId));
+}
+
+test("creating a working group makes its coordinator in the same transaction", async () => {
+  const org = await newOrganization();
+  const before = await entries();
+  const events = await listenForLiveEvents();
+  try {
+    const result = await createWorkingGroup(
+      db(),
+      {
+        organizationId: org.id,
+        name: "  Noord  West ",
+        city: " Voorbeeldstad ",
+        coordinatorEmail: " Carla@Example.test ",
+      },
+      system,
+    );
+    expect(result).toEqual({
+      id: expect.any(String),
+      coordinatorUserId: expect.any(String),
+      coordinatorCreated: true,
+    });
+    expect(await groupsOf(org.id)).toMatchObject([
+      { id: result.id, name: "Noord West", city: "Voorbeeldstad", active: true },
+    ]);
+    const [carla] = await db().select().from(users).where(eq(users.id, result.coordinatorUserId));
+    expect(carla).toMatchObject({ email: "carla@example.test", lastLoginAt: null });
+    expect(await membershipsOf(result.id)).toEqual([
+      { id: expect.any(String), userId: result.coordinatorUserId, isCoordinator: true },
+    ]);
+    expect((await entries()).slice(before.length)).toEqual([
+      {
+        action: "working_group.created",
+        organizationId: org.id,
+        subjectType: "working_group",
+        subjectId: result.id,
+        details: {},
+      },
+      {
+        action: "role.coordinator_granted",
+        organizationId: org.id,
+        subjectType: "user",
+        subjectId: result.coordinatorUserId,
+        details: { workingGroupId: result.id },
+      },
+    ]);
+    expect(await events.drain()).toEqual([
+      { type: "access-changed", userId: result.coordinatorUserId },
+    ]);
+  } finally {
+    await events.close();
+  }
+});
+
+test("a user may name themself, a new address, a never-used account, a member or admin of the organization", async () => {
+  const org = await newOrganization("Paddentrek Voorbeeldstad", "beheer@example.test");
+  const other = await newOrganization("Paddenwerkgroep Fictiefdorp", "fictief@example.test");
+  const actor = org.adminUserId;
+  await db().update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, actor));
+  const first = await createWorkingGroup(
+    db(),
+    {
+      organizationId: org.id,
+      name: "Noord",
+      city: "Voorbeeldstad",
+      coordinatorEmail: "beheer@example.test",
+    },
+    asUser(actor),
+  );
+  expect(first).toMatchObject({ coordinatorUserId: actor, coordinatorCreated: false });
+
+  const elsewhere = await createWorkingGroup(
+    db(),
+    {
+      organizationId: other.id,
+      name: "Dorp",
+      city: "Fictiefdorp",
+      coordinatorEmail: "dorp@example.test",
+    },
+    system,
+  );
+  // An account the tool made elsewhere, that never logged in.
+  const never = elsewhere.coordinatorUserId;
+  const member = await loggedInUser("lid@example.test");
+  await addMembership(member, first.id);
+  const secondAdmin = await loggedInUser("tweede-beheer@example.test");
+  await grantOrganizationAdmin(
+    db(),
+    { email: "tweede-beheer@example.test", organizationId: org.id },
+    system,
+  );
+
+  const cases = [
+    ["Nieuw", "nieuw@example.test", true],
+    ["Nooit", "dorp@example.test", false],
+    ["Lid", "LID@example.test", false],
+    ["Beheer", "tweede-beheer@example.test", false],
+  ] as const;
+  for (const [name, coordinatorEmail, created] of cases) {
+    const result = await createWorkingGroup(
+      db(),
+      { organizationId: org.id, name, city: "Voorbeeldstad", coordinatorEmail },
+      asUser(actor),
+    );
+    expect(result.coordinatorCreated).toBe(created);
+    expect(await membershipsOf(result.id)).toMatchObject([
+      { userId: result.coordinatorUserId, isCoordinator: true },
+    ]);
+  }
+  const coordinators = await db()
+    .select({ userId: workingGroupMemberships.userId })
+    .from(workingGroupMemberships)
+    .innerJoin(workingGroups, eq(workingGroups.id, workingGroupMemberships.workingGroupId))
+    .where(eq(workingGroups.organizationId, org.id));
+  expect(coordinators.map((c) => c.userId)).toEqual(
+    expect.arrayContaining([actor, never, member, secondAdmin]),
+  );
+});
+
+test("a user may not name someone with a profile outside the organization", async () => {
+  const org = await newOrganization("Paddentrek Voorbeeldstad", "beheer@example.test");
+  const other = await newOrganization("Paddenwerkgroep Fictiefdorp", "fictief@example.test");
+  const dorp = await createWorkingGroup(
+    db(),
+    {
+      organizationId: other.id,
+      name: "Dorp",
+      city: "Fictiefdorp",
+      coordinatorEmail: "fictief@example.test",
+    },
+    system,
+  );
+  // "buiten@example.test" logged in and is a member of a group of another organization.
+  const buiten = await loggedInUser("buiten@example.test");
+  await addMembership(buiten, dorp.id);
+  // A logged-in admin of the other organization, without any membership, is outside too.
+  await db().update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, other.adminUserId));
+  const before = await entries();
+  for (const coordinatorEmail of [" Buiten@Example.test ", "fictief@example.test"]) {
+    const attempt = createWorkingGroup(
+      db(),
+      { organizationId: org.id, name: "Noord", city: "Voorbeeldstad", coordinatorEmail },
+      asUser(org.adminUserId),
+    );
+    await expect(attempt).rejects.toBeInstanceOf(AdminError);
+    await expect(attempt).rejects.toMatchObject({ code: "person_outside_organization" });
+  }
+  expect(await groupsOf(org.id)).toEqual([]);
+  expect(
+    await db()
+      .select()
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.userId, buiten)),
+  ).toHaveLength(1);
+  expect(await entries()).toEqual(before);
+});
+
+test("the system may name anyone", async () => {
+  const org = await newOrganization("Paddentrek Voorbeeldstad", "beheer@example.test");
+  const buiten = await loggedInUser("buiten@example.test");
+  const result = await createWorkingGroup(
+    db(),
+    {
+      organizationId: org.id,
+      name: "Noord",
+      city: "Voorbeeldstad",
+      coordinatorEmail: "buiten@example.test",
+    },
+    system,
+  );
+  expect(result).toMatchObject({ coordinatorUserId: buiten, coordinatorCreated: false });
+});
+
+test("a working group is not created with an address that is not valid or of a deleted account", async () => {
+  const org = await newOrganization();
+  await db().insert(users).values({
+    name: "Verwijderd account",
+    email: "deleted-0192f3c0-0000-7000-8000-000000000001@deleted.invalid",
+    deletedAt: new Date(),
+  });
+  const before = await entries();
+  for (const [coordinatorEmail, code] of [
+    ["carla@", "invalid_email"],
+    ["deleted-0192f3c0-0000-7000-8000-000000000001@deleted.invalid", "user_not_found"],
+  ] as const) {
+    await expect(
+      createWorkingGroup(
+        db(),
+        { organizationId: org.id, name: "Noord", city: "Voorbeeldstad", coordinatorEmail },
+        system,
+      ),
+    ).rejects.toMatchObject({ code });
+  }
+  expect(await groupsOf(org.id)).toEqual([]);
+  expect(await entries()).toEqual(before);
+});
+
+test("two creates of the same name in one organization at the same moment give one group", async () => {
+  const org = await newOrganization();
+  const results = await Promise.allSettled([
+    createWorkingGroup(
+      db(),
+      {
+        organizationId: org.id,
+        name: "Noord",
+        city: "Voorbeeldstad",
+        coordinatorEmail: "c1@example.test",
+      },
+      system,
+    ),
+    createWorkingGroup(
+      db(),
+      {
+        organizationId: org.id,
+        name: " Noord ",
+        city: "Voorbeeldstad",
+        coordinatorEmail: "c2@example.test",
+      },
+      system,
+    ),
+  ]);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  const rejected = results.filter((r) => r.status === "rejected");
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: "name_taken" });
+  const groups = await groupsOf(org.id);
+  expect(groups).toHaveLength(1);
+  expect(await membershipsOf(groups[0]!.id)).toHaveLength(1);
+  // The organization's admin and one coordinator.
+  expect(await db().select().from(users)).toHaveLength(2);
+});
+
+test("lockWorkingGroup gives the organization and the active flag, or null", async () => {
+  const { orgId, groupId } = await setup();
+  await db().transaction(async (tx) => {
+    expect(await lockWorkingGroup(tx, groupId)).toEqual({ organizationId: orgId, active: true });
+    expect(await lockWorkingGroup(tx, "01900000-0000-7000-8000-000000000000")).toBeNull();
+  });
+});
+
+test("the last coordinator of an active group keeps the role; with a second one it can go", async () => {
+  const { groupId, firstCoordinatorId } = await setup();
+  const first = await membershipIdOf(firstCoordinatorId, groupId);
+  const before = await entries();
+  const attempt = setCoordinator(db(), { membershipId: first, isCoordinator: false }, system);
+  await expect(attempt).rejects.toBeInstanceOf(AdminError);
+  await expect(attempt).rejects.toMatchObject({ code: "last_coordinator" });
+  await expect(
+    revokeCoordinator(db(), { email: "eerste@example.test", workingGroupId: groupId }, system),
+  ).rejects.toMatchObject({ code: "last_coordinator" });
+  expect(await coordinatorCount(groupId)).toBe(1);
+  expect(await entries()).toEqual(before);
+
+  await grantCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system);
+  expect(await setCoordinator(db(), { membershipId: first, isCoordinator: false }, system)).toEqual(
+    { changed: true, userId: firstCoordinatorId, workingGroupId: groupId },
+  );
+  expect((await entries()).at(-1)).toMatchObject({
+    action: "role.coordinator_revoked",
+    subjectId: firstCoordinatorId,
+    details: { workingGroupId: groupId },
+  });
+  await expect(
+    revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system),
+  ).rejects.toMatchObject({ code: "last_coordinator" });
+  expect(await coordinatorCount(groupId)).toBe(1);
+});
+
+test("two coordinators losing the role at the same moment leave one", async () => {
+  const { groupId, firstCoordinatorId } = await setup();
+  const first = await membershipIdOf(firstCoordinatorId, groupId);
+  const second = await grantCoordinator(
+    db(),
+    { email: "c@example.test", workingGroupId: groupId },
+    system,
+  );
+  const results = await Promise.allSettled([
+    setCoordinator(db(), { membershipId: first, isCoordinator: false }, system),
+    revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system),
+  ]);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  const rejected = results.filter((r) => r.status === "rejected");
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+    code: "last_coordinator",
+  });
+  expect(await coordinatorCount(groupId)).toBe(1);
+
+  // Two by ID at the same moment, too.
+  const remaining = (await membershipsOf(groupId)).find((m) => m.isCoordinator)!;
+  const other = remaining.userId === firstCoordinatorId ? second.userId : firstCoordinatorId;
+  await setCoordinator(
+    db(),
+    { membershipId: await membershipIdOf(other, groupId), isCoordinator: true },
+    system,
+  );
+  const byId = await Promise.allSettled(
+    (await membershipsOf(groupId)).map((m) =>
+      setCoordinator(db(), { membershipId: m.id, isCoordinator: false }, system),
+    ),
+  );
+  expect(byId.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  expect(await coordinatorCount(groupId)).toBe(1);
+});
+
+test("the last coordinator of an inactive group can lose the role", async () => {
+  const { groupId, firstCoordinatorId } = await setup();
+  const first = await membershipIdOf(firstCoordinatorId, groupId);
+  await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { active: false } }, system);
+  expect(
+    await setCoordinator(db(), { membershipId: first, isCoordinator: false }, system),
+  ).toMatchObject({ changed: true });
+  expect(await coordinatorCount(groupId)).toBe(0);
+  await setCoordinator(db(), { membershipId: first, isCoordinator: true }, system);
+  expect(
+    await revokeCoordinator(
+      db(),
+      { email: "eerste@example.test", workingGroupId: groupId },
+      system,
+    ),
+  ).toMatchObject({ changed: true });
+  expect(await coordinatorCount(groupId)).toBe(0);
+});
+
+test("someone can be made coordinator while the group is off", async () => {
+  const { orgId, groupId } = await setup();
+  const volunteer = await loggedInUser("v@example.test");
+  const membershipId = await addMembership(volunteer, groupId);
+  await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { active: false } }, system);
+  const events = await listenForLiveEvents();
+  try {
+    expect(await setCoordinator(db(), { membershipId, isCoordinator: true }, system)).toEqual({
+      changed: true,
+      userId: volunteer,
+      workingGroupId: groupId,
+    });
+    expect(await events.drain()).toEqual([{ type: "access-changed", userId: volunteer }]);
+  } finally {
+    await events.close();
+  }
+  expect((await entries()).at(-1)).toEqual({
+    action: "role.coordinator_granted",
+    organizationId: orgId,
+    subjectType: "user",
+    subjectId: volunteer,
+    details: { workingGroupId: groupId },
+  });
+});
+
+test("setting the flag to what it is changes nothing and writes no entry", async () => {
+  const { groupId, firstCoordinatorId } = await setup();
+  const volunteer = await loggedInUser("v@example.test");
+  const volunteerMembership = await addMembership(volunteer, groupId);
+  const first = await membershipIdOf(firstCoordinatorId, groupId);
+  const before = await entries();
+  const events = await listenForLiveEvents();
+  try {
+    expect(
+      await setCoordinator(db(), { membershipId: first, isCoordinator: true }, system),
+    ).toEqual({ changed: false, userId: firstCoordinatorId, workingGroupId: groupId });
+    expect(
+      await setCoordinator(
+        db(),
+        { membershipId: volunteerMembership, isCoordinator: false },
+        system,
+      ),
+    ).toEqual({ changed: false, userId: volunteer, workingGroupId: groupId });
+    await expect(
+      setCoordinator(
+        db(),
+        { membershipId: "01900000-0000-7000-8000-000000000000", isCoordinator: true },
+        system,
+      ),
+    ).rejects.toMatchObject({ code: "membership_not_found" });
+    expect(await events.drain()).toEqual([]);
+  } finally {
+    await events.close();
+  }
+  expect(await entries()).toEqual(before);
+});
+
+test("switching off tells every member, writes working_group.deactivated, and takes the group out of getAccess", async () => {
+  const { orgId, groupId, firstCoordinatorId } = await setup();
+  const volunteer = await loggedInUser("v@example.test");
+  await addMembership(volunteer, groupId);
+  expect((await getAccess(db(), volunteer))?.memberships).toHaveLength(1);
+  const events = await listenForLiveEvents();
+  try {
+    expect(
+      await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { active: false } }, system),
+    ).toEqual({ changed: true });
+    const received = await events.drain();
+    expect(received).toHaveLength(2);
+    expect(received).toEqual(
+      expect.arrayContaining([
+        { type: "access-changed", userId: firstCoordinatorId },
+        { type: "access-changed", userId: volunteer },
+      ]),
+    );
+    // Again: nothing changes, nobody is told.
+    expect(
+      await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { active: false } }, system),
+    ).toEqual({ changed: false });
+    expect(await events.drain()).toEqual([]);
+  } finally {
+    await events.close();
+  }
+  expect((await entries()).filter((e) => e.action.startsWith("working_group."))).toEqual([
+    expect.objectContaining({ action: "working_group.created" }),
+    {
+      action: "working_group.deactivated",
+      organizationId: orgId,
+      subjectType: "working_group",
+      subjectId: groupId,
+      details: {},
+    },
+  ]);
+  expect((await getAccess(db(), volunteer))?.memberships).toEqual([]);
+  expect((await getAccess(db(), firstCoordinatorId))?.memberships).toEqual([]);
+});
+
+test("switching on needs a coordinator", async () => {
+  const { orgId, groupId, firstCoordinatorId } = await setup();
+  const volunteer = await loggedInUser("v@example.test");
+  const volunteerMembership = await addMembership(volunteer, groupId);
+  await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { active: false } }, system);
+  await setCoordinator(
+    db(),
+    { membershipId: await membershipIdOf(firstCoordinatorId, groupId), isCoordinator: false },
+    system,
+  );
+  const before = await entries();
+  const attempt = updateWorkingGroup(
+    db(),
+    { workingGroupId: groupId, patch: { active: true, city: "Hengelo" } },
+    system,
+  );
+  await expect(attempt).rejects.toBeInstanceOf(AdminError);
+  await expect(attempt).rejects.toMatchObject({ code: "no_coordinator" });
+  expect(await groupsOf(orgId)).toMatchObject([{ active: false, city: "Enschede" }]);
+  expect(await entries()).toEqual(before);
+
+  await setCoordinator(db(), { membershipId: volunteerMembership, isCoordinator: true }, system);
+  const events = await listenForLiveEvents();
+  try {
+    expect(
+      await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { active: true } }, system),
+    ).toEqual({ changed: true });
+    expect(await events.drain()).toEqual(
+      expect.arrayContaining([
+        { type: "access-changed", userId: firstCoordinatorId },
+        { type: "access-changed", userId: volunteer },
+      ]),
+    );
+  } finally {
+    await events.close();
+  }
+  expect((await entries()).at(-1)).toEqual({
+    action: "working_group.activated",
+    organizationId: orgId,
+    subjectType: "working_group",
+    subjectId: groupId,
+    details: {},
+  });
+  expect((await getAccess(db(), volunteer))?.memberships).toHaveLength(1);
+});
+
+test("a rename to the name of another group of the organization is name_taken; the same name in another organization is fine", async () => {
+  const { orgId, groupId } = await setup();
+  const other = await newOrganization("Andere", "andere@example.test");
+  await createWorkingGroup(
+    db(),
+    { organizationId: orgId, name: "Zuid", city: "Enschede", coordinatorEmail: "z@example.test" },
+    system,
+  );
+  await createWorkingGroup(
+    db(),
+    { organizationId: other.id, name: "West", city: "Hengelo", coordinatorEmail: "w@example.test" },
+    system,
+  );
+  const before = await entries();
+  const attempt = updateWorkingGroup(
+    db(),
+    { workingGroupId: groupId, patch: { name: " Zuid " } },
+    system,
+  );
+  await expect(attempt).rejects.toBeInstanceOf(AdminError);
+  await expect(attempt).rejects.toMatchObject({ code: "name_taken" });
+  expect(await entries()).toEqual(before);
+
+  expect(
+    await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { name: "West" } }, system),
+  ).toEqual({ changed: true });
+  expect((await entries()).at(-1)).toEqual({
+    action: "working_group.updated",
+    organizationId: orgId,
+    subjectType: "working_group",
+    subjectId: groupId,
+    details: { workingGroupNameFrom: "Noord", workingGroupNameTo: "West" },
+  });
+});
+
+test("a changed city writes cityFrom and cityTo and nothing else", async () => {
+  const { orgId, groupId } = await setup();
+  const before = await entries();
+  for (const patch of [{}, { name: " Noord " }, { city: "Enschede" }, { active: true }]) {
+    expect(await updateWorkingGroup(db(), { workingGroupId: groupId, patch }, system)).toEqual({
+      changed: false,
+    });
+  }
+  expect(await entries()).toEqual(before);
+  expect(
+    await updateWorkingGroup(
+      db(),
+      { workingGroupId: groupId, patch: { name: "Noord", city: "  Hengelo " } },
+      system,
+    ),
+  ).toEqual({ changed: true });
+  expect((await entries()).slice(before.length)).toEqual([
+    {
+      action: "working_group.updated",
+      organizationId: orgId,
+      subjectType: "working_group",
+      subjectId: groupId,
+      details: { cityFrom: "Enschede", cityTo: "Hengelo" },
+    },
+  ]);
+  expect(await groupsOf(orgId)).toMatchObject([{ name: "Noord", city: "Hengelo" }]);
+});
+
+test("updating a working group that does not exist is working_group_not_found", async () => {
+  await expect(
+    updateWorkingGroup(
+      db(),
+      { workingGroupId: "01900000-0000-7000-8000-000000000000", patch: { city: "X" } },
+      system,
+    ),
+  ).rejects.toMatchObject({ code: "working_group_not_found" });
+});
+
+test("listOrganizations says whether an active working group has a coordinator", async () => {
+  const { groupId, firstCoordinatorId } = await setup();
+  await db()
+    .delete(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.userId, firstCoordinatorId));
+  const [organization] = await listOrganizations(db());
+  expect(organization?.workingGroups).toMatchObject([{ id: groupId, hasCoordinator: false }]);
 });

@@ -47,7 +47,12 @@ const rowsOf = (userId: string) =>
 async function newGroup(name: string) {
   const group = await createWorkingGroup(
     ctx.t.db,
-    { organizationId: cast.organization.id, name, city: "Enschede" },
+    {
+      organizationId: cast.organization.id,
+      name,
+      city: "Enschede",
+      coordinatorEmail: `coordinator-${name.toLowerCase().replace(/\W+/g, "-")}@example.test`,
+    },
     { kind: "system" },
   );
   return group.id;

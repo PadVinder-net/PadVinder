@@ -524,7 +524,12 @@ test("an account made by the admin tool has no last_login_at until its first log
   );
   const wg = await createWorkingGroup(
     ctx.t.db,
-    { organizationId: org.id, name: "Login Groep", city: "Enschede" },
+    {
+      organizationId: org.id,
+      name: "Login Groep",
+      city: "Enschede",
+      coordinatorEmail: "login-coordinator@example.test",
+    },
     system,
   );
   const made = await grantCoordinator(

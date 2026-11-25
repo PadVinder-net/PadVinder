@@ -48,7 +48,12 @@ test("a platform admin lists all organizations, an admin their own, a coordinato
   await grantPlatformAdmin(db(), { email: "hoofd@example.test" }, system);
   const group = await createWorkingGroup(
     db(),
-    { organizationId: zeta, name: "Noord", city: "Zetastad" },
+    {
+      organizationId: zeta,
+      name: "Noord",
+      city: "Zetastad",
+      coordinatorEmail: "coord@example.test",
+    },
     system,
   );
   await grantCoordinator(db(), { email: "coord@example.test", workingGroupId: group.id }, system);

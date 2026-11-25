@@ -182,7 +182,7 @@ export const listMembersOptions = (options: Options<ListMembersData>) => queryOp
 });
 
 /**
- * Remove a member from a working group. A coordinator may not remove a coordinator
+ * Remove a member from a working group. A coordinator may not remove a coordinator, and the last coordinator of an active group stays
  */
 export const removeMembershipMutation = (options?: Partial<Options<RemoveMembershipData>>): UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> => {
     const mutationOptions: UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> = {

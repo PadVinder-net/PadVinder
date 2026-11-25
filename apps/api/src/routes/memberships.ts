@@ -14,7 +14,8 @@ export const membershipRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, {
       preHandler: app.requireActor,
       schema: {
         operationId: "removeMembership",
-        summary: "Remove a member from a working group. A coordinator may not remove a coordinator",
+        summary:
+          "Remove a member from a working group. A coordinator may not remove a coordinator, and the last coordinator of an active group stays",
         params: paramsSchema,
         response: { 204: z.null(), ...errorResponses(400, 401, 403, 404, 409) },
       },
@@ -43,6 +44,12 @@ export const membershipRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, {
           throw apiError(404, apiErrorCodes.notFound, "Not found");
         case "coordinator_changed":
           throw apiError(409, apiErrorCodes.membershipChanged, "The membership changed");
+        case "last_coordinator":
+          throw apiError(
+            409,
+            apiErrorCodes.lastCoordinator,
+            "The member is the last coordinator of an active working group",
+          );
         default: {
           const unreachable: never = result.outcome;
           throw new Error(`Unknown outcome ${JSON.stringify(unreachable)}`);

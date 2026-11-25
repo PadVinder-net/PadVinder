@@ -1,7 +1,6 @@
 import {
   createOrganization,
   createWorkingGroup,
-  grantCoordinator,
   grantPlatformAdmin,
   workingGroupMemberships,
 } from "@padvinder/db";
@@ -27,7 +26,10 @@ export type Cast = {
   otherOrganization: { id: string };
   /** In `organization`; `coordinator` and `volunteer` belong to it. */
   workingGroup: WorkingGroupTarget;
-  /** In `organization`; `volunteerOtherGroup` belongs to it. */
+  /**
+   * In `organization`; `volunteerOtherGroup` belongs to it. Its coordinator is
+   * `OTHER_GROUP_COORDINATOR_EMAIL`, an account that never logs in and is no cast member.
+   */
   otherGroup: WorkingGroupTarget;
   /** In `otherOrganization`; `coordinatorOtherOrganization` belongs to it. */
   foreignGroup: WorkingGroupTarget;
@@ -35,6 +37,9 @@ export type Cast = {
 };
 
 const system = { kind: "system" } as const;
+
+/** The first coordinator of `otherGroup`: every active working group has one. */
+export const OTHER_GROUP_COORDINATOR_EMAIL = "cast-coordinator-other-group@example.test";
 
 /**
  * The standard cast for permission tests: two organizations, three working groups and eight
@@ -67,32 +72,32 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
     "Cast Andere",
     members.organizationAdminOtherOrganization,
   );
-  const group = async (organizationId: string, name: string): Promise<WorkingGroupTarget> => {
+  const group = async (
+    organizationId: string,
+    name: string,
+    coordinatorEmail: string,
+  ): Promise<WorkingGroupTarget> => {
     const created = await createWorkingGroup(
       db,
-      { organizationId, name, city: "Enschede" },
+      { organizationId, name, city: "Enschede", coordinatorEmail },
       system,
     );
     return { workingGroupId: created.id, organizationId };
   };
-  const workingGroup = await group(organization.id, "Cast Werkgroep");
-  const otherGroup = await group(organization.id, "Cast Andere werkgroep");
-  const foreignGroup = await group(otherOrganization.id, "Cast Vreemde werkgroep");
+  const workingGroup = await group(organization.id, "Cast Werkgroep", members.coordinator.email);
+  // Its coordinator is no cast member and never logs in.
+  const otherGroup = await group(
+    organization.id,
+    "Cast Andere werkgroep",
+    OTHER_GROUP_COORDINATOR_EMAIL,
+  );
+  const foreignGroup = await group(
+    otherOrganization.id,
+    "Cast Vreemde werkgroep",
+    members.coordinatorOtherOrganization.email,
+  );
 
   await grantPlatformAdmin(db, { email: members.platformAdmin.email }, system);
-  await grantCoordinator(
-    db,
-    { email: members.coordinator.email, workingGroupId: workingGroup.workingGroupId },
-    system,
-  );
-  await grantCoordinator(
-    db,
-    {
-      email: members.coordinatorOtherOrganization.email,
-      workingGroupId: foreignGroup.workingGroupId,
-    },
-    system,
-  );
   // There is no administration function for a volunteer: approval comes later.
   await db.insert(workingGroupMemberships).values([
     {

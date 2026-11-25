@@ -19,7 +19,11 @@ export type AdminErrorCode =
   | "invalid_email"
   | "name_taken"
   | "last_platform_admin"
-  | "last_organization_admin";
+  | "last_organization_admin"
+  | "membership_not_found"
+  | "last_coordinator"
+  | "no_coordinator"
+  | "person_outside_organization";
 
 export class AdminError extends Error {
   constructor(
@@ -309,16 +313,131 @@ export async function updateOrganization(
   }
 }
 
+/**
+ * A row lock on the working group, held until the transaction ends; `null` when there is none.
+ * `for no key update`, so inserts that reference the group (a membership, a request) do not wait.
+ * Every function that removes a membership, clears the coordinator flag or changes `active` takes
+ * it before it reads the coordinators, so two such changes at the same moment cannot both see
+ * "another coordinator remains". A function that needs several takes them in the order of their
+ * IDs.
+ */
+export async function lockWorkingGroup(
+  tx: DbTransaction,
+  workingGroupId: string,
+): Promise<{ organizationId: string; active: boolean } | null> {
+  const [row] = await tx
+    .select({ organizationId: workingGroups.organizationId, active: workingGroups.active })
+    .from(workingGroups)
+    .where(eq(workingGroups.id, workingGroupId))
+    .for("no key update");
+  return row ?? null;
+}
+
+/**
+ * The number of coordinators of the group. One who never logged in counts; a deleted account
+ * (which has no memberships left) does not. Call it under `lockWorkingGroup`.
+ */
+export async function countCoordinators(
+  tx: DbTransaction,
+  workingGroupId: string,
+): Promise<number> {
+  const [{ coordinators } = { coordinators: 0 }] = await tx
+    .select({ coordinators: count() })
+    .from(workingGroupMemberships)
+    .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
+    .where(
+      and(
+        eq(workingGroupMemberships.workingGroupId, workingGroupId),
+        eq(workingGroupMemberships.isCoordinator, true),
+        isNull(users.deletedAt),
+      ),
+    );
+  return coordinators;
+}
+
+/**
+ * Whether the coordinator flag of a membership may be cleared, or the membership removed: not
+ * when it is the last coordinator of an active group. The group must be locked by the caller.
+ */
+async function assertNotLastCoordinator(
+  tx: DbTransaction,
+  workingGroupId: string,
+  group: { active: boolean },
+): Promise<void> {
+  if (group.active && (await countCoordinators(tx, workingGroupId)) < 2) {
+    throw new AdminError("last_coordinator");
+  }
+}
+
+/**
+ * Whether a user (not the system) may name the person with this address as the first
+ * coordinator of a working group of the organization: themself; an address without an account,
+ * or whose account never logged in; or someone with a membership of any working group of this
+ * organization, or an admin of it. Anyone else has a profile outside the organization, and a
+ * user may not pull them in: `person_outside_organization`.
+ */
+async function assertMayNameFirstCoordinator(
+  tx: DbTransaction,
+  organizationId: string,
+  address: string,
+  actor: AuditActor,
+): Promise<void> {
+  if (actor.kind === "system") return;
+  const [person] = await tx
+    .select({ id: users.id, lastLoginAt: users.lastLoginAt })
+    .from(users)
+    .where(and(eq(users.email, address), isNull(users.deletedAt)));
+  if (!person || person.id === actor.userId || person.lastLoginAt === null) return;
+  const [member] = await tx
+    .select({ id: workingGroupMemberships.id })
+    .from(workingGroupMemberships)
+    .innerJoin(workingGroups, eq(workingGroups.id, workingGroupMemberships.workingGroupId))
+    .where(
+      and(
+        eq(workingGroupMemberships.userId, person.id),
+        eq(workingGroups.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+  if (member) return;
+  const [admin] = await tx
+    .select({ userId: organizationAdmins.userId })
+    .from(organizationAdmins)
+    .where(
+      and(
+        eq(organizationAdmins.userId, person.id),
+        eq(organizationAdmins.organizationId, organizationId),
+      ),
+    );
+  if (!admin) throw new AdminError("person_outside_organization");
+}
+
+/**
+ * Creates the working group with its first coordinator, in one transaction: the group, the
+ * coordinator's account when there is none, the membership with the coordinator flag, the entries
+ * `working_group.created` and `role.coordinator_granted`, and `access-changed` for the
+ * coordinator. Name and city are normalized (`normalizeName`); a name another group of the
+ * organization has is `name_taken`, also one created at the same moment. Throws
+ * `organization_not_found`, `invalid_email`, `user_not_found` (the replaced address of a deleted
+ * account) and `person_outside_organization` (see `assertMayNameFirstCoordinator`; the system
+ * may name anyone). Then nothing is written.
+ */
 export async function createWorkingGroup(
   db: Db,
-  input: { organizationId: string; name: string; city: string },
+  input: { organizationId: string; name: string; city: string; coordinatorEmail: string },
   actor: AuditActor,
-): Promise<{ id: string }> {
+): Promise<{ id: string; coordinatorUserId: string; coordinatorCreated: boolean }> {
+  const coordinatorEmail = parseEmail(input.coordinatorEmail);
   return db.transaction(async (tx) => {
     await requireOrganization(tx, input.organizationId);
+    // A second create of the same name waits here for the first to commit, then inserts nothing.
     const [row] = await tx
       .insert(workingGroups)
-      .values({ organizationId: input.organizationId, name: input.name, city: input.city })
+      .values({
+        organizationId: input.organizationId,
+        name: normalizeName(input.name),
+        city: normalizeName(input.city),
+      })
       .onConflictDoNothing({ target: [workingGroups.organizationId, workingGroups.name] })
       .returning({ id: workingGroups.id });
     if (!row) throw new AdminError("name_taken");
@@ -328,17 +447,180 @@ export async function createWorkingGroup(
       action: "working_group.created",
       subject: { type: "working_group", id: row.id },
     });
-    return { id: row.id };
+    await assertMayNameFirstCoordinator(tx, input.organizationId, coordinatorEmail, actor);
+    const coordinator = await findOrCreateUser(tx, coordinatorEmail);
+    await tx
+      .insert(workingGroupMemberships)
+      .values({ userId: coordinator.id, workingGroupId: row.id, isCoordinator: true });
+    await recordRoleChange(
+      tx,
+      actor,
+      input.organizationId,
+      "role.coordinator_granted",
+      coordinator.id,
+      { workingGroupId: row.id },
+    );
+    return {
+      id: row.id,
+      coordinatorUserId: coordinator.id,
+      coordinatorCreated: coordinator.created,
+    };
   });
 }
 
-/** Every organization, for the tool. `hasAdmin` is false only for data from before the rule. */
+/**
+ * Changes the name, the city or the active flag, the keys present in `patch`. Name and city are
+ * normalized; only a value that differs from the stored one counts. A changed name or city writes
+ * one `working_group.updated` with, for each changed field only, the old and new value
+ * (`workingGroupNameFrom`/`To`, `cityFrom`/`To`). A changed `active` writes its own entry,
+ * `working_group.deactivated` or `working_group.activated`, and sends `access-changed` to every
+ * member, whose access gains or loses the group. A patch that changes nothing writes and sends
+ * nothing. Throws `working_group_not_found`, `name_taken` (another group of the organization has
+ * the name), and `no_coordinator` when it would switch on a group without a coordinator.
+ */
+export async function updateWorkingGroup(
+  db: Db,
+  input: { workingGroupId: string; patch: { name?: string; city?: string; active?: boolean } },
+  actor: AuditActor,
+): Promise<{ changed: boolean }> {
+  const { workingGroupId, patch } = input;
+  try {
+    return await db.transaction(async (tx) => {
+      const group = await lockWorkingGroup(tx, workingGroupId);
+      if (!group) throw new AdminError("working_group_not_found");
+      const [stored] = await tx
+        .select({ name: workingGroups.name, city: workingGroups.city })
+        .from(workingGroups)
+        .where(eq(workingGroups.id, workingGroupId));
+      const name = patch.name === undefined ? stored!.name : normalizeName(patch.name);
+      const city = patch.city === undefined ? stored!.city : normalizeName(patch.city);
+      const active = patch.active ?? group.active;
+
+      const details: AuditDetails = {};
+      if (name !== stored!.name) {
+        details.workingGroupNameFrom = stored!.name;
+        details.workingGroupNameTo = name;
+      }
+      if (city !== stored!.city) {
+        details.cityFrom = stored!.city;
+        details.cityTo = city;
+      }
+      const activeChanged = active !== group.active;
+      if (Object.keys(details).length === 0 && !activeChanged) return { changed: false };
+      if (activeChanged && active && (await countCoordinators(tx, workingGroupId)) === 0) {
+        throw new AdminError("no_coordinator");
+      }
+
+      await tx
+        .update(workingGroups)
+        .set({ name, city, active })
+        .where(eq(workingGroups.id, workingGroupId));
+      const subject = { type: "working_group", id: workingGroupId } as const;
+      const organizationId = group.organizationId;
+      if (Object.keys(details).length > 0) {
+        await recordAudit(tx, {
+          actor,
+          organizationId,
+          action: "working_group.updated",
+          subject,
+          details,
+        });
+      }
+      if (activeChanged) {
+        await recordAudit(tx, {
+          actor,
+          organizationId,
+          action: active ? "working_group.activated" : "working_group.deactivated",
+          subject,
+        });
+        const members = await tx
+          .select({ userId: workingGroupMemberships.userId })
+          .from(workingGroupMemberships)
+          .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
+          .where(
+            and(
+              eq(workingGroupMemberships.workingGroupId, workingGroupId),
+              isNull(users.deletedAt),
+            ),
+          );
+        for (const member of members) await notifyAccessChanged(tx, member.userId);
+      }
+      return { changed: true };
+    });
+  } catch (error) {
+    if (isUniqueViolation(error, "working_groups_organization_id_name_key")) {
+      throw new AdminError("name_taken");
+    }
+    throw error;
+  }
+}
+
+/**
+ * Sets or clears the coordinator flag of a membership (the portal), also in an inactive group.
+ * Throws `membership_not_found`, and `last_coordinator` when it would clear the flag of the last
+ * coordinator of an active group. Writes `role.coordinator_granted` or `role.coordinator_revoked`
+ * and sends `access-changed`, only when something changed.
+ */
+export async function setCoordinator(
+  db: Db,
+  input: { membershipId: string; isCoordinator: boolean },
+  actor: AuditActor,
+): Promise<{ changed: boolean; userId: string; workingGroupId: string }> {
+  return db.transaction(async (tx) => {
+    const [found] = await tx
+      .select({ workingGroupId: workingGroupMemberships.workingGroupId })
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.id, input.membershipId));
+    if (!found) throw new AdminError("membership_not_found");
+    const { workingGroupId } = found;
+    const group = await lockWorkingGroup(tx, workingGroupId);
+    // Read again under the lock: a change that committed in between counts.
+    const [membership] = await tx
+      .select({
+        userId: workingGroupMemberships.userId,
+        isCoordinator: workingGroupMemberships.isCoordinator,
+      })
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.id, input.membershipId));
+    if (!group || !membership) throw new AdminError("membership_not_found");
+    const { userId } = membership;
+    if (membership.isCoordinator === input.isCoordinator) {
+      return { changed: false, userId, workingGroupId };
+    }
+    if (!input.isCoordinator) await assertNotLastCoordinator(tx, workingGroupId, group);
+    await tx
+      .update(workingGroupMemberships)
+      .set({ isCoordinator: input.isCoordinator })
+      .where(eq(workingGroupMemberships.id, input.membershipId));
+    await recordRoleChange(
+      tx,
+      actor,
+      group.organizationId,
+      input.isCoordinator ? "role.coordinator_granted" : "role.coordinator_revoked",
+      userId,
+      { workingGroupId },
+    );
+    return { changed: true, userId, workingGroupId };
+  });
+}
+
+/**
+ * Every organization, for the tool. `hasAdmin` is false, and `hasCoordinator` false for an active
+ * group, only for data from before the rules.
+ */
 export async function listOrganizations(db: Db): Promise<
   {
     id: string;
     name: string;
     hasAdmin: boolean;
-    workingGroups: { id: string; name: string; city: string; active: boolean }[];
+    workingGroups: {
+      id: string;
+      name: string;
+      city: string;
+      active: boolean;
+      /** False for a group without a coordinator: allowed only while it is switched off. */
+      hasCoordinator: boolean;
+    }[];
   }[]
 > {
   const orgs = await db
@@ -356,6 +638,7 @@ export async function listOrganizations(db: Db): Promise<
       name: workingGroups.name,
       city: workingGroups.city,
       active: workingGroups.active,
+      hasCoordinator: sql<boolean>`exists (select 1 from ${workingGroupMemberships} where ${workingGroupMemberships.workingGroupId} = ${workingGroups.id} and ${workingGroupMemberships.isCoordinator})`,
     })
     .from(workingGroups)
     .orderBy(sql`${workingGroups.name} COLLATE "nl-NL-x-icu"`, asc(workingGroups.id));
@@ -517,27 +800,41 @@ export async function grantCoordinator(
   });
 }
 
+/**
+ * Takes the coordinator role away, by address (the tool); the person stays a volunteer of the
+ * group. Throws `working_group_not_found`, `user_not_found`, and `last_coordinator` when it would
+ * take it from the last coordinator of an active group.
+ */
 export async function revokeCoordinator(
   db: Db,
   input: { email: string; workingGroupId: string },
   actor: AuditActor,
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
-    const organizationId = await requireWorkingGroup(tx, input.workingGroupId);
+    const group = await lockWorkingGroup(tx, input.workingGroupId);
+    if (!group) throw new AdminError("working_group_not_found");
     const userId = await requireUser(tx, input.email);
-    const updated = await tx
+    const [membership] = await tx
+      .select({ isCoordinator: workingGroupMemberships.isCoordinator })
+      .from(workingGroupMemberships)
+      .where(
+        and(
+          eq(workingGroupMemberships.userId, userId),
+          eq(workingGroupMemberships.workingGroupId, input.workingGroupId),
+        ),
+      );
+    if (!membership?.isCoordinator) return { userId, changed: false };
+    await assertNotLastCoordinator(tx, input.workingGroupId, group);
+    await tx
       .update(workingGroupMemberships)
       .set({ isCoordinator: false })
       .where(
         and(
           eq(workingGroupMemberships.userId, userId),
           eq(workingGroupMemberships.workingGroupId, input.workingGroupId),
-          eq(workingGroupMemberships.isCoordinator, true),
         ),
-      )
-      .returning({ id: workingGroupMemberships.id });
-    if (updated.length === 0) return { userId, changed: false };
-    await recordRoleChange(tx, actor, organizationId, "role.coordinator_revoked", userId, {
+      );
+    await recordRoleChange(tx, actor, group.organizationId, "role.coordinator_revoked", userId, {
       workingGroupId: input.workingGroupId,
     });
     return { userId, changed: true };

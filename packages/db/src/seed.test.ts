@@ -28,7 +28,7 @@ test("the seed creates the organizations, groups and people", async () => {
     ["Paddentrek Voorbeeldstad", ["Noord", "Zuid"]],
     ["Paddenwerkgroep Fictiefdorp", ["Dorp"]],
   ]);
-  expect(await t!.db.select().from(users)).toHaveLength(7);
+  expect(await t!.db.select().from(users)).toHaveLength(9);
 });
 
 async function adminsByOrganization() {
@@ -79,7 +79,10 @@ test("organizations that existed without an admin get one", async () => {
 test("everyone with a name has logged in, and a second run keeps the moment", async () => {
   await seed(t!.db);
   const first = await t!.db.select().from(users);
-  for (const user of first) expect(user.lastLoginAt).not.toBeNull();
+  for (const user of first) {
+    if (user.email === "coordinator-dorp@example.test") continue;
+    expect(user.lastLoginAt).not.toBeNull();
+  }
   await seed(t!.db);
   const second = await t!.db.select().from(users);
   for (const user of second) {
@@ -91,9 +94,9 @@ test("running it twice changes nothing", async () => {
   await seed(t!.db);
   const audit = await t!.db.select().from(auditLogEntries);
   await seed(t!.db);
-  expect(await t!.db.select().from(users)).toHaveLength(7);
+  expect(await t!.db.select().from(users)).toHaveLength(9);
   expect(await t!.db.select().from(organizationAdmins)).toHaveLength(2);
-  expect(await t!.db.select().from(workingGroupMemberships)).toHaveLength(4);
+  expect(await t!.db.select().from(workingGroupMemberships)).toHaveLength(6);
   expect(await t!.db.select().from(membershipRequests)).toHaveLength(1);
   expect(await t!.db.select().from(auditLogEntries)).toHaveLength(audit.length);
   expect(await listOrganizations(t!.db)).toHaveLength(2);
@@ -132,12 +135,67 @@ test("a second run keeps a request the developer decided", async () => {
   expect(rows.map((row) => row.status)).toEqual(["withdrawn"]);
 });
 
-test("every address ends in @example.test and every person has a name", async () => {
+test("every address ends in @example.test and every person but one has a name", async () => {
   await seed(t!.db);
   for (const user of await t!.db.select().from(users)) {
     expect(user.email).toMatch(/@example\.test$/);
+    // The first coordinator of Dorp never logged in, so has no name yet.
+    if (user.email === "coordinator-dorp@example.test") continue;
     expect(user.name).not.toBe("");
   }
+});
+
+async function coordinatorsByGroup() {
+  const rows = await t!.db
+    .select({ group: workingGroups.name, email: users.email })
+    .from(workingGroupMemberships)
+    .innerJoin(workingGroups, eq(workingGroups.id, workingGroupMemberships.workingGroupId))
+    .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
+    .where(eq(workingGroupMemberships.isCoordinator, true));
+  return rows.sort((a, b) => a.group.localeCompare(b.group));
+}
+
+const expectedCoordinators = [
+  { group: "Dorp", email: "coordinator-dorp@example.test" },
+  { group: "Noord", email: "coordinator@example.test" },
+  { group: "Zuid", email: "coordinator-zuid@example.test" },
+];
+
+test("every working group has a coordinator; Dorp's never logged in", async () => {
+  await seed(t!.db);
+  expect(await coordinatorsByGroup()).toEqual(expectedCoordinators);
+  const byEmail = async (email: string) =>
+    (await t!.db.select().from(users).where(eq(users.email, email)))[0];
+  expect(await byEmail("coordinator-zuid@example.test")).toMatchObject({ name: "Zoë Zuid" });
+  expect((await byEmail("coordinator-zuid@example.test"))?.lastLoginAt).not.toBeNull();
+  expect(await byEmail("coordinator-dorp@example.test")).toMatchObject({
+    name: "",
+    lastLoginAt: null,
+  });
+});
+
+test("working groups that existed without a coordinator get one", async () => {
+  // The shape of a database seeded before working groups had to have a coordinator.
+  await t!.db
+    .insert(organizations)
+    .values([{ name: "Paddentrek Voorbeeldstad" }, { name: "Paddenwerkgroep Fictiefdorp" }]);
+  const [voorbeeldstad, fictiefdorp] = await Promise.all(
+    ["Paddentrek Voorbeeldstad", "Paddenwerkgroep Fictiefdorp"].map(
+      async (name) =>
+        (await t!.db.select().from(organizations).where(eq(organizations.name, name)))[0]!.id,
+    ),
+  );
+  await t!.db.insert(workingGroups).values([
+    { organizationId: voorbeeldstad!, name: "Noord", city: "Voorbeeldstad" },
+    { organizationId: voorbeeldstad!, name: "Zuid", city: "Voorbeeldstad" },
+    { organizationId: fictiefdorp!, name: "Dorp", city: "Fictiefdorp" },
+  ]);
+  await seed(t!.db);
+  expect(await t!.db.select().from(workingGroups)).toHaveLength(3);
+  expect(await coordinatorsByGroup()).toEqual(expectedCoordinators);
+  const audit = await t!.db.select().from(auditLogEntries);
+  await seed(t!.db);
+  expect(await t!.db.select().from(auditLogEntries)).toHaveLength(audit.length);
 });
 
 test("the seed refuses an https origin", () => {

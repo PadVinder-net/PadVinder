@@ -62,7 +62,11 @@ test("sorts in Dutch order and leaves out inactive groups", async () => {
     system,
   );
   const mk = async (organizationId: string, name: string) =>
-    createWorkingGroup(t!.db, { organizationId, name, city: "Enschede" }, system);
+    createWorkingGroup(
+      t!.db,
+      { organizationId, name, city: "Enschede", coordinatorEmail: "me-coordinator@example.test" },
+      system,
+    );
   const groups = [
     await mk(zeta.id, "Een"),
     await mk(eend.id, "Zuid"),

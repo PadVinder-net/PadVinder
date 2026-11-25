@@ -15,7 +15,11 @@ afterAll(async () => {
 const system = { kind: "system" } as const;
 
 const group = (organizationId: string, name: string, city = "Voorbeeldstad") =>
-  createWorkingGroup(t!.db, { organizationId, name, city }, system);
+  createWorkingGroup(
+    t!.db,
+    { organizationId, name, city, coordinatorEmail: "wg-coordinator@example.test" },
+    system,
+  );
 
 test("lists active groups of all organizations by name", async () => {
   const one = await createOrganization(

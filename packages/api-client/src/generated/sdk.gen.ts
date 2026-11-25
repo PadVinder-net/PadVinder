@@ -66,7 +66,7 @@ export const listMembershipRequests = <ThrowOnError extends boolean = false>(opt
 export const listMembers = <ThrowOnError extends boolean = false>(options: Options<ListMembersData, ThrowOnError>): RequestResult<ListMembersResponses, ListMembersErrors, ThrowOnError> => (options.client ?? client).get<ListMembersResponses, ListMembersErrors, ThrowOnError>({ url: '/api/working-groups/{workingGroupId}/members', ...options });
 
 /**
- * Remove a member from a working group. A coordinator may not remove a coordinator
+ * Remove a member from a working group. A coordinator may not remove a coordinator, and the last coordinator of an active group stays
  */
 export const removeMembership = <ThrowOnError extends boolean = false>(options: Options<RemoveMembershipData, ThrowOnError>): RequestResult<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError> => (options.client ?? client).delete<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError>({ url: '/api/memberships/{membershipId}', ...options });
 

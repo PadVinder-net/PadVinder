@@ -1,6 +1,12 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { organizationAdmins, organizations, users } from "@padvinder/db";
+import {
+  organizationAdmins,
+  organizations,
+  users,
+  workingGroupMemberships,
+  workingGroups,
+} from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import { runAdminCommand } from "./run-admin-command";
 
@@ -119,10 +125,12 @@ test("create-working-group, grant-coordinator and list work together", async () 
       "Noord",
       "--city",
       "Voorbeeldstad",
+      "--coordinator-email",
+      "beheer@example.test",
     ),
   ).toBe(0);
   const groupId = out[0]!;
-  expect(groupId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(out).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/)]);
   await addUser("co@example.test");
   out.length = 0;
   expect(
@@ -137,6 +145,98 @@ test("create-working-group, grant-coordinator and list work together", async () 
   expect(text).toContain(orgId);
   expect(text).toContain(groupId);
   expect(text).not.toContain("example.test");
+  expect(text).not.toContain("[no coordinator]");
+});
+
+async function newOrganizationId() {
+  await run("create-organization", "--name", "Org", "--admin-email", "beheer@example.test");
+  const id = out[0]!;
+  out.length = 0;
+  return id;
+}
+
+test("create-working-group needs --coordinator-email", async () => {
+  const orgId = await newOrganizationId();
+  expect(
+    await run("create-working-group", "--organization", orgId, "--name", "Noord", "--city", "X"),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringContaining("--coordinator-email")]);
+  expect(await t!.db.select().from(workingGroups)).toEqual([]);
+  err.length = 0;
+  expect(
+    await run(
+      "create-working-group",
+      "--organization",
+      orgId,
+      "--name",
+      "Noord",
+      "--city",
+      "X",
+      "--coordinator-email",
+      " Carla@Example.test ",
+    ),
+  ).toBe(0);
+  expect(out).toEqual([
+    expect.stringMatching(/^[0-9a-f-]{36}$/),
+    "new account for carla@example.test",
+  ]);
+  expect(err).toEqual([]);
+  const [membership] = await t!.db.select().from(workingGroupMemberships);
+  expect(membership).toMatchObject({ workingGroupId: out[0], isCoordinator: true });
+});
+
+test("revoke-coordinator refuses the last coordinator of an active group", async () => {
+  const orgId = await newOrganizationId();
+  await run(
+    "create-working-group",
+    "--organization",
+    orgId,
+    "--name",
+    "Noord",
+    "--city",
+    "X",
+    "--coordinator-email",
+    "carla@example.test",
+  );
+  const groupId = out[0]!;
+  out.length = 0;
+  expect(
+    await run("revoke-coordinator", "--email", "carla@example.test", "--working-group", groupId),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/last coordinator/i)]);
+  expect(out).toEqual([]);
+  expect(await t!.db.select().from(workingGroupMemberships)).toMatchObject([
+    { isCoordinator: true },
+  ]);
+});
+
+test("list marks an active working group without a coordinator", async () => {
+  const orgId = await newOrganizationId();
+  for (const name of ["Met", "Zonder", "Uit"]) {
+    await run(
+      "create-working-group",
+      "--organization",
+      orgId,
+      "--name",
+      name,
+      "--city",
+      "X",
+      "--coordinator-email",
+      `${name.toLowerCase()}@example.test`,
+    );
+  }
+  const [, withoutId, offId] = out.filter((line) => /^[0-9a-f-]{36}$/.test(line));
+  for (const id of [withoutId!, offId!]) {
+    await t!.db
+      .delete(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.workingGroupId, id));
+  }
+  await t!.db.update(workingGroups).set({ active: false }).where(eq(workingGroups.id, offId!));
+  out.length = 0;
+  expect(await run("list")).toBe(0);
+  expect(out).toContain(`  working group ${withoutId} Zonder (X) [no coordinator]`);
+  expect(out).toContain(`  working group ${offId} Uit (X) [inactive]`);
+  expect(out.find((line) => line.includes(" Met "))).not.toContain("[no coordinator]");
 });
 
 test("grant twice prints changed, then unchanged", async () => {

@@ -5,6 +5,7 @@ export * from "./client";
 export * from "./diagnostics";
 export * from "./heartbeats";
 export * from "./login-code-requests";
+export * from "./managed-working-groups";
 export * from "./migrate";
 export * from "./notifications";
 export * from "./organizations";

@@ -17,6 +17,14 @@ export const apiErrorCodes = {
   membershipChanged: "membership_changed",
   /** The user is the only platform admin, so they cannot delete their account. */
   lastPlatformAdmin: "last_platform_admin",
+  /** The change would leave an active working group without a coordinator. */
+  lastCoordinator: "last_coordinator",
+  /** The change would leave an organization without an admin. */
+  lastOrganizationAdmin: "last_organization_admin",
+  /** A working group without a coordinator cannot be switched on. */
+  noCoordinator: "no_coordinator",
+  /** The person named as first coordinator has a profile outside the organization. */
+  personOutsideOrganization: "person_outside_organization",
   /** Another species has this name (`issues[0].path` says which field). */
   nameTaken: "name_taken",
   internalError: "internal_error",
