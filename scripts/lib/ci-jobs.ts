@@ -77,6 +77,8 @@ export const JOB_RULES: Record<CiJob, JobRule> = {
     only: [
       "infra/",
       "scripts/build-release.sh",
+      "scripts/deploy-current.ts",
+      "scripts/lib/deploy-current.ts",
       "apps/api/src/migrate.ts",
       "apps/api/src/main.ts",
       "apps/worker/src/main.ts",
