@@ -983,16 +983,18 @@ test("the two admins of an organization: a deletion and a removal at the same mo
   const deleted = deletion.status === "fulfilled" && deletion.value.outcome === "deleted";
   const removed = removal.status === "fulfilled";
   expect([deleted, removed].filter(Boolean)).toHaveLength(1);
+  // The one left is the one the winner did not take away; the loser was refused.
+  if (deleted) {
+    expect(removal).toMatchObject({ reason: { code: "last_organization_admin" } });
+  } else {
+    expect(deletion).toMatchObject({ value: { outcome: "blocked" } });
+  }
   expect(
     await db()
-      .select()
+      .select({ userId: organizationAdmins.userId })
       .from(organizationAdmins)
       .where(eq(organizationAdmins.organizationId, organization)),
-  ).toHaveLength(1);
-  // The organization row is not changed by any of this.
-  expect(
-    await db().select().from(organizations).where(eq(organizations.id, organization)),
-  ).toHaveLength(1);
+  ).toEqual([{ userId: deleted ? second.id : first.id }]);
 });
 
 test("a role given while the deletion waits for the user row is counted", async () => {
