@@ -57,8 +57,8 @@ export function clearOtherUserData(
 }
 
 /** Asks `/api/me` again: after a change to the user's access, or when the stream was refused. */
-export function refetchMe(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: getMeQueryKey() });
+export function refetchMe(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: getMeQueryKey() });
 }
 
 export function useMe() {

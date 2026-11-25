@@ -63,24 +63,30 @@ export function useOrganization(organizationId: string) {
 
 /**
  * Refetches everything the administration pages show: the managed working groups, the
- * organizations, every organization detail and every member list.
+ * organizations, every organization detail and every member list. Resolves when the queries on
+ * screen are fresh (a failed refetch resolves too; the list keeps its data).
  */
-export function refetchAdministration(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: listManagedWorkingGroupsQueryKey() });
-  void queryClient.invalidateQueries({ queryKey: listOrganizationsQueryKey() });
-  void queryClient.invalidateQueries({
-    predicate: (query) =>
-      (query.queryKey[0] as { _id?: string } | undefined)?._id === "getOrganization",
-  });
-  refetchMembers(queryClient);
+export async function refetchAdministration(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: listManagedWorkingGroupsQueryKey() }),
+    queryClient.invalidateQueries({ queryKey: listOrganizationsQueryKey() }),
+    queryClient.invalidateQueries({
+      predicate: (query) =>
+        (query.queryKey[0] as { _id?: string } | undefined)?._id === "getOrganization",
+    }),
+    refetchMembers(queryClient),
+  ]);
 }
 
-/** After an administration change, also after an error (the page was probably out of date). */
+/**
+ * After an administration change, also after an error (the page was probably out of date). The
+ * mutation waits for the refetch, so a caller's `onSuccess` (which may open the new group's page)
+ * sees the fresh lists, never a not-found page for a moment.
+ */
 function useSettled() {
   const queryClient = useQueryClient();
-  return () => {
-    refetchAdministration(queryClient);
-    refetchMe(queryClient);
+  return async () => {
+    await Promise.all([refetchAdministration(queryClient), refetchMe(queryClient)]);
   };
 }
 

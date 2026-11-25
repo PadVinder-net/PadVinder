@@ -1,4 +1,4 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import {
   coordinatorMeFixture,
   managedWorkingGroupsFixture,
@@ -22,6 +22,7 @@ import {
   useSetCoordinator,
 } from "./index";
 import { client } from "./generated/client.gen";
+import { listManagedWorkingGroupsQueryKey } from "./generated/@tanstack/react-query.gen";
 import { createTestQueryClient } from "./testing";
 
 beforeEach(() => client.setConfig({ baseUrl: "http://localhost" }));
@@ -35,7 +36,8 @@ function mockFetch(routes: Record<string, unknown>) {
       const request = new Request(input, init);
       const path = new URL(request.url).pathname;
       calls.push(`${request.method} ${path}`);
-      const answer = routes[`${request.method} ${path}`];
+      const route = routes[`${request.method} ${path}`];
+      const answer = typeof route === "function" ? (route as () => unknown)() : route;
       if (answer === undefined) throw new TypeError(`No mock for ${request.method} ${path}`);
       return answer instanceof Response ? answer.clone() : Response.json(answer);
     },
@@ -132,6 +134,51 @@ test("creating a working group refetches the lists, the organizations and me", a
   await waitFor(() => expect(count(calls, "GET /api/organizations")).toBe(2));
   await waitFor(() => expect(count(calls, `GET /api/organizations/${organization.id}`)).toBe(2));
   await waitFor(() => expect(count(calls, "GET /api/me")).toBe(2));
+});
+
+test("a new working group is in the managed list when the caller's onSuccess runs", async () => {
+  // The page navigates to the new group in its onSuccess; with a stale list it would show the
+  // not-found page for a moment.
+  const created = { ...group, id: "0192f3c0-0000-7000-8000-0000000000ab" };
+  let groups = managedWorkingGroupsFixture;
+  mockFetch({
+    "GET /api/me": meFixture,
+    "GET /api/managed-working-groups": () => ({ workingGroups: groups }),
+    "GET /api/organizations": { organizations: organizationsFixture },
+    [`POST /api/organizations/${organization.id}/working-groups`]: () => {
+      groups = [...managedWorkingGroupsFixture, created];
+      return Response.json(created, { status: 201 });
+    },
+  });
+  const { result } = setup(() => ({
+    me: useMe(),
+    groups: useManagedWorkingGroups(),
+    create: useCreateWorkingGroup(),
+    queryClient: useQueryClient(),
+  }));
+  await waitFor(() => expect(result.current.groups.isSuccess).toBe(true));
+  await waitFor(() => expect(result.current.me.isSuccess).toBe(true));
+  const { queryClient } = result.current;
+  const idsWhenSaved = await new Promise<string[] | undefined>((resolve, reject) => {
+    result.current.create.mutate(
+      {
+        organizationId: organization.id,
+        body: { name: "Nieuw", city: "Voorbeeldstad", coordinatorEmail: "co@example.test" },
+      },
+      {
+        onSuccess: () =>
+          resolve(
+            queryClient
+              .getQueryData<{
+                workingGroups: { id: string }[];
+              }>(listManagedWorkingGroupsQueryKey())
+              ?.workingGroups.map((g) => g.id),
+          ),
+        onError: reject,
+      },
+    );
+  });
+  expect(idsWhenSaved).toContain(created.id);
 });
 
 test("a 409 surfaces with its code and the field", async () => {

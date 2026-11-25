@@ -192,7 +192,7 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
           showToast(`${nameInSentence(member.name)} is verwijderd uit ${group.name}.`);
         },
         // The list's member count changed too.
-        onSettled: () => refetchAdministration(queryClient),
+        onSettled: () => void refetchAdministration(queryClient),
       },
     );
   }

@@ -29,19 +29,19 @@ export function useAccessLiveUpdates(): void {
     () =>
       subscribeToServerEvents({
         onOpen: () => {
-          refetchMe(queryClient);
+          void refetchMe(queryClient);
           refetchMembershipRequests(queryClient);
-          refetchAdministration(queryClient);
+          void refetchAdministration(queryClient);
         },
-        onClosed: () => refetchMe(queryClient),
+        onClosed: () => void refetchMe(queryClient),
         events: {
           "access-changed": () => {
-            refetchMe(queryClient);
-            refetchAdministration(queryClient);
+            void refetchMe(queryClient);
+            void refetchAdministration(queryClient);
           },
           "membership-requests-changed": (event) => {
             refetchMembershipRequests(queryClient, event.workingGroupId);
-            refetchAdministration(queryClient);
+            void refetchAdministration(queryClient);
           },
         },
       }),
