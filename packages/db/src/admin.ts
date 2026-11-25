@@ -17,6 +17,7 @@ export type AdminErrorCode =
   | "working_group_inactive"
   | "user_not_found"
   | "invalid_email"
+  | "invalid_name"
   | "name_taken"
   | "last_platform_admin"
   | "last_organization_admin"
@@ -25,13 +26,21 @@ export type AdminErrorCode =
   | "no_coordinator"
   | "person_outside_organization";
 
+/** The input field an `invalid_name` is about. */
+export type AdminErrorField = "name" | "city";
+
 export class AdminError extends Error {
+  /** For `invalid_name`: whether the name or the city is empty (default `name`). */
+  readonly field?: AdminErrorField;
+
   constructor(
     readonly code: AdminErrorCode,
     message?: string,
+    options: { field?: AdminErrorField } = {},
   ) {
     super(message ?? code);
     this.name = "AdminError";
+    if (options.field) this.field = options.field;
   }
 }
 
@@ -60,6 +69,16 @@ function parseEmail(email: string): string {
  */
 export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * The normalized name or city; `invalid_name` (with the field) when nothing is left. The API's
+ * request schemas refuse an empty one before this; the administration tool reaches it.
+ */
+function parseName(value: string, field: AdminErrorField): string {
+  const name = normalizeName(value);
+  if (name === "") throw new AdminError("invalid_name", `The ${field} is empty`, { field });
+  return name;
 }
 
 /**
@@ -256,21 +275,23 @@ async function requireUser(tx: DbTransaction, email: string): Promise<string> {
  * admin's account when there is none, the admin row, the entries `organization.created` and
  * `role.organization_admin_granted`, and `access-changed` for the admin. A name another
  * organization has, in any capitals or spacing, is `name_taken`; that includes one created at the
- * same moment. Throws `invalid_email` for an address that is not valid, and `user_not_found` for
- * the replaced address of a deleted account; then nothing is written.
+ * same moment. Throws `invalid_name` for a name that is empty after normalizing, `invalid_email`
+ * for an address that is not valid, and `user_not_found` for the replaced address of a deleted
+ * account; then nothing is written.
  */
 export async function createOrganization(
   db: Db,
   input: { name: string; adminEmail: string; contactEmail?: string | null },
   actor: AuditActor,
 ): Promise<{ id: string; adminUserId: string; adminCreated: boolean }> {
+  const name = parseName(input.name, "name");
   const adminEmail = parseEmail(input.adminEmail);
   const contactEmail = input.contactEmail == null ? null : parseEmail(input.contactEmail);
   return db.transaction(async (tx) => {
     // A second create of the same name waits here for the first to commit, then inserts nothing.
     const [row] = await tx
       .insert(organizations)
-      .values({ name: normalizeName(input.name), contactEmail })
+      .values({ name, contactEmail })
       .onConflictDoNothing()
       .returning({ id: organizations.id });
     if (!row) throw new AdminError("name_taken");
@@ -293,7 +314,8 @@ export async function createOrganization(
  * the stored one counts. A change writes one `organization.updated`, with `organizationNameFrom`
  * and `organizationNameTo` when the name changed and `contactChanged: true` when the contact
  * address changed (the address itself is never in the log). A patch that changes nothing writes
- * nothing. Throws `organization_not_found`, `name_taken` and `invalid_email`.
+ * nothing. Throws `organization_not_found`, `name_taken`, `invalid_email`, and `invalid_name` for a
+ * name that is empty after normalizing.
  */
 export async function updateOrganization(
   db: Db,
@@ -301,6 +323,7 @@ export async function updateOrganization(
   actor: AuditActor,
 ): Promise<{ changed: boolean }> {
   const { patch } = input;
+  const patchName = patch.name === undefined ? undefined : parseName(patch.name, "name");
   const contactEmail =
     patch.contactEmail === undefined || patch.contactEmail === null
       ? patch.contactEmail
@@ -313,7 +336,7 @@ export async function updateOrganization(
         .where(eq(organizations.id, input.organizationId))
         .for("no key update");
       if (!stored) throw new AdminError("organization_not_found");
-      const name = patch.name === undefined ? stored.name : normalizeName(patch.name);
+      const name = patchName ?? stored.name;
       const contact = contactEmail === undefined ? stored.contactEmail : contactEmail;
 
       const details: AuditDetails = {};
@@ -456,24 +479,23 @@ async function assertMayNameFirstCoordinator(
  * organization has is `name_taken`, also one created at the same moment. Throws
  * `organization_not_found`, `invalid_email`, `user_not_found` (the replaced address of a deleted
  * account) and `person_outside_organization` (see `assertMayNameFirstCoordinator`; the system
- * may name anyone). Then nothing is written.
+ * may name anyone), and `invalid_name` (with `field`) for an empty name or city. Then nothing is
+ * written.
  */
 export async function createWorkingGroup(
   db: Db,
   input: { organizationId: string; name: string; city: string; coordinatorEmail: string },
   actor: AuditActor,
 ): Promise<{ id: string; coordinatorUserId: string; coordinatorCreated: boolean }> {
+  const name = parseName(input.name, "name");
+  const city = parseName(input.city, "city");
   const coordinatorEmail = parseEmail(input.coordinatorEmail);
   return db.transaction(async (tx) => {
     await requireOrganization(tx, input.organizationId);
     // A second create of the same name waits here for the first to commit, then inserts nothing.
     const [row] = await tx
       .insert(workingGroups)
-      .values({
-        organizationId: input.organizationId,
-        name: normalizeName(input.name),
-        city: normalizeName(input.city),
-      })
+      .values({ organizationId: input.organizationId, name, city })
       .onConflictDoNothing()
       .returning({ id: workingGroups.id });
     if (!row) throw new AdminError("name_taken");
@@ -512,7 +534,8 @@ export async function createWorkingGroup(
  * `working_group.deactivated` or `working_group.activated`, and sends `access-changed` to every
  * member, whose access gains or loses the group. A patch that changes nothing writes and sends
  * nothing. Throws `working_group_not_found`, `name_taken` (another group of the organization has
- * the name), and `no_coordinator` when it would switch on a group without a coordinator.
+ * the name), `invalid_name` (with `field`) for a name or city that is empty after normalizing,
+ * and `no_coordinator` when it would switch on a group without a coordinator.
  */
 export async function updateWorkingGroup(
   db: Db,
@@ -520,6 +543,8 @@ export async function updateWorkingGroup(
   actor: AuditActor,
 ): Promise<{ changed: boolean }> {
   const { workingGroupId, patch } = input;
+  const patchName = patch.name === undefined ? undefined : parseName(patch.name, "name");
+  const patchCity = patch.city === undefined ? undefined : parseName(patch.city, "city");
   try {
     return await db.transaction(async (tx) => {
       const group = await lockWorkingGroup(tx, workingGroupId);
@@ -528,8 +553,8 @@ export async function updateWorkingGroup(
         .select({ name: workingGroups.name, city: workingGroups.city })
         .from(workingGroups)
         .where(eq(workingGroups.id, workingGroupId));
-      const name = patch.name === undefined ? stored!.name : normalizeName(patch.name);
-      const city = patch.city === undefined ? stored!.city : normalizeName(patch.city);
+      const name = patchName ?? stored!.name;
+      const city = patchCity ?? stored!.city;
       const active = patch.active ?? group.active;
 
       const details: AuditDetails = {};

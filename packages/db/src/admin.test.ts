@@ -1260,6 +1260,58 @@ test("two creates of the same name in one organization at the same moment give o
   expect(await db().select().from(users)).toHaveLength(2);
 });
 
+test("a name or a city that is empty after normalizing is invalid_name, and nothing is written", async () => {
+  const org = await newOrganization();
+  const group = await createWorkingGroup(
+    db(),
+    {
+      organizationId: org.id,
+      name: "Noord",
+      city: "Voorbeeldstad",
+      coordinatorEmail: "c@example.test",
+    },
+    system,
+  );
+  const before = await entries();
+  const invalid = (field: "name" | "city") => ({ code: "invalid_name", field });
+  await expect(
+    createOrganization(db(), { name: "   ", adminEmail: "x@example.test" }, system),
+  ).rejects.toMatchObject(invalid("name"));
+  await expect(
+    updateOrganization(db(), { organizationId: org.id, patch: { name: " \t " } }, system),
+  ).rejects.toMatchObject(invalid("name"));
+  await expect(
+    createWorkingGroup(
+      db(),
+      {
+        organizationId: org.id,
+        name: " ",
+        city: "Voorbeeldstad",
+        coordinatorEmail: "d@example.test",
+      },
+      system,
+    ),
+  ).rejects.toMatchObject(invalid("name"));
+  await expect(
+    createWorkingGroup(
+      db(),
+      { organizationId: org.id, name: "Zuid", city: "  ", coordinatorEmail: "d@example.test" },
+      system,
+    ),
+  ).rejects.toMatchObject(invalid("city"));
+  await expect(
+    updateWorkingGroup(db(), { workingGroupId: group.id, patch: { name: "" } }, system),
+  ).rejects.toMatchObject(invalid("name"));
+  await expect(
+    updateWorkingGroup(db(), { workingGroupId: group.id, patch: { city: "\n" } }, system),
+  ).rejects.toMatchObject(invalid("city"));
+  expect(await entries()).toEqual(before);
+  expect(await db().select().from(organizations)).toHaveLength(1);
+  expect((await groupsOf(org.id)).map((g) => [g.name, g.city])).toEqual([
+    ["Noord", "Voorbeeldstad"],
+  ]);
+});
+
 test("lockWorkingGroup gives the organization and the active flag, or null", async () => {
   const { orgId, groupId } = await setup();
   await db().transaction(async (tx) => {

@@ -29,6 +29,17 @@ test("name_taken is 409 with an issue on name", () =>
     issues: [{ path: "name" }],
   }));
 
+test("invalid_name is 400 with an issue on its field", () => {
+  expect(adminErrorToApiError(new AdminError("invalid_name"))).toMatchObject({
+    statusCode: 400,
+    code: "invalid_request",
+    issues: [{ path: "name" }],
+  });
+  expect(
+    adminErrorToApiError(new AdminError("invalid_name", undefined, { field: "city" })),
+  ).toMatchObject({ statusCode: 400, code: "invalid_request", issues: [{ path: "city" }] });
+});
+
 test("person_outside_organization is 409 with an issue on the email field", () =>
   expect(answer("person_outside_organization", "coordinatorEmail")).toMatchObject({
     statusCode: 409,

@@ -268,6 +268,30 @@ test("revoking the last platform admin exits 1 with a clear line", async () => {
   expect(out).toEqual([]);
 });
 
+test("a name or city of only spaces exits 1 with one line", async () => {
+  expect(await run("create-organization", "--name", "  ", "--admin-email", "a@example.test")).toBe(
+    1,
+  );
+  expect(err).toEqual([expect.stringMatching(/cannot be empty/)]);
+  err.length = 0;
+  const orgId = await newOrganizationId();
+  expect(
+    await run(
+      "create-working-group",
+      "--organization",
+      orgId,
+      "--name",
+      "Noord",
+      "--city",
+      " ",
+      "--coordinator-email",
+      "c@example.test",
+    ),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/cannot be empty/)]);
+  expect(await t!.db.select().from(workingGroups)).toEqual([]);
+});
+
 test("an unknown user exits 1 with one line", async () => {
   expect(await run("revoke-platform-admin", "--email", "nobody@example.test")).toBe(1);
   expect(err).toEqual([expect.stringMatching(/no user with that email/i)]);

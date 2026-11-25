@@ -19,6 +19,12 @@ export function adminErrorToApiError(error: AdminError, fields: { email?: string
       return apiError(400, apiErrorCodes.invalidRequest, "Not an email address", [
         { path: emailField, message: "Not an email address" },
       ]);
+    case "invalid_name": {
+      const field = error.field ?? "name";
+      return apiError(400, apiErrorCodes.invalidRequest, `The ${field} is empty`, [
+        { path: field, message: `The ${field} is empty` },
+      ]);
+    }
     case "user_not_found":
       return apiError(400, apiErrorCodes.invalidRequest, "No account can have this address", [
         { path: emailField, message: "No account can have this address" },

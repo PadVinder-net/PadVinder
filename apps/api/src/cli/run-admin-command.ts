@@ -32,6 +32,7 @@ const adminErrorText: Record<AdminErrorCode, string> = {
   working_group_inactive: "That working group is inactive; a role there gives no rights.",
   user_not_found: "There is no user with that email address.",
   invalid_email: "That is not a valid email address.",
+  invalid_name: "A name or a city cannot be empty.",
   name_taken: "That name is already taken.",
   last_platform_admin:
     "That is the last platform admin who has logged in. Make another one, and let them log in first.",
