@@ -51,7 +51,7 @@ padvinder/
 
 A release directory is the unpacked `padvinder-release.tar.gz` (see "Release" in `AGENTS.md`). Each deploy keeps the 5 newest releases plus whatever `current` points at, and removes the rest. Unchanged files are hard-linked from the previous release, so `node_modules` is stored once.
 
-The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`, `ALLOWED_ORIGINS`, `LOG_LEVEL=info`, and what login needs: `PUBLIC_ORIGIN` (the address in the table above), `AUTH_SECRET`, `SMTP_HOST` (`smtp-<account>.alwaysdata.net`), `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (`PadVinder <noreply@padvinder.net>`, see "Mail"). `LOGIN_RATE_LIMITS` is never in it: the API's default is on, and it refuses `off` on an HTTPS origin. Do not edit the file on the server: the next provisioning run overwrites it.
+The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`, `ALLOWED_ORIGINS`, `LOG_LEVEL=info`, and what login needs: `PUBLIC_ORIGIN` (the address in the table above), `AUTH_SECRET`, `SMTP_HOST` (`smtp-<account>.alwaysdata.net`), `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (`PadVinder <noreply@padvinder.net>`, see "Mail"), and on staging only `MAIL_SUBJECT_PREFIX=[STAGING]`. `LOGIN_RATE_LIMITS` is never in it: the API's default is on, and it refuses `off` on an HTTPS origin. Do not edit the file on the server: the next provisioning run overwrites it.
 
 ## The scripts
 
@@ -313,7 +313,9 @@ NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/adm
 NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/admin.js --help   # all commands
 ```
 
-`list` prints organizations and working groups with their IDs, and no personal data. The other commands print an ID or `changed` or `unchanged`; an error is one line on stderr and exit code 1. The grant commands create the account when the address is unknown (and then print `changed (new account for <address>)`), so check the address carefully. Every change is written to the audit log with the system as actor. The first platform admin is made this way: `grant-platform-admin --email <address>`; the person then logs in with that address. The deploy smoke test runs `list` once, so CI proves the tool is in the artifact. Locally, use `pnpm admin <command>` from the repository root.
+`list` prints organizations and working groups with their IDs, and no personal data. The other commands print an ID or `changed` or `unchanged`; an error is one line on stderr and exit code 1. The grant commands create the account when the address is unknown (and then print `changed (new account for <address>)`), so check the address carefully. Every change is written to the audit log with the system as actor. The first platform admin is made this way: `grant-platform-admin --email <address>`; the person then logs in with that address. Organizations and working groups are made in the portal now; the tool can still make them: `create-organization --name <name> --admin-email <address> [--contact-email <address>]` and `create-working-group --organization <id> --name <name> --city <city> --coordinator-email <address>` print the new ID, and on a second line `new account for <address>` when they made the account. The tool refuses to revoke the last admin of an organization or the last coordinator of an active working group, and `list` marks an organization without an admin with `[no admin]` and an active working group without a coordinator with `[no coordinator]`. The deploy smoke test runs `list` once, so CI proves the tool is in the artifact. Locally, use `pnpm admin <command>` from the repository root.
+
+**Before deploying the pull request "Organizations, working groups and roles" to an environment**, give every organization there an admin and every active working group a coordinator, with `grant-organization-admin` and `grant-coordinator` (`list` shows the IDs; a grant changes nothing where the person has the role already). After the deploy, `list` marks what is still missing. Nothing breaks while one is missing, but the request mails of a group without a coordinator go only to its organization's admins, and with neither they reach nobody. Check too that no two organizations, and no two working groups of one organization, have names that differ only in capitals: the migrations make names unique ignoring capitals and fail on such a pair, and the deploy then stops with nothing else changed ("What a deploy does", step 3). The tool has no rename, so rename one of the pair with `psql` first.
 
 ## Operating notes
 
@@ -363,27 +365,29 @@ Staging shares 1 GB of RAM with production. Actions, Staging services, Run workf
 
 ## DNS
 
-DNS for `padvinder.net` is hosted at the registrar, not at Alwaysdata. These are the records as they are on 21 November 2026, as names and types only. Read the values in the registrar's DNS panel; the addresses they must point at are in the Alwaysdata panel (Advanced, Server status, the HTTP servers; see [external addresses](https://help.alwaysdata.com/en/docs/web-hosting/sites/use-external-addresses/)).
+DNS for `padvinder.net` is hosted at the registrar, not at Alwaysdata. These are the records as they are on 25 November 2026, as names and types only. Read the values in the registrar's DNS panel; the addresses they must point at are in the Alwaysdata panel (Advanced, Server status, the HTTP servers; see [external addresses](https://help.alwaysdata.com/en/docs/web-hosting/sites/use-external-addresses/)).
 
-| Name                    | Type | Purpose                                   |
-| ----------------------- | ---- | ----------------------------------------- |
-| `padvinder.net`         | A    | Production, Alwaysdata HTTP server (IPv4) |
-| `padvinder.net`         | AAAA | Production, Alwaysdata HTTP server (IPv6) |
-| `padvinder.net`         | TXT  | SPF                                       |
-| `padvinder.net`         | NS   | The registrar's name servers (3)          |
-| `staging.padvinder.net` | A    | Staging, Alwaysdata HTTP server (IPv4)    |
-| `staging.padvinder.net` | AAAA | Staging, Alwaysdata HTTP server (IPv6)    |
-| `www.padvinder.net`     | A    | Not in any site's addresses yet           |
-| `www.padvinder.net`     | AAAA | Not in any site's addresses yet           |
+| Name                    | Type | Purpose                                           |
+| ----------------------- | ---- | ------------------------------------------------- |
+| `padvinder.net`         | A    | Production, Alwaysdata HTTP server (IPv4)         |
+| `padvinder.net`         | AAAA | Production, Alwaysdata HTTP server (IPv6)         |
+| `padvinder.net`         | TXT  | SPF                                               |
+| `padvinder.net`         | MX   | Mail for `padvinder.net` (added 25 November 2026) |
+| `_dmarc.padvinder.net`  | TXT  | DMARC (added 25 November 2026)                    |
+| `padvinder.net`         | NS   | The registrar's name servers (3)                  |
+| `staging.padvinder.net` | A    | Staging, Alwaysdata HTTP server (IPv4)            |
+| `staging.padvinder.net` | AAAA | Staging, Alwaysdata HTTP server (IPv6)            |
+| `www.padvinder.net`     | A    | Not in any site's addresses yet                   |
+| `www.padvinder.net`     | AAAA | Not in any site's addresses yet                   |
 
-There are no MX or CAA records.
+There are no CAA records.
 
 **To do for mail** (see "Mail"; the values come from the Alwaysdata panel, Domains, `padvinder.net`, DNS records, and are not written here):
 
-- [ ] SPF: add Alwaysdata's `include:` mechanism to the existing SPF `TXT` record of `padvinder.net`. Keep one SPF record; a second one makes SPF fail.
+- [x] SPF (25 November 2026): add Alwaysdata's `include:` mechanism to the existing SPF `TXT` record of `padvinder.net`. Keep one SPF record; a second one makes SPF fail.
 - [ ] DKIM: the `TXT` record Alwaysdata shows for `padvinder.net` (a name under `_domainkey.padvinder.net`).
-- [ ] DMARC: a `TXT` record at `_dmarc.padvinder.net`. Start with policy `none`, and tighten it once "Verification" shows SPF and DKIM passing.
-- [ ] Decide whether `padvinder.net` gets MX records pointing at Alwaysdata. Without them, bounces and replies to `noreply@padvinder.net` reach nobody; sending works either way.
+- [x] DMARC (25 November 2026): a `TXT` record at `_dmarc.padvinder.net`. Start with policy `none`, and tighten it once "Verification" shows SPF and DKIM passing.
+- [x] MX: `padvinder.net` has MX records (25 November 2026). Without them, bounces and replies to `noreply@padvinder.net` reach nobody; sending works either way.
 
 Record each one in the table above (name and type only) once it exists. `www.padvinder.net` resolves, but no PadVinder site serves it, so it has no certificate. Either add it to the production site (with a redirect) or remove the records; that is a decision for the maintainer.
 
@@ -433,7 +437,7 @@ Everything is plain Linux processes against a standard PostgreSQL; nothing here 
 
 ## Verification
 
-The first deploy to staging (22 November 2026, commit 1a80783, from the maintainer's machine with `pnpm infra:deploy`) is also the test the project plan asks for. Results are recorded here with their dates. Still open: production (not provisioned or deployed yet), the PostGIS "core procs need upgrade" message (Alwaysdata support asked, 22 November 2026), and the monitoring command, which is deliberately not set (external monitoring of `/api/health` is preferred). Decision: staging stays on by default; revisit when slice 1 adds authentication and email, and before the season.
+The first deploy to staging (22 November 2026, commit 1a80783, from the maintainer's machine with `pnpm infra:deploy`) is also the test the project plan asks for. Results are recorded here with their dates. Production was provisioned on 23 November 2026 and is deployed: on 25 November 2026 it answered `/api/health` with the commit of pull request 20. Still open: the PostGIS "core procs need upgrade" message (Alwaysdata support asked, 22 November 2026), and the monitoring command, which is deliberately not set (external monitoring of `/api/health` is preferred). Decision: staging stays on by default; revisit when slice 1 adds authentication and email, and before the season.
 
 | What                                                                                                                                                                                                                                                                                      | How to check                                                                                                                     | Status                                                                                                                                                                                                                                                                                                                                                                              |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -464,11 +468,11 @@ The first deploy to staging (22 November 2026, commit 1a80783, from the maintain
 
 Login and mail, after the rollout of login ("Rolling out login"):
 
-| What                                                                                                                                                                      | How to check                                                                                                                                                                                             | Status |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| The API logs in to `smtp-<account>.alwaysdata.net` on port 465 with TLS as `noreply@padvinder.net`. Taken from Alwaysdata's login details page, which lists only port 465 | Ask for a code on staging; the mail arrives. A failure is in the API's service log (`admin/logs/services/`), without the address                                                                         | OPEN   |
-| A login code reaches Gmail, Outlook, iCloud, KPN and Ziggo inboxes, not the spam folder                                                                                   | Ask for a code for an address at each; look in the inbox and the spam folder                                                                                                                             | OPEN   |
-| SPF, DKIM and DMARC pass                                                                                                                                                  | In Gmail, "Show original" on a code mail: `SPF: PASS`, `DKIM: PASS`, `DMARC: PASS`. If they do not pass after the DNS records are in place, move to a mail service                                       | OPEN   |
-| Alwaysdata's reverse proxy passes the client's IP address in a header the client cannot forge, so the login limit per IP address means something                          | Ask for codes with a forged `X-Forwarded-For`; the limit must follow the real address (look at the keys in `rate_limits`; sessions do not store the address). If not, all users share one limit per path | OPEN   |
+| What                                                                                                                                                                      | How to check                                                                                                                                                                                             | Status                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| The API logs in to `smtp-<account>.alwaysdata.net` on port 465 with TLS as `noreply@padvinder.net`. Taken from Alwaysdata's login details page, which lists only port 465 | Ask for a code on staging; the mail arrives. A failure is in the API's service log (`admin/logs/services/`), without the address                                                                         | confirmed 25 November 2026: a code mail from staging arrives                                                        |
+| A login code reaches Gmail, Outlook, iCloud, KPN and Ziggo inboxes, not the spam folder                                                                                   | Ask for a code for an address at each; look in the inbox and the spam folder                                                                                                                             | confirmed for Gmail 25 November 2026. OPEN: Outlook, iCloud, KPN and Ziggo                                          |
+| SPF, DKIM and DMARC pass                                                                                                                                                  | In Gmail, "Show original" on a code mail: `SPF: PASS`, `DKIM: PASS`, `DMARC: PASS`. If they do not pass after the DNS records are in place, move to a mail service                                       | confirmed 25 November 2026: Gmail's "Show original" on a code mail from staging says `PASS` for SPF, DKIM and DMARC |
+| Alwaysdata's reverse proxy passes the client's IP address in a header the client cannot forge, so the login limit per IP address means something                          | Ask for codes with a forged `X-Forwarded-For`; the limit must follow the real address (look at the keys in `rate_limits`; sessions do not store the address). If not, all users share one limit per path | OPEN                                                                                                                |
 
 When a name differs, change it in `src/resources.ts` only, and the fake in `src/testing/fake-api.ts` if its answers differ.
