@@ -57,6 +57,16 @@ const apiEnvSchema = z
     SMTP_USER: z.string().min(1).optional(),
     SMTP_PASSWORD: z.string().min(1).optional(),
     MAIL_FROM: z.string().min(1),
+    // Put before the subject of every mail ("[STAGING]"); empty counts as absent. No line break:
+    // the text goes into a mail header.
+    MAIL_SUBJECT_PREFIX: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .max(30, "at most 30 characters")
+        .regex(/^[^\r\n]*$/, "must not contain a line break")
+        .optional(),
+    ),
     // Only for local development and tests: it must never be switched off on a public origin.
     LOGIN_RATE_LIMITS: z.enum(["on", "off"]).default("on"),
   })

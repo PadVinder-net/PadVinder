@@ -118,3 +118,23 @@ test("reads optional SMTP credentials", () =>
     SMTP_USER: "u",
     SMTP_PASSWORD: "p",
   }));
+
+test("MAIL_SUBJECT_PREFIX is optional, and an empty one counts as absent", () => {
+  expect(loadApiEnv(valid).MAIL_SUBJECT_PREFIX).toBeUndefined();
+  expect(loadApiEnv({ ...valid, MAIL_SUBJECT_PREFIX: "" }).MAIL_SUBJECT_PREFIX).toBeUndefined();
+  expect(loadApiEnv({ ...valid, MAIL_SUBJECT_PREFIX: "[STAGING]" }).MAIL_SUBJECT_PREFIX).toBe(
+    "[STAGING]",
+  );
+});
+
+test("a prefix with a line break, or over 30 characters, is refused", () => {
+  expect(() => loadApiEnv({ ...valid, MAIL_SUBJECT_PREFIX: "[A]\nBcc: x" })).toThrow(
+    /MAIL_SUBJECT_PREFIX/,
+  );
+  expect(() => loadApiEnv({ ...valid, MAIL_SUBJECT_PREFIX: "x".repeat(31) })).toThrow(
+    /MAIL_SUBJECT_PREFIX/,
+  );
+  expect(
+    loadApiEnv({ ...valid, MAIL_SUBJECT_PREFIX: "x".repeat(30) }).MAIL_SUBJECT_PREFIX,
+  ).toHaveLength(30);
+});

@@ -207,13 +207,14 @@ Only store the known hosts after the fingerprint matches; with a wrong one the d
 
 The API sends the login codes over SMTP. On Alwaysdata it uses Alwaysdata's own SMTP server, logged in as a mailbox on the account: no extra service and no extra cost (decided in `docs/superpowers/specs/2026-11-21-accounts-and-access-design.md`, "Mail in production and staging"). Alwaysdata documents no sending limits and no delivery logs, so delivery is a check (see "Verification"); if mail lands in spam or does not arrive, move to a transactional mail service.
 
-| Setting         | Value                               | Where it comes from                                                                      |
-| --------------- | ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| `SMTP_HOST`     | `smtp-<account>.alwaysdata.net`     | `smtpHost()` in `src/environments.ts`, from the account name                             |
-| `SMTP_PORT`     | `465`, TLS from the first byte      | `smtpPort` in `src/environments.ts`. The only port Alwaysdata's login details page lists |
-| `SMTP_USER`     | `noreply@padvinder.net`             | Secret `SMTP_USER`. Alwaysdata's SMTP login is the full mailbox address                  |
-| `SMTP_PASSWORD` | The mailbox's password              | Secret `SMTP_PASSWORD`                                                                   |
-| `MAIL_FROM`     | `PadVinder <noreply@padvinder.net>` | `mailFrom` in `src/environments.ts`. Must be the mailbox `SMTP_USER` logs in as          |
+| Setting               | Value                                         | Where it comes from                                                                                                                                                  |
+| --------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SMTP_HOST`           | `smtp-<account>.alwaysdata.net`               | `smtpHost()` in `src/environments.ts`, from the account name                                                                                                         |
+| `SMTP_PORT`           | `465`, TLS from the first byte                | `smtpPort` in `src/environments.ts`. The only port Alwaysdata's login details page lists                                                                             |
+| `SMTP_USER`           | `noreply@padvinder.net`                       | Secret `SMTP_USER`. Alwaysdata's SMTP login is the full mailbox address                                                                                              |
+| `SMTP_PASSWORD`       | The mailbox's password                        | Secret `SMTP_PASSWORD`                                                                                                                                               |
+| `MAIL_FROM`           | `PadVinder <noreply@padvinder.net>`           | `mailFrom` in `src/environments.ts`. Must be the mailbox `SMTP_USER` logs in as                                                                                      |
+| `MAIL_SUBJECT_PREFIX` | `[STAGING]` on staging, not set on production | `mailSubjectPrefix` in `src/environments.ts`. The API puts it and a space before the subject of every mail, so a mail from staging cannot be mistaken for a real one |
 
 **The mailbox name is fixed by `mailFrom`:** the mailbox must be `noreply@padvinder.net`, and `SMTP_USER` must be that address. Alwaysdata's SMTP server sends as the mailbox it logs in as, so while the SMTP host is Alwaysdata's, provisioning refuses an `SMTP_USER` that differs from the address in `mailFrom` (the error names the variable, not the values). Another mailbox name means changing `mailFrom` in a pull request first.
 
@@ -326,6 +327,8 @@ NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/adm
 - **Logs** are in `/home/<account>/admin/logs/services/<folder>/<service id>-<date>.log` (service output: API and worker, with Alwaysdata's own lines), `/home/<account>/admin/logs/http/` (requests) and `/home/<account>/admin/logs/sites/` (site starts and errors). Read them over SSH, or in the panel. The deploy steps are in the GitHub Actions run.
 - **Processes and memory:** the panel, Advanced, Processes. Services run on servers separate from SSH.
 - **Backups:** Alwaysdata makes a daily dump in `/home/<account>/admin/backup/<date>/postgresql/<database>.sql.zst`. A second, hourly copy elsewhere during the season is planned, not built.
+
+- **Mails from staging carry `[STAGING]`.** After the pull request that added `MAIL_SUBJECT_PREFIX` is merged, run Provision for `staging` with `apply` on once (it rewrites the env file with the new line), then restart staging's services (`pnpm infra:services --environment staging --restart`) or wait for the next deploy. Until then staging's mails have no prefix; nothing breaks.
 
 ### Rotation schedule
 

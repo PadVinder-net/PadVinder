@@ -17,7 +17,8 @@ export interface Mailer {
 type SmtpEnv = Pick<
   ApiEnv,
   "SMTP_HOST" | "SMTP_PORT" | "SMTP_USER" | "SMTP_PASSWORD" | "MAIL_FROM"
->;
+> &
+  Partial<Pick<ApiEnv, "MAIL_SUBJECT_PREFIX">>;
 
 // With credentials, TLS is required so they never travel in plaintext.
 export function smtpTransportOptions(env: SmtpEnv) {
@@ -41,7 +42,10 @@ export function createSmtpMailer(env: SmtpEnv): Mailer & { close(): void } {
       await transport.sendMail({
         from: env.MAIL_FROM,
         to: mail.to,
-        subject: mail.subject,
+        subject:
+          env.MAIL_SUBJECT_PREFIX === undefined
+            ? mail.subject
+            : `${env.MAIL_SUBJECT_PREFIX} ${mail.subject}`,
         text: mail.text,
         html: mail.html,
       });
