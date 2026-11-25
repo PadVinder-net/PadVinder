@@ -10,6 +10,14 @@ export type NavItem = { label: string; to: string };
  */
 export function navigationFor(me: MeResponse): NavItem[] {
   const items: NavItem[] = [];
+  if (managesSomething(me)) items.push({ label: "Werkgroepen", to: "/working-groups" });
+  const [onlyOrganization, ...otherOrganizations] = me.organizationAdminOf;
+  if (me.user.isPlatformAdmin || otherOrganizations.length > 0) {
+    items.push({ label: "Organisaties", to: "/organizations" });
+  } else if (onlyOrganization) {
+    // An admin of one organization goes straight to it.
+    items.push({ label: "Organisatie", to: `/organizations/${onlyOrganization.id}` });
+  }
   if (me.user.isPlatformAdmin) items.push({ label: "Soorten", to: "/species" });
   if (me.user.isPlatformAdmin) items.push({ label: "Systeemstatus", to: "/system" });
   return items;

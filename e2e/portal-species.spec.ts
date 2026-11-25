@@ -24,6 +24,12 @@ async function fillSpeciesForm(page: Page, dutchName: string, scientificName: st
 test("a platform admin adds, renames and switches off a species", async ({ page }) => {
   await logInAsPlatformAdmin(page, "soorten");
   await page.goto("/");
+  // Home sends a platform admin to the first item, Werkgroepen.
+  await expect(page).toHaveURL(/\/working-groups$/);
+  await page
+    .getByRole("navigation", { name: "Beheer" })
+    .getByRole("link", { name: "Soorten" })
+    .click();
   await expect(page).toHaveURL(/\/species$/);
   await expect(page.getByRole("heading", { name: "Soorten" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Gewone pad", exact: true })).toBeVisible();

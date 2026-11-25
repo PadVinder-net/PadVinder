@@ -67,6 +67,7 @@ export {
   type OrganizationFormProps,
   type OrganizationFormValues,
 } from "./components/administration/organization-form";
+export { invalidEmailMessage } from "./components/administration/field";
 export {
   WorkingGroupForm,
   type WorkingGroupFormProps,

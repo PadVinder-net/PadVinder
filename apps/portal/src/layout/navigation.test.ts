@@ -15,13 +15,49 @@ const organizationAdminMe: MeResponse = {
   organizationAdminOf: twoOrganizationsMeFixture.organizationAdminOf,
 };
 
+/** An admin of two organizations, without any membership. */
+const twoOrganizationAdminMe: MeResponse = {
+  ...applicantMeFixture,
+  organizationAdminOf: [
+    ...twoOrganizationsMeFixture.organizationAdminOf,
+    { id: "0192f3c0-0000-7000-8000-0000000000a1", name: "Paddentrek Voorbeeldstad" },
+  ],
+};
+
 test("navigationFor", () => {
-  expect(navigationFor(platformAdminMeFixture)).toEqual([
-    { label: "Soorten", to: "/species" },
-    { label: "Systeemstatus", to: "/system" },
+  expect(navigationFor(coordinatorMeFixture).map((item) => item.to)).toEqual(["/working-groups"]);
+  // An admin of exactly one organization goes straight to it.
+  expect(navigationFor(twoOrganizationsMeFixture).map((item) => [item.label, item.to])).toEqual([
+    ["Werkgroepen", "/working-groups"],
+    ["Organisatie", "/organizations/0192f3c0-0000-7000-8000-0000000000a2"],
   ]);
-  expect(navigationFor(coordinatorMeFixture)).toEqual([]);
-  expect(navigationFor(organizationAdminMe)).toEqual([]);
+  expect(navigationFor(organizationAdminMe)).toEqual([
+    { label: "Werkgroepen", to: "/working-groups" },
+    { label: "Organisatie", to: "/organizations/0192f3c0-0000-7000-8000-0000000000a2" },
+  ]);
+  expect(navigationFor(twoOrganizationAdminMe).map((item) => [item.label, item.to])).toEqual([
+    ["Werkgroepen", "/working-groups"],
+    ["Organisaties", "/organizations"],
+  ]);
+  expect(navigationFor(platformAdminMeFixture).map((item) => item.to)).toEqual([
+    "/working-groups",
+    "/organizations",
+    "/species",
+    "/system",
+  ]);
+  expect(navigationFor(platformAdminMeFixture).map((item) => item.label)).toEqual([
+    "Werkgroepen",
+    "Organisaties",
+    "Soorten",
+    "Systeemstatus",
+  ]);
+  // A platform admin who also administers one organization sees all of them.
+  expect(
+    navigationFor({
+      ...platformAdminMeFixture,
+      organizationAdminOf: twoOrganizationsMeFixture.organizationAdminOf,
+    }).map((item) => item.to),
+  ).toEqual(["/working-groups", "/organizations", "/species", "/system"]);
   expect(navigationFor(meFixture)).toEqual([]);
   expect(navigationFor(applicantMeFixture)).toEqual([]);
 });

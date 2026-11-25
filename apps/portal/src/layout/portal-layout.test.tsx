@@ -1,6 +1,7 @@
 import { FakeEventSource, mockFetch } from "@padvinder/api-client/testing";
 import {
   healthyFixture,
+  managedWorkingGroupsFixture,
   meFixture,
   platformAdminMeFixture,
   speciesFixture,
@@ -23,8 +24,18 @@ test("the layout shows the items, the name and Log uit", async () => {
   renderPortal("/system");
   const navigation = await screen.findByRole("navigation", { name: "Beheer" });
   const links = within(navigation).getAllByRole("link");
-  expect(links.map((link) => link.textContent)).toEqual(["Soorten", "Systeemstatus"]);
-  expect(links.map((link) => link.getAttribute("href"))).toEqual(["/species", "/system"]);
+  expect(links.map((link) => link.textContent)).toEqual([
+    "Werkgroepen",
+    "Organisaties",
+    "Soorten",
+    "Systeemstatus",
+  ]);
+  expect(links.map((link) => link.getAttribute("href"))).toEqual([
+    "/working-groups",
+    "/organizations",
+    "/species",
+    "/system",
+  ]);
   expect(screen.getByText("PadVinder")).toBeVisible();
   expect(screen.getByText(platformAdminMeFixture.user.name)).toBeVisible();
   expect(screen.getByRole("button", { name: "Log uit" })).toBeVisible();
@@ -60,8 +71,8 @@ test("the layout opens the live stream", async () => {
 test("when me changes to a platform admin, the items appear without a reload", async () => {
   const routesByUrl: Record<string, unknown> = {
     "/api/me": meFixture,
-    // Home sends a platform admin on to the species page.
-    "/api/species": { species: speciesFixture },
+    // Home sends a platform admin on to the working groups.
+    "/api/managed-working-groups": { workingGroups: managedWorkingGroupsFixture },
   };
   mockFetch(routesByUrl);
   renderPortal("/");
@@ -75,7 +86,7 @@ test("when me changes to a platform admin, the items appear without a reload", a
   const navigation = await screen.findByRole("navigation", { name: "Beheer" });
   expect(within(navigation).getByRole("link", { name: "Soorten" })).toBeVisible();
   expect(within(navigation).getByRole("link", { name: "Systeemstatus" })).toBeVisible();
-  expect(await screen.findByRole("cell", { name: "Gewone pad" })).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Noord" })).toBeVisible();
 });
 
 test("when a platform admin loses the flag, an open /system turns into not found", async () => {

@@ -3,65 +3,21 @@ import { meFixture, platformAdminMeFixture, speciesFixture } from "@padvinder/co
 import type { Species } from "@padvinder/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import { renderPortal } from "../testing/render-portal";
-
-type RecordedRequest = { method: string; path: string; body: unknown };
-
-let restoreFetch: (() => void) | undefined;
-afterEach(() => {
-  restoreFetch?.();
-  restoreFetch = undefined;
-});
-
-/** mockFetch keeps only paths, so wrap fetch to record every request with its method and JSON body. */
-function recordRequests() {
-  const requests: RecordedRequest[] = [];
-  const inner = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const request = new Request(input, init);
-    const text = await request.clone().text();
-    requests.push({
-      method: request.method,
-      path: new URL(request.url).pathname,
-      body: text === "" ? undefined : JSON.parse(text),
-    });
-    return inner(request);
-  };
-  restoreFetch = () => (globalThis.fetch = inner);
-  return requests;
-}
-
-/**
- * Holds back every request that `match` picks until the test calls `release`, so the test can act
- * while a save runs.
- */
-function holdRequests(match: (request: Request) => boolean) {
-  const inner = globalThis.fetch;
-  let release!: () => void;
-  const released = new Promise<void>((resolve) => (release = resolve));
-  globalThis.fetch = async (input, init) => {
-    const request = new Request(input, init);
-    if (match(request)) await released;
-    return inner(request);
-  };
-  restoreFetch = () => (globalThis.fetch = inner);
-  return release;
-}
+import {
+  errorResponse,
+  holdRequests,
+  neverAnswer,
+  recordRequests,
+  requestsTo,
+  type RecordedRequest,
+} from "../testing/requests";
 
 const isPatch = (request: Request) => request.method === "PATCH";
 
 const speciesRequests = (requests: RecordedRequest[], method: string) =>
-  requests.filter(
-    (request) => request.method === method && request.path.startsWith("/api/species"),
-  );
-
-function errorResponse(status: number, code: string, issues?: { path: string; message: string }[]) {
-  return Response.json(
-    { statusCode: status, error: "Error", message: "x", code, ...(issues ? { issues } : {}) },
-    { status },
-  );
-}
+  requestsTo(requests, method, "/api/species");
 
 const newSpecies: Species = {
   id: "0192f3c0-0000-7000-8000-0000000000aa",
@@ -104,12 +60,7 @@ test("shows the species in the given order", async () => {
 
 test("while the species load, the page says so", async () => {
   mockFetch({ "/api/me": platformAdminMeFixture });
-  const inner = globalThis.fetch;
-  globalThis.fetch = (input, init) =>
-    new Request(input, init).url.endsWith("/api/species")
-      ? new Promise<Response>(() => {})
-      : inner(input, init);
-  restoreFetch = () => (globalThis.fetch = inner);
+  neverAnswer((request) => request.url.endsWith("/api/species"));
   renderPortal("/species");
   expect(await screen.findByText("Soorten laden…")).toBeVisible();
   expect(screen.getByRole("heading", { level: 1, name: "Soorten" })).toBeVisible();
