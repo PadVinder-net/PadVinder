@@ -113,3 +113,46 @@ test("an error that arrives while the delete dialog is open shows inside it", as
     "Het lukt nu niet.",
   );
 });
+
+test("the profile shows the pending request with Trek aanmelding in, or the button to join another group, never both", async () => {
+  const onWithdrawRequest = vi.fn();
+  const onJoinAnother = vi.fn();
+  const base = {
+    me: meFixture,
+    saving: false,
+    deleting: false,
+    onSave: vi.fn(),
+    onDelete: vi.fn(),
+  };
+  const { rerender } = render(
+    <ProfileForm
+      {...base}
+      pendingRequest={{ workingGroupName: "Zuid" }}
+      onWithdrawRequest={onWithdrawRequest}
+      onJoinAnother={onJoinAnother}
+    />,
+  );
+  expect(screen.getByText("Je aanmelding bij Zuid wacht op goedkeuring.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Meld je aan bij nog een werkgroep" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Trek aanmelding in" }));
+  expect(onWithdrawRequest).toHaveBeenCalledOnce();
+
+  rerender(
+    <ProfileForm
+      {...base}
+      withdrawing
+      pendingRequest={{ workingGroupName: "Zuid" }}
+      onWithdrawRequest={onWithdrawRequest}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Even geduld…" })).toBeDisabled();
+
+  rerender(<ProfileForm {...base} onJoinAnother={onJoinAnother} />);
+  expect(screen.queryByText(/wacht op goedkeuring/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Trek aanmelding in" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Meld je aan bij nog een werkgroep" }));
+  expect(onJoinAnother).toHaveBeenCalledOnce();
+
+  rerender(<ProfileForm {...base} />);
+  expect(screen.queryByRole("button", { name: "Meld je aan bij nog een werkgroep" })).toBeNull();
+});

@@ -32,3 +32,11 @@ export const WithError: Story = {
 };
 export const TwoGroups: Story = { args: { me: twoOrganizationsMeFixture } };
 export const NoGroups: Story = { args: { me: applicantMeFixture } };
+export const WithPendingRequest: Story = {
+  args: {
+    pendingRequest: { workingGroupName: "Zuid" },
+    onWithdrawRequest: () => {},
+    withdrawing: false,
+  },
+};
+export const CanJoinAnother: Story = { args: { onJoinAnother: () => {} } };
