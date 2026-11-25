@@ -17,6 +17,8 @@ export const apiErrorCodes = {
   membershipChanged: "membership_changed",
   /** The user is the only platform admin, so they cannot delete their account. */
   lastPlatformAdmin: "last_platform_admin",
+  /** Another species has this name (`issues[0].path` says which field). */
+  nameTaken: "name_taken",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];

@@ -20,20 +20,29 @@ const REASONS: Record<number, string> = {
 
 const reasonFor = (statusCode: number): string => REASONS[statusCode] ?? "Error";
 
+export type ApiErrorIssue = { path: string; message: string };
+
 /** An error a route throws on purpose. It becomes the response body as is. */
 export class ApiError extends Error {
   constructor(
     readonly statusCode: number,
     readonly code: ApiErrorCode,
     message: string,
+    /** Which fields the error is about, such as the taken name of `name_taken`. */
+    readonly issues?: ApiErrorIssue[],
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-export function apiError(statusCode: number, code: ApiErrorCode, message: string): ApiError {
-  return new ApiError(statusCode, code, message);
+export function apiError(
+  statusCode: number,
+  code: ApiErrorCode,
+  message: string,
+  issues?: ApiErrorIssue[],
+): ApiError {
+  return new ApiError(statusCode, code, message, issues);
 }
 
 /** The body of an error response, for code that replies without throwing (hooks). */
@@ -41,8 +50,15 @@ export function apiErrorBody(
   statusCode: number,
   code: ApiErrorCode,
   message: string,
+  issues?: ApiErrorIssue[],
 ): ApiErrorBody {
-  return { statusCode, error: reasonFor(statusCode), message, code };
+  return {
+    statusCode,
+    error: reasonFor(statusCode),
+    message,
+    code,
+    ...(issues !== undefined && { issues }),
+  };
 }
 
 /** For a route's `schema.response`: `response: { 200: ..., ...errorResponses(400, 401) }`. */
@@ -78,7 +94,7 @@ export function addErrorHandling(app: FastifyInstance): void {
     if (error instanceof ApiError) {
       return reply
         .code(error.statusCode)
-        .send(apiErrorBody(error.statusCode, error.code, error.message));
+        .send(apiErrorBody(error.statusCode, error.code, error.message, error.issues));
     }
     if (hasZodFastifySchemaValidationErrors(error)) {
       const body: ApiErrorBody = {

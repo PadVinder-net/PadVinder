@@ -130,3 +130,14 @@ test("authorize throws 404 for hidden and 403 for forbidden", () => {
   );
   expect(() => authorize(actors.coordinator, contact)).not.toThrow();
 });
+
+test("only a platform admin manages species; for others it is forbidden, not hidden", () => {
+  const permission = { action: "platform.manageSpecies" } as const;
+  for (const [who, a] of Object.entries(actors)) {
+    expect(decide(a, permission), who).toBe(who === "platformAdmin" ? "allowed" : "forbidden");
+  }
+  expect(() => authorize(actors.organizationAdmin, permission)).toThrowError(
+    expect.objectContaining({ statusCode: 403, code: "not_allowed" }),
+  );
+  expect(() => authorize(actors.platformAdmin, permission)).not.toThrow();
+});

@@ -15,6 +15,9 @@ beforeAll(async () => {
   app.get("/api/conflict", async () => {
     throw apiError(409, "not_allowed", "Nope");
   });
+  app.get("/api/conflict-with-issues", async () => {
+    throw apiError(409, "name_taken", "Taken", [{ path: "dutchName", message: "In use" }]);
+  });
   app.post(
     "/api/validated",
     {
@@ -36,6 +39,19 @@ test("an ApiError becomes its body", async () => {
   const res = await app.inject("/api/conflict");
   expect(res.statusCode).toBe(409);
   expect(apiErrorSchema.parse(res.json())).toMatchObject({ statusCode: 409, code: "not_allowed" });
+});
+
+test("an ApiError with issues carries them in its body; without them the key is absent", async () => {
+  const res = await app.inject("/api/conflict-with-issues");
+  expect(res.statusCode).toBe(409);
+  expect(apiErrorSchema.parse(res.json())).toEqual({
+    statusCode: 409,
+    error: "Conflict",
+    message: "Taken",
+    code: "name_taken",
+    issues: [{ path: "dutchName", message: "In use" }],
+  });
+  expect(Object.keys((await app.inject("/api/conflict")).json())).not.toContain("issues");
 });
 
 test("a validation failure is 400 invalid_request with issues", async () => {

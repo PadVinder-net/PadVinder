@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { approveMembershipRequest, createMembershipRequest, deleteMe, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, withdrawMembershipRequest } from '../sdk.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { approveMembershipRequest, createMembershipRequest, createSpecies, deleteMe, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, updateSpecies, withdrawMembershipRequest } from '../sdk.gen';
+import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -188,6 +188,58 @@ export const removeMembershipMutation = (options?: Partial<Options<RemoveMembers
     const mutationOptions: UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await removeMembership({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listSpeciesQueryKey = (options?: Options<ListSpeciesData>) => createQueryKey('listSpecies', options);
+
+/**
+ * All species, switched off or not, in Dutch order of the Dutch name
+ */
+export const listSpeciesOptions = (options?: Options<ListSpeciesData>) => queryOptions<ListSpeciesResponse, ListSpeciesError, ListSpeciesResponse, ReturnType<typeof listSpeciesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listSpecies({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listSpeciesQueryKey(options)
+});
+
+/**
+ * Add a species (platform admins)
+ */
+export const createSpeciesMutation = (options?: Partial<Options<CreateSpeciesData>>): UseMutationOptions<CreateSpeciesResponse, CreateSpeciesError, Options<CreateSpeciesData>> => {
+    const mutationOptions: UseMutationOptions<CreateSpeciesResponse, CreateSpeciesError, Options<CreateSpeciesData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createSpecies({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Change a species's names, its check, or switch it off or on (platform admins). Saving without a change is 200 too
+ */
+export const updateSpeciesMutation = (options?: Partial<Options<UpdateSpeciesData>>): UseMutationOptions<UpdateSpeciesResponse, UpdateSpeciesError, Options<UpdateSpeciesData>> => {
+    const mutationOptions: UseMutationOptions<UpdateSpeciesResponse, UpdateSpeciesError, Options<UpdateSpeciesData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateSpecies({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
