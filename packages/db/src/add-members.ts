@@ -30,6 +30,15 @@ export type AddMemberResult = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * `occurred_at` after `now - 24h`. There is deliberately no upper bound at `now`: `occurred_at`
+ * is the database's time when the writing transaction started, `now` the API's time when the
+ * request started. An entry that a request at the same moment committed after this request's
+ * `now` (a double click, two coordinators with the same list) must count, or the person gets a
+ * second invitation mail and the limit misses those additions.
+ */
+const inLastDay = (now: Date) => [gt(auditLogEntries.occurredAt, new Date(now.getTime() - DAY_MS))];
+
 /** The entries that count as adding someone, for the limit per account per 24 hours. */
 const ADDITION_ACTIONS: AuditAction[] = ["membership.added", "membership.invited"];
 
@@ -59,7 +68,7 @@ export async function countAdditionsInLastDay(db: Db, userId: string, now: Date)
       and(
         eq(auditLogEntries.actorUserId, userId),
         inArray(auditLogEntries.action, ADDITION_ACTIONS),
-        gt(auditLogEntries.occurredAt, new Date(now.getTime() - DAY_MS)),
+        ...inLastDay(now),
       ),
     );
   return additions;
@@ -244,7 +253,7 @@ async function wasInvitedInLastDay(
         eq(auditLogEntries.subjectId, userId),
         eq(auditLogEntries.action, "membership.invited"),
         sql`${auditLogEntries.details}->>'workingGroupId' = ${workingGroupId}`,
-        gt(auditLogEntries.occurredAt, new Date(now.getTime() - DAY_MS)),
+        ...inLastDay(now),
       ),
     )
     .limit(1);

@@ -54,7 +54,7 @@ async function addMember(
       name,
       email: `${randomUUID()}@example.test`,
       phone: name === "Zoë" ? null : "06 11112222",
-      emailVerified: true,
+      emailVerified: loggedIn,
       lastLoginAt: loggedIn ? new Date() : null,
     })
     .returning({ id: users.id });
@@ -385,4 +385,31 @@ test("removing someone who logged in keeps the account", async () => {
   ).toEqual({ outcome: "removed", accountDeleted: false });
   const [user] = await t!.db.select().from(users).where(eq(users.id, m.userId));
   expect(user).toMatchObject({ name: "Ingelogd", deletedAt: null });
+});
+
+test("when deleting the unused account fails, the removal stands and the error is handed back", async () => {
+  const m = await addMember("Faalt", "volunteer", { loggedIn: false });
+  const remover = await addMember("Verwijderaar vier", "coordinator");
+  // A trigger that refuses this one deletion, with personal data in its message.
+  await t!.db.execute(
+    sql.raw(`create function refuse_deletion() returns trigger language plpgsql as $$
+      begin raise exception 'refused for %', old.email; end $$;
+      create trigger refuse_deletion before update on users for each row
+      when (old.id = '${m.userId}' and new.deleted_at is not null) execute function refuse_deletion();`),
+  );
+  try {
+    const result = await removeMembership(t!.db, {
+      membershipId: m.membershipId,
+      removedBy: remover.userId,
+    });
+    expect(result).toMatchObject({ outcome: "removed", accountDeleted: false });
+    expect(result).toHaveProperty("cleanupError", expect.any(Error));
+    expect(await getMembership(t!.db, m.membershipId)).toBeNull();
+    const [user] = await t!.db.select().from(users).where(eq(users.id, m.userId));
+    expect(user).toMatchObject({ name: "Faalt", deletedAt: null });
+  } finally {
+    await t!.db.execute(
+      sql.raw(`drop trigger refuse_deletion on users; drop function refuse_deletion();`),
+    );
+  }
 });

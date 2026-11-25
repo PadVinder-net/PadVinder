@@ -1129,6 +1129,9 @@ test("onlyIfUnused deletes an unused account, with the given actor", async () =>
 test("onlyIfUnused keeps an account that logged in, has a role or a pending request", async () => {
   const loggedIn = await unusedUser();
   await db().update(users).set({ lastLoginAt: now }).where(eq(users.id, loggedIn));
+  // In the middle of a first login: the address is verified, `last_login_at` not yet set.
+  const loggingIn = await unusedUser();
+  await db().update(users).set({ emailVerified: true }).where(eq(users.id, loggingIn));
   const member = await unusedUser();
   await db().insert(workingGroupMemberships).values({ userId: member, workingGroupId: groups[0]! });
   const admin = await unusedUser();
@@ -1143,7 +1146,7 @@ test("onlyIfUnused keeps an account that logged in, has a role or a pending requ
     requestedAt: now,
     receivedAt: now,
   });
-  for (const userId of [loggedIn, member, admin, platformAdmin, applicant]) {
+  for (const userId of [loggedIn, loggingIn, member, admin, platformAdmin, applicant]) {
     expect(await deleteAccount(db(), { userId, now, onlyIfUnused: true })).toEqual({
       outcome: "kept",
     });

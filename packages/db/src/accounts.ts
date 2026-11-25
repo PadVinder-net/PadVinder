@@ -149,15 +149,18 @@ async function findBlockers(tx: DbTransaction, userId: string): Promise<AccountD
 }
 
 /**
- * Whether the account has logged in, or has a membership, an admin row, a pending request or the
+ * Whether the account has logged in (or is logging in for the first time), or has a membership, an admin row, a pending request or the
  * platform admin flag. Read under the locks of `deleteAccount`.
  */
 async function isInUse(
   tx: DbTransaction,
   userId: string,
-  user: { isPlatformAdmin: boolean; lastLoginAt: Date | null },
+  user: { isPlatformAdmin: boolean; lastLoginAt: Date | null; emailVerified: boolean },
 ): Promise<boolean> {
-  if (user.lastLoginAt !== null || user.isPlatformAdmin) return true;
+  // A first login verifies the address before Better Auth's `session.create.after` hook sets
+  // `last_login_at`: an account caught between the two counts as used, so it is never deleted
+  // under someone who is logging in for the first time.
+  if (user.lastLoginAt !== null || user.emailVerified || user.isPlatformAdmin) return true;
   const [membership] = await tx
     .select({ id: workingGroupMemberships.id })
     .from(workingGroupMemberships)
@@ -234,6 +237,7 @@ export async function deleteAccount(
         email: users.email,
         isPlatformAdmin: users.isPlatformAdmin,
         lastLoginAt: users.lastLoginAt,
+        emailVerified: users.emailVerified,
       })
       .from(users)
       .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))

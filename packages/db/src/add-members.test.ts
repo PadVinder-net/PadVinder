@@ -491,3 +491,22 @@ test("countAdditionsInLastDay counts added and invited of this actor, not approv
   expect(await countAdditionsInLastDay(db(), admin!.id, now)).toBe(1);
   expect(await countAdditionsInLastDay(db(), addedBy, new Date(now.getTime() + 25 * HOUR))).toBe(0);
 });
+
+test("an entry written after now counts in both windows, as one from a request at the same moment", async () => {
+  const { workingGroupId, addedBy } = await setup();
+  const userId = await loggedInUser("bekend@example.test");
+  const queue = recordingQueue();
+  // Taken before the other request writes, as a route takes `now` when its request starts.
+  const now = new Date();
+  const invite = () =>
+    addMemberByEmail(
+      db(),
+      { workingGroupId, email: "bekend@example.test", addedBy, now },
+      { queueMail: queue.queueMail },
+    );
+  await invite();
+  expect(await countAdditionsInLastDay(db(), addedBy, now)).toBe(1);
+  await invite();
+  expect(await entriesAbout(userId)).toHaveLength(1);
+  expect(queue.jobs).toHaveLength(1);
+});

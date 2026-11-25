@@ -98,8 +98,11 @@ export async function getMembership(
 }
 
 export type RemoveMembershipResult =
-  /** `accountDeleted`: the removed person's account was deleted too (see `removeMembership`). */
-  | { outcome: "removed"; accountDeleted: boolean }
+  /**
+   * `accountDeleted`: the removed person's account was deleted too (see `removeMembership`).
+   * `cleanupError`: that deletion failed with this error; the removal stands. For the log only.
+   */
+  | { outcome: "removed"; accountDeleted: boolean; cleanupError?: unknown }
   | { outcome: "not_found" | "coordinator_changed" | "last_coordinator" };
 
 /**
@@ -121,8 +124,9 @@ export type RemoveMembershipResult =
  * (the user's request lock before working groups). `deleteAccount` reads everything again under
  * its own locks, so a membership, a request or a login that came in between keeps the account.
  * The removal stands whatever the second step does: if it fails (a deadlock, a lost connection),
- * the error is not passed on and `accountDeleted` is false. An unused account left behind is
- * harmless, and the caller must not answer an error for a removal that was committed.
+ * the answer is still `removed`, with `accountDeleted` false and the error in `cleanupError`, for
+ * the caller to log. An unused account left behind is harmless, and the caller must not answer an
+ * error for a removal that was committed.
  */
 export async function removeMembership(
   db: Db,
@@ -179,11 +183,15 @@ export async function removeMembership(
   if (result.outcome !== "removed") return result;
   // Only an account that never logged in can be unused; skip the locks of `deleteAccount` else.
   if (result.hasLoggedIn) return { outcome: "removed", accountDeleted: false };
-  const deletion = await deleteAccount(db, {
-    userId: result.userId,
-    now: new Date(),
-    deletedBy: { kind: "user", userId: input.removedBy },
-    onlyIfUnused: true,
-  }).catch(() => null);
-  return { outcome: "removed", accountDeleted: deletion?.outcome === "deleted" };
+  try {
+    const deletion = await deleteAccount(db, {
+      userId: result.userId,
+      now: new Date(),
+      deletedBy: { kind: "user", userId: input.removedBy },
+      onlyIfUnused: true,
+    });
+    return { outcome: "removed", accountDeleted: deletion.outcome === "deleted" };
+  } catch (cleanupError) {
+    return { outcome: "removed", accountDeleted: false, cleanupError };
+  }
 }
