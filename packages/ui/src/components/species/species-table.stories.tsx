@@ -6,14 +6,8 @@ const meta = {
   title: "SpeciesTable",
   component: SpeciesTable,
   args: { species: speciesFixture, onEdit: () => {}, onSetActive: () => {} },
-  decorators: [
-    (Story) => (
-      // The portal is a desktop layout.
-      <div className="w-[900px]">
-        <Story />
-      </div>
-    ),
-  ],
+  // The portal is a desktop layout.
+  parameters: { visualViewport: { width: 1024, height: 768 } },
 } satisfies Meta<typeof SpeciesTable>;
 export default meta;
 

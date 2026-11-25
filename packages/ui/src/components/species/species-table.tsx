@@ -34,13 +34,15 @@ export function SpeciesTable({ species, onEdit, onSetActive }: SpeciesTableProps
             </TableCell>
             <TableCell>{yesNo(item.needsVerification)}</TableCell>
             <TableCell>{yesNo(item.active)}</TableCell>
-            <TableCell className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => onEdit(item.id)}>
-                Wijzig
-              </Button>
-              <Button variant="outline" onClick={() => onSetActive(item.id, !item.active)}>
-                {item.active ? "Zet uit" : "Zet aan"}
-              </Button>
+            <TableCell>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => onEdit(item.id)}>
+                  Wijzig
+                </Button>
+                <Button variant="outline" onClick={() => onSetActive(item.id, !item.active)}>
+                  {item.active ? "Zet uit" : "Zet aan"}
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}
