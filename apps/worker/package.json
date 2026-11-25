@@ -13,12 +13,15 @@
   },
   "dependencies": {
     "drizzle-orm": "1.0.0-rc.6",
+    "nodemailer": "^10.6.1",
     "pg": "^8.23.1",
     "pg-boss": "^12.38.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@padvinder/db": "workspace:*",
+    "@padvinder/mail": "workspace:*",
+    "@types/nodemailer": "^8.0.2",
     "tsdown": "^0.23.7",
     "tsx": "^4.23.15"
   }

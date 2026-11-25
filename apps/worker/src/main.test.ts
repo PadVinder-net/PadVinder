@@ -34,7 +34,14 @@ test("SIGHUP shuts down cleanly with exit 0", async () => {
   // Alwaysdata restarts a service by sending SIGTERM and starting it again once it exits. SIGHUP is handled the same way.
   const child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
     cwd: `${import.meta.dirname}/..`,
-    env: { PATH: process.env.PATH ?? "", DATABASE_URL: t!.url },
+    env: {
+      PATH: process.env.PATH ?? "",
+      DATABASE_URL: t!.url,
+      PUBLIC_ORIGIN: "http://localhost:4101",
+      SMTP_HOST: "localhost",
+      SMTP_PORT: "54325",
+      MAIL_FROM: "PadVinder <noreply@padvinder.test>",
+    },
   });
   let stdout = "";
   const closed = new Promise<number | null>((resolve) => child.on("close", resolve));

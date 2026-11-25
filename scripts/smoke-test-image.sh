@@ -59,19 +59,21 @@ docker run --name "$admin" "${common[@]}" "$image" \
   || fail "the admin tool failed"
 
 echo "Starting the worker and the API"
+# The allowed origin must name the published port, so pick a free port up front.
+port="$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
+# The API and the worker read the same mail settings; without them the worker exits.
+mail=(-e "PUBLIC_ORIGIN=http://localhost:$port"
+  -e "SMTP_HOST=localhost" -e "SMTP_PORT=54325" -e "MAIL_FROM=PadVinder <noreply@padvinder.test>")
+
 worker="padvinder-smoke-worker-$run_id"
 containers+=("$worker")
-docker run -d --name "$worker" "${common[@]}" "$image" \
+docker run -d --name "$worker" "${common[@]}" "${mail[@]}" "$image" \
   node --env-file=release.env worker/dist/main.js >/dev/null
 
 api="padvinder-smoke-api-$run_id"
 containers+=("$api")
-# The allowed origin must name the published port, so pick a free port up front.
-port="$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
-docker run -d --name "$api" "${common[@]}" -e "ALLOWED_ORIGINS=http://localhost:$port" \
-  -e "PUBLIC_ORIGIN=http://localhost:$port" \
+docker run -d --name "$api" "${common[@]}" "${mail[@]}" -e "ALLOWED_ORIGINS=http://localhost:$port" \
   -e "AUTH_SECRET=smoke-test-secret-smoke-test-secret-0000" \
-  -e "SMTP_HOST=localhost" -e "SMTP_PORT=54325" -e "MAIL_FROM=PadVinder <noreply@padvinder.test>" \
   -p "127.0.0.1:$port:8080" "$image" >/dev/null
 base="http://127.0.0.1:$port"
 
