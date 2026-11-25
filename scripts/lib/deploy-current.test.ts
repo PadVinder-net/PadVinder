@@ -26,6 +26,11 @@ describe("deployPathsIgnore", () => {
     }
   });
 
+  test("throws for an item that is not a quoted pattern", () => {
+    const workflow = 'on:\n  push:\n    paths-ignore:\n      - "docs/**"\n      - LICENSE\n';
+    expect(() => deployPathsIgnore(workflow)).toThrow();
+  });
+
   test("throws when there is no list", () => {
     expect(() => deployPathsIgnore("on:\n  push:\n    branches:\n      - main\n")).toThrow();
   });
@@ -154,7 +159,7 @@ describe("checkDeploy in a git repository", () => {
         "commit.gpgsign=false",
         ...args,
       ],
-      { cwd: dir, encoding: "utf8" },
+      { cwd: dir, encoding: "utf8", stdio: "pipe" },
     ).trim();
   }
 
@@ -168,7 +173,6 @@ describe("checkDeploy in a git repository", () => {
   }
 
   let base = "";
-  let docsOne = "";
   let docsTwo = "";
   let release = "";
   let side = "";
@@ -181,7 +185,7 @@ describe("checkDeploy in a git repository", () => {
     git("checkout", "-b", "side");
     side = commit("apps/api/side.ts", "side");
     git("checkout", "main");
-    docsOne = commit("docs/one.md", "docs one");
+    commit("docs/one.md", "docs one");
     docsTwo = commit("AGENTS.md", "docs two");
     release = commit("apps/api/main.ts", "release change");
   });
@@ -201,7 +205,6 @@ describe("checkDeploy in a git repository", () => {
     expect(result.message).toContain(`main has moved on to ${docsTwo}`);
     expect(result.message).toContain("the 2 newer commits change only paths Deploy ignores");
     expect(result.message).toContain(`${base} is still the current release`);
-    expect(docsOne).not.toBe(docsTwo);
   });
 
   test("a newer commit that changes the release is named", () => {

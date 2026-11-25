@@ -19,7 +19,12 @@ export type DeployDecision =
 export function deployPathsIgnore(workflow: string): string[] {
   const items = /^ {4}paths-ignore:\n((?: {6}- .*\n)+)/m.exec(workflow)?.[1];
   if (!items) throw new Error("deploy.yml has no paths-ignore under push.");
-  const patterns = [...items.matchAll(/- "([^"]+)"/g)].map((match) => match[1] ?? "");
+  const itemLines = items.split("\n").filter((line) => line !== "");
+  const patterns = itemLines.map((line) => {
+    const pattern = /^ {6}- "([^"]+)"$/.exec(line)?.[1];
+    if (!pattern) throw new Error(`Cannot read this paths-ignore item of deploy.yml: ${line}`);
+    return pattern;
+  });
   if (patterns.length === 0) throw new Error("The paths-ignore of deploy.yml is empty.");
   return patterns;
 }
