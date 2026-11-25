@@ -51,29 +51,32 @@ export async function createTestApp(overrides: Partial<ApiEnv> = {}): Promise<Te
   }
 }
 
+/** How many login code requests per address were answered 200, so how many mails must arrive. */
+const answeredRequests = new WeakMap<object, Map<string, number>>();
+
 export async function requestCode(
   ctx: TestApp,
   email: string,
   headers: Record<string, string> = {},
 ): Promise<LightMyRequestResponse> {
-  const before = ctx.mailer.sent.length;
   const res = await ctx.app.inject({
     method: "POST",
     url: "/api/auth/email-otp/send-verification-otp",
     headers,
     payload: { email, type: "sign-in" },
   });
+  if (res.statusCode !== 200) return res;
+  const address = normalizeEmail(email);
+  const counts = answeredRequests.get(ctx) ?? new Map<string, number>();
+  answeredRequests.set(ctx, counts);
+  const expected = (counts.get(address) ?? 0) + 1;
+  counts.set(address, expected);
   // The API sends the mail without the request waiting for it (it looks up the name first), so
-  // wait for it here: the tests read the code right after.
-  for (
-    let i = 0;
-    res.statusCode === 200 &&
-    !ctx.mailer.sent
-      .slice(before)
-      .some((sent) => normalizeEmail(sent.to) === normalizeEmail(email)) &&
-    i < 100;
-    i++
-  ) {
+  // wait here until every mail for the 200 answers so far has arrived: the tests count mails and
+  // read the code right after, also with several requests at once.
+  const arrived = () =>
+    ctx.mailer.sent.filter((sent) => normalizeEmail(sent.to) === address).length;
+  for (let i = 0; arrived() < expected && i < 200; i++) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   return res;
