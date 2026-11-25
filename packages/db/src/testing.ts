@@ -1,7 +1,8 @@
 import { randomInt } from "node:crypto";
 import { connect, createServer, type Socket } from "node:net";
+import { sql } from "drizzle-orm";
 import pg from "pg";
-import { createDb, type Db } from "./client";
+import { createDb, type Db, type DbTransaction } from "./client";
 import { runMigrations } from "./migrate";
 
 export type TestDatabase = {
@@ -203,6 +204,51 @@ export async function startStallingProxy(databaseUrl: string): Promise<StallingP
     async close() {
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve) => server.close(resolve));
+    },
+  };
+}
+
+/**
+ * Waits until `waiting` connections to the database of `db` wait on a lock; fails after two
+ * seconds. With `holdLock`, a test of two changes at the same moment makes them overlap every
+ * time instead of only sometimes.
+ */
+export async function waitUntilBlocked(db: Db, waiting = 1): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    const [blocked] = await db
+      .execute<{ n: number }>(
+        sql`select count(*)::int as n from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'`,
+      )
+      .then((r) => r.rows);
+    if (blocked!.n >= waiting) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("No connection waited on a lock");
+}
+
+/**
+ * Takes a lock in its own transaction and holds it until `release()`, as another change in
+ * progress does. `release()` resolves when that transaction has ended.
+ */
+export async function holdLock(
+  db: Db,
+  lock: (tx: DbTransaction) => Promise<unknown>,
+): Promise<{ release(): Promise<void> }> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let locked!: () => void;
+  const ready = new Promise<void>((resolve) => (locked = resolve));
+  const holder = db.transaction(async (tx) => {
+    await lock(tx);
+    locked();
+    await released;
+  });
+  await Promise.race([ready, holder]);
+  return {
+    async release() {
+      release();
+      await holder;
     },
   };
 }

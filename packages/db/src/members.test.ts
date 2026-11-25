@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import {
   createOrganization,
@@ -10,7 +10,7 @@ import {
 } from "./admin";
 import { auditLogEntries, users, workingGroupMemberships } from "./schema";
 import { getMember, getMembership, listMembers, removeMembership } from "./members";
-import { createTestDatabase, type TestDatabase } from "./testing";
+import { createTestDatabase, holdLock, waitUntilBlocked, type TestDatabase } from "./testing";
 
 let t: TestDatabase | undefined;
 let groupId = "";
@@ -268,7 +268,15 @@ test("a coordinator removed and another losing the role at the same moment leave
     .select({ id: workingGroupMemberships.id })
     .from(workingGroupMemberships)
     .where(eq(workingGroupMemberships.userId, second.userId));
-  const [removal, revoke] = await Promise.allSettled([
+  // A share lock on the group's memberships lets both read and count, then holds both at their
+  // write (or, with the group lock, one at its write and the other at the lock), so they overlap
+  // every time.
+  const held = await holdLock(t!.db, (tx) =>
+    tx.execute(
+      sql`select id from working_group_memberships where working_group_id = ${group.workingGroupId} for share`,
+    ),
+  );
+  const changes = Promise.allSettled([
     removeMembership(t!.db, {
       membershipId: group.membershipId,
       removedBy: second.userId,
@@ -276,6 +284,9 @@ test("a coordinator removed and another losing the role at the same moment leave
     }),
     setCoordinator(t!.db, { membershipId: secondMembership!.id, isCoordinator: false }, system),
   ]);
+  await waitUntilBlocked(t!.db, 2);
+  await held.release();
+  const [removal, revoke] = await changes;
   const removed = removal.status === "fulfilled" && removal.value.outcome === "removed";
   const revoked = revoke.status === "fulfilled";
   expect([removed, revoked].filter(Boolean)).toHaveLength(1);

@@ -37,7 +37,7 @@ import {
   workingGroups,
 } from "./schema";
 import type { Db } from "./client";
-import { createTestDatabase, type TestDatabase } from "./testing";
+import { createTestDatabase, holdLock, waitUntilBlocked, type TestDatabase } from "./testing";
 import { getUserProfile, updateUserProfile } from "./users";
 
 let t: TestDatabase | undefined;
@@ -473,21 +473,6 @@ test("the only two platform admins deleting themselves at the same moment: exact
   }
 });
 
-/** Waits until `waiting` connections of this database wait on a lock; fails after two seconds. */
-async function waitUntilBlocked(waiting = 1): Promise<void> {
-  for (let i = 0; i < 100; i++) {
-    const [blocked] = await db()
-      .execute<{ n: number }>(
-        sql`select count(*)::int as n from pg_stat_activity
-          where datname = current_database() and wait_event_type = 'Lock'`,
-      )
-      .then((r) => r.rows);
-    if (blocked!.n >= waiting) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error("No connection waited on a lock");
-}
-
 test("an approval that holds the request while the account is deleted: no deadlock", async () => {
   // The approval's own order (decideMembershipRequest): lock the request row, update it, then
   // insert the membership, whose foreign key check takes a share lock on the users row.
@@ -512,7 +497,7 @@ test("an approval that holds the request while the account is deleted: no deadlo
   });
   await ready;
   const deletion = deleteAccount(db(), { userId: user.id, now });
-  await waitUntilBlocked();
+  await waitUntilBlocked(db());
   continueApproval();
   // Both finish: before the fix, PostgreSQL ended one of them with "deadlock detected".
   await approval;
@@ -553,7 +538,7 @@ test("a deletion and an approval waiting for the same request: no deadlock, no m
     decidedBy: decider.id,
     now,
   });
-  await waitUntilBlocked();
+  await waitUntilBlocked(db());
   release();
   await holder;
   const [deleted, decided] = await Promise.all([deletion, decision]);
@@ -872,28 +857,6 @@ test("the last platform admin who is also the last coordinator gets last_platfor
   }
 });
 
-/** Holds a row lock in its own transaction, as another change in progress does. */
-async function holdLock(
-  lock: (tx: Parameters<Parameters<Db["transaction"]>[0]>[0]) => Promise<unknown>,
-): Promise<{ release(): Promise<void> }> {
-  let release!: () => void;
-  const released = new Promise<void>((resolve) => (release = resolve));
-  let locked!: () => void;
-  const ready = new Promise<void>((resolve) => (locked = resolve));
-  const holder = db().transaction(async (tx) => {
-    await lock(tx);
-    locked();
-    await released;
-  });
-  await ready;
-  return {
-    async release() {
-      release();
-      await holder;
-    },
-  };
-}
-
 test("two coordinators of one group deleting their accounts at the same moment: one is deleted, one is blocked", async () => {
   const first = await newUser();
   const second = await newUser();
@@ -901,11 +864,11 @@ test("two coordinators of one group deleting their accounts at the same moment: 
   const group = await newGroup(organization, "Samen", first.email);
   await grantCoordinator(db(), { email: second.email, workingGroupId: group }, system);
   // Hold the group, so both deletions are under way before either can decide.
-  const held = await holdLock((tx) =>
+  const held = await holdLock(db(), (tx) =>
     tx.execute(sql`select id from working_groups where id = ${group} for no key update`),
   );
   const deletions = [first, second].map((user) => deleteAccount(db(), { userId: user.id, now }));
-  await waitUntilBlocked(2);
+  await waitUntilBlocked(db(), 2);
   await held.release();
   const results = await Promise.all(deletions);
   expect(results.map((r) => r.outcome).sort()).toEqual(["blocked", "deleted"]);
@@ -963,7 +926,7 @@ test("a deletion waits for a coordinator change in progress and counts after it"
   await grantCoordinator(db(), { email: second.email, workingGroupId: group }, system);
   // The other coordinator loses the role, as setCoordinator does it: lock the group, clear the
   // flag. The deletion starts before that commits, so it must wait for the group and read again.
-  const held = await holdLock(async (tx) => {
+  const held = await holdLock(db(), async (tx) => {
     await tx.execute(sql`select id from working_groups where id = ${group} for no key update`);
     await tx
       .update(workingGroupMemberships)
@@ -976,7 +939,7 @@ test("a deletion waits for a coordinator change in progress and counts after it"
       );
   });
   const deletion = deleteAccount(db(), { userId: first.id, now });
-  await waitUntilBlocked();
+  await waitUntilBlocked(db());
   await held.release();
   expect((await deletion).outcome).toBe("blocked");
   await expectUntouched(first);
@@ -987,7 +950,7 @@ test("a deletion waits for an admin removal in progress and counts after it", as
   const second = await newUser();
   const organization = await newOrganization(first.email);
   await grantOrganizationAdmin(db(), { email: second.email, organizationId: organization }, system);
-  const held = await holdLock(async (tx) => {
+  const held = await holdLock(db(), async (tx) => {
     await tx.execute(
       sql`select id from organizations where id = ${organization} for no key update`,
     );
@@ -1001,7 +964,7 @@ test("a deletion waits for an admin removal in progress and counts after it", as
       );
   });
   const deletion = deleteAccount(db(), { userId: first.id, now });
-  await waitUntilBlocked();
+  await waitUntilBlocked(db());
   await held.release();
   expect((await deletion).outcome).toBe("blocked");
   await expectUntouched(first);
@@ -1038,7 +1001,7 @@ test("a role given while the deletion waits for the user row is counted", async 
   // Another transaction makes a working group with the user as its only coordinator. Its
   // membership insert holds a key share lock on the user row, so the deletion, which read the
   // user's roles before, waits for the user row and must read them again.
-  const held = await holdLock(async (tx) => {
+  const held = await holdLock(db(), async (tx) => {
     await tx.execute(sql`select id from users where id = ${user.id} for key share`);
     const [group] = await tx
       .insert(workingGroups)
@@ -1049,7 +1012,7 @@ test("a role given while the deletion waits for the user row is counted", async 
       .values({ userId: user.id, workingGroupId: group!.id, isCoordinator: true });
   });
   const deletion = deleteAccount(db(), { userId: user.id, now });
-  await waitUntilBlocked();
+  await waitUntilBlocked(db());
   await held.release();
   expect(await deletion).toEqual({
     outcome: "blocked",
@@ -1108,7 +1071,7 @@ test.each([
     const granting = grant(user.email);
     // Keep a rejection from counting as unhandled while the deletion runs.
     granting.catch(() => {});
-    await waitUntilBlocked();
+    await waitUntilBlocked(db());
     continueDeletion();
     await deletion;
     await expect(granting).rejects.toMatchObject({ code: "user_not_found" });

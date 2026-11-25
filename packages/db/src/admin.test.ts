@@ -1,5 +1,5 @@
 import type { LiveEvent } from "@padvinder/contracts";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import {
@@ -25,6 +25,7 @@ import {
 import { getAccess } from "./access";
 import { liveEventsChannel, notify } from "./notifications";
 import type { AuditActor } from "./audit-log";
+import type { DbTransaction } from "./client";
 import {
   auditLogEntries,
   organizationAdmins,
@@ -33,7 +34,7 @@ import {
   workingGroupMemberships,
   workingGroups,
 } from "./schema";
-import { createTestDatabase, type TestDatabase } from "./testing";
+import { createTestDatabase, holdLock, waitUntilBlocked, type TestDatabase } from "./testing";
 
 const system: AuditActor = { kind: "system" };
 let t: TestDatabase | undefined;
@@ -783,6 +784,33 @@ test("removing an admin sends access-changed to them", async () => {
   }
 });
 
+/**
+ * Runs two changes so that they overlap every time: a share lock on the rows they delete or
+ * update lets both read and count first, then holds both at their write (or, with the lock under
+ * test, one at its write and the other at the lock) until both wait.
+ */
+async function atTheSameMoment<A, B>(
+  rows: (tx: DbTransaction) => Promise<unknown>,
+  first: () => Promise<A>,
+  second: () => Promise<B>,
+): Promise<[PromiseSettledResult<A>, PromiseSettledResult<B>]> {
+  const held = await holdLock(db(), rows);
+  const changes = Promise.allSettled([first(), second()]);
+  await waitUntilBlocked(db(), 2);
+  await held.release();
+  return changes;
+}
+
+const shareAdminRows = (organizationId: string) => (tx: DbTransaction) =>
+  tx.execute(
+    sql`select user_id from organization_admins where organization_id = ${organizationId} for share`,
+  );
+
+const shareMemberships = (workingGroupId: string) => (tx: DbTransaction) =>
+  tx.execute(
+    sql`select id from working_group_memberships where working_group_id = ${workingGroupId} for share`,
+  );
+
 test("two admins removing each other at the same moment leave one", async () => {
   const { id: organizationId, adminUserId: a } = await newOrganization();
   const { userId: b } = await grantOrganizationAdmin(
@@ -790,10 +818,11 @@ test("two admins removing each other at the same moment leave one", async () => 
     { email: "b@example.test", organizationId },
     system,
   );
-  const results = await Promise.allSettled([
-    removeOrganizationAdmin(db(), { organizationId, userId: a }, system),
-    removeOrganizationAdmin(db(), { organizationId, userId: b }, system),
-  ]);
+  const results = await atTheSameMoment(
+    shareAdminRows(organizationId),
+    () => removeOrganizationAdmin(db(), { organizationId, userId: a }, system),
+    () => removeOrganizationAdmin(db(), { organizationId, userId: b }, system),
+  );
   const fulfilled = results.filter((r) => r.status === "fulfilled");
   const rejected = results.filter((r) => r.status === "rejected");
   expect(fulfilled).toHaveLength(1);
@@ -810,10 +839,11 @@ test("two admins removing each other at the same moment leave one", async () => 
 test("a removal by ID and a revoke by address at the same moment leave one", async () => {
   const { id: organizationId, adminUserId: a } = await newOrganization();
   await grantOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system);
-  const results = await Promise.allSettled([
-    removeOrganizationAdmin(db(), { organizationId, userId: a }, system),
-    revokeOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system),
-  ]);
+  const results = await atTheSameMoment(
+    shareAdminRows(organizationId),
+    () => removeOrganizationAdmin(db(), { organizationId, userId: a }, system),
+    () => revokeOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system),
+  );
   expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
   expect(await adminRows(organizationId)).toHaveLength(1);
@@ -1274,10 +1304,11 @@ test("two coordinators losing the role at the same moment leave one", async () =
     { email: "c@example.test", workingGroupId: groupId },
     system,
   );
-  const results = await Promise.allSettled([
-    setCoordinator(db(), { membershipId: first, isCoordinator: false }, system),
-    revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system),
-  ]);
+  const results = await atTheSameMoment(
+    shareMemberships(groupId),
+    () => setCoordinator(db(), { membershipId: first, isCoordinator: false }, system),
+    () => revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system),
+  );
   expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   const rejected = results.filter((r) => r.status === "rejected");
   expect(rejected).toHaveLength(1);
@@ -1294,10 +1325,11 @@ test("two coordinators losing the role at the same moment leave one", async () =
     { membershipId: await membershipIdOf(other, groupId), isCoordinator: true },
     system,
   );
-  const byId = await Promise.allSettled(
-    (await membershipsOf(groupId)).map((m) =>
-      setCoordinator(db(), { membershipId: m.id, isCoordinator: false }, system),
-    ),
+  const [one, two] = await membershipsOf(groupId);
+  const byId = await atTheSameMoment(
+    shareMemberships(groupId),
+    () => setCoordinator(db(), { membershipId: one!.id, isCoordinator: false }, system),
+    () => setCoordinator(db(), { membershipId: two!.id, isCoordinator: false }, system),
   );
   expect(byId.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   expect(await coordinatorCount(groupId)).toBe(1);
