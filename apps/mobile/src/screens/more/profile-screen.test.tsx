@@ -4,6 +4,7 @@ import {
   waitingMeFixture,
   workingGroupsFixture,
 } from "@padvinder/contracts/fixtures";
+import { connectionMessage } from "@padvinder/ui";
 import { mockFetch } from "@padvinder/api-client/testing";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -159,4 +160,19 @@ test("a rejected request shows nothing on Profiel of a member", async () => {
     await screen.findByRole("button", { name: "Meld je aan bij nog een werkgroep" }),
   ).toBeVisible();
   expect(screen.queryByText(/wacht op goedkeuring|niet goedgekeurd/)).toBeNull();
+});
+
+test("a failed withdraw shows the connection text and the request stays", async () => {
+  const pending = { ...meFixture, membershipRequest: waitingMeFixture.membershipRequest };
+  mockFetch({
+    "/api/me": pending,
+    [`POST /api/membership-requests/${pending.membershipRequest!.id}/withdraw`]: new Response(
+      "oops",
+      { status: 502 },
+    ),
+  });
+  renderApp("/app/more/profile");
+  await userEvent.click(await screen.findByRole("button", { name: "Trek aanmelding in" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(connectionMessage);
+  expect(screen.getByRole("button", { name: "Trek aanmelding in" })).toBeVisible();
 });

@@ -58,11 +58,22 @@ export function ProfileEditor({
       saved={updateMe.isSuccess}
       deleting={deleteAccount.isPending}
       error={error}
-      onSave={({ name, phone }) => updateMe.mutate({ name, phone })}
+      onSave={({ name, phone }) => {
+        withdraw.reset();
+        updateMe.mutate({ name, phone });
+      }}
       onDelete={() => deleteAccount.mutate()}
       pendingRequest={pending ? { workingGroupName: pending.workingGroup.name } : undefined}
       withdrawing={withdraw.isPending}
-      onWithdrawRequest={pending ? () => withdraw.mutate({ id: pending.id }) : undefined}
+      onWithdrawRequest={
+        pending
+          ? () => {
+              // Only the error of the latest action shows.
+              updateMe.reset();
+              withdraw.mutate({ id: pending.id });
+            }
+          : undefined
+      }
       onJoinAnother={pending ? undefined : onJoinAnother}
     />
   );

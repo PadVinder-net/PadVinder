@@ -14,7 +14,12 @@ const directory = { workingGroups: workingGroupsFixture };
 const dorp = workingGroupsFixture[1]!;
 const zuidOost = workingGroupsFixture[4]!;
 
-afterEach(() => vi.restoreAllMocks());
+let restoreFetch: (() => void) | undefined;
+afterEach(() => {
+  restoreFetch?.();
+  restoreFetch = undefined;
+  vi.restoreAllMocks();
+});
 
 /** mockFetch has no request body access, so wrap fetch to record bodies of the join. */
 function recordBodies() {
@@ -30,7 +35,8 @@ function recordBodies() {
     }
     return inner(request);
   };
-  return { bodies, restore: () => (globalThis.fetch = inner) };
+  restoreFetch = () => (globalThis.fetch = inner);
+  return { bodies };
 }
 
 const choose = async (name: RegExp) => userEvent.click(await screen.findByRole("radio", { name }));
@@ -50,7 +56,7 @@ test("a member sees the button, and the picker without their own group", async (
 });
 
 test("choosing a group sends one request with an id made at the tap, and returns to Profiel", async () => {
-  const { bodies, restore } = recordBodies();
+  const { bodies } = recordBodies();
   const routes: Record<string, unknown> = {
     "/api/me": meFixture,
     "/api/working-groups": directory,
@@ -71,11 +77,10 @@ test("choosing a group sends one request with an id made at the tap, and returns
   expect(await screen.findByRole("heading", { name: "Profiel" })).toBeVisible();
   expect(router.state.location.pathname).toBe("/app/more/profile");
   expect(await screen.findByText("Je aanmelding bij Dorp wacht op goedkeuring.")).toBeVisible();
-  restore();
 });
 
 test("a second tap after a failed send uses the same id", async () => {
-  const { bodies, restore } = recordBodies();
+  const { bodies } = recordBodies();
   mockFetch({
     "/api/me": meFixture,
     "/api/working-groups": directory,
@@ -89,11 +94,10 @@ test("a second tap after a failed send uses the same id", async () => {
   await waitFor(() => expect(bodies).toHaveLength(2));
   expect(bodies[1]!.id).toBe(bodies[0]!.id);
   expect(bodies[1]!.requestedAt).toBe(bodies[0]!.requestedAt);
-  restore();
 });
 
 test("another group makes a new id", async () => {
-  const { bodies, restore } = recordBodies();
+  const { bodies } = recordBodies();
   mockFetch({
     "/api/me": meFixture,
     "/api/working-groups": directory,
@@ -108,10 +112,10 @@ test("another group makes a new id", async () => {
   await waitFor(() => expect(bodies).toHaveLength(2));
   expect(bodies[1]!.id).not.toBe(bodies[0]!.id);
   expect(bodies[1]!.workingGroupId).toBe(zuidOost.id);
-  restore();
 });
 
 test("a group that is gone shows the text and reloads the list", async () => {
+  const { bodies } = recordBodies();
   const { calls } = mockFetch({
     "/api/me": meFixture,
     "/api/working-groups": directory,
@@ -126,6 +130,9 @@ test("a group that is gone shows the text and reloads the list", async () => {
   await waitFor(() =>
     expect(calls.filter((path) => path === "/api/working-groups")).toHaveLength(2),
   );
+  await userEvent.click(join());
+  await waitFor(() => expect(bodies).toHaveLength(2));
+  expect(bodies[1]!.id).not.toBe(bodies[0]!.id);
 });
 
 test("a member of every group sees that there is nothing to join", async () => {
