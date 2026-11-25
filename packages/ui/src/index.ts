@@ -16,6 +16,7 @@ export {
   connectionMessage,
   loginErrorMessage,
   logOutFailedMessage,
+  speciesNameTakenMessage,
 } from "./lib/messages";
 export { foldText, filterWorkingGroups } from "./lib/filter-working-groups";
 export {
