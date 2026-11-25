@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { MailJob } from "@padvinder/db";
-import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
+import { createTestDatabase, startStallingProxy, type TestDatabase } from "@padvinder/db/testing";
 import { MAIL_QUEUE } from "@padvinder/mail";
 import { sql } from "drizzle-orm";
 import pg from "pg";
@@ -115,6 +115,23 @@ test("a first use that fails is tried again by the next", async () => {
   const fetched = await boss.fetch(MAIL_QUEUE);
   expect(fetched.map((found) => found.data)).toEqual([job]);
 });
+
+test("a first use against a hung database gives up soon, and the next use works", async () => {
+  const proxy = await startStallingProxy(t!.url);
+  stops.push(() => proxy.close());
+  const queue = queueFor(proxy.url);
+  proxy.stall();
+  const started = Date.now();
+  await expect(t!.db.transaction((tx) => queue.queueMail(tx, job))).rejects.toThrow();
+  // The connection timeout (2 s), not pg-boss's default of 10 s or a hang.
+  expect(Date.now() - started).toBeLessThan(5_000);
+
+  // The failed start was stopped, so the next one starts the same instance afresh.
+  proxy.resume();
+  await t!.db.transaction((tx) => queue.queueMail(tx, job));
+  const boss = await reader();
+  expect((await boss.fetch(MAIL_QUEUE)).map((found) => found.data)).toEqual([job]);
+}, 15_000);
 
 test("stop before any use opens nothing, and a stopped queue refuses", async () => {
   const queue = startMailQueue({ DATABASE_URL: "postgres://padvinder:padvinder@127.0.0.1:1/none" });
