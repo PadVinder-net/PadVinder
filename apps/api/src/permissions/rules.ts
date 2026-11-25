@@ -82,10 +82,20 @@ export function decide(actor: Actor, permission: Permission): Decision {
       const relation = organizationRelationTo(actor, permission.target);
       if (relation === "outsider") return "hidden";
       if (relation === "platformAdmin") return "allowed";
-      return permission.action === "organization.rename" ||
-        permission.action === "organization.manageAdmins"
-        ? "forbidden"
-        : "allowed";
+      switch (permission.action) {
+        case "organization.view":
+        case "organization.changeContact":
+        case "organization.createWorkingGroup":
+          return "allowed";
+        case "organization.rename":
+        case "organization.manageAdmins":
+          return "forbidden";
+        default: {
+          // A new organization action without a rule is a type error here, never a silent "allowed".
+          const unreachable: never = permission;
+          throw new Error(`No rule for ${JSON.stringify(unreachable)}`);
+        }
+      }
     }
     default:
       break;
