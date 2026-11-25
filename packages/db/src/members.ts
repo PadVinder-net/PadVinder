@@ -1,5 +1,6 @@
 import type { Member } from "@padvinder/contracts";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { deleteAccount } from "./accounts";
 import { countCoordinators, lockWorkingGroup } from "./admin";
 import { recordAudit } from "./audit-log";
 import type { Db } from "./client";
@@ -96,9 +97,10 @@ export async function getMembership(
   return row ?? null;
 }
 
-export type RemoveMembershipResult = {
-  outcome: "removed" | "not_found" | "coordinator_changed" | "last_coordinator";
-};
+export type RemoveMembershipResult =
+  /** `accountDeleted`: the removed person's account was deleted too (see `removeMembership`). */
+  | { outcome: "removed"; accountDeleted: boolean }
+  | { outcome: "not_found" | "coordinator_changed" | "last_coordinator" };
 
 /**
  * Removes a membership, with its audit entry (`membership.removed`, subject the user, details the
@@ -111,36 +113,48 @@ export type RemoveMembershipResult = {
  * value: if it changed in between (a volunteer made coordinator) the row stays and the outcome is
  * `coordinator_changed`, so the permission decision made on the old flag is never applied to the
  * new one. The last coordinator of an active group stays: `last_coordinator`, and nothing changes.
+ *
+ * After the removal is committed, a removed person who never logged in is passed to
+ * `deleteAccount` with `onlyIfUnused`, and `removedBy` as the actor of `account.deleted`: an
+ * address added with a typing mistake does not stay behind. That is a second transaction, because
+ * the first holds the working group's lock and `deleteAccount` takes its locks in another order
+ * (the user's request lock before working groups). `deleteAccount` reads everything again under
+ * its own locks, so a membership, a request or a login that came in between keeps the account.
+ * The removal stands whatever the second step does: if it fails (a deadlock, a lost connection),
+ * the error is not passed on and `accountDeleted` is false. An unused account left behind is
+ * harmless, and the caller must not answer an error for a removal that was committed.
  */
 export async function removeMembership(
   db: Db,
   input: { membershipId: string; removedBy: string; expectedIsCoordinator?: boolean },
 ): Promise<RemoveMembershipResult> {
-  return db.transaction(async (tx): Promise<RemoveMembershipResult> => {
+  const result = await db.transaction(async (tx) => {
     const [found] = await tx
       .select({ workingGroupId: workingGroupMemberships.workingGroupId })
       .from(workingGroupMemberships)
       .where(eq(workingGroupMemberships.id, input.membershipId));
-    if (!found) return { outcome: "not_found" };
+    if (!found) return { outcome: "not_found" as const };
     const group = await lockWorkingGroup(tx, found.workingGroupId);
     // Read again under the lock: a removal or role change that committed in between counts.
     const [membership] = await tx
       .select({
         userId: workingGroupMemberships.userId,
         isCoordinator: workingGroupMemberships.isCoordinator,
+        hasLoggedIn: userHasLoggedIn,
       })
       .from(workingGroupMemberships)
+      .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
       .where(eq(workingGroupMemberships.id, input.membershipId));
-    if (!group || !membership) return { outcome: "not_found" };
+    if (!group || !membership) return { outcome: "not_found" as const };
     if (
       input.expectedIsCoordinator !== undefined &&
       membership.isCoordinator !== input.expectedIsCoordinator
     ) {
-      return { outcome: "coordinator_changed" };
+      return { outcome: "coordinator_changed" as const };
     }
     if (membership.isCoordinator && group.active) {
       const coordinators = await countCoordinators(tx, found.workingGroupId);
-      if (coordinators < 2) return { outcome: "last_coordinator" };
+      if (coordinators < 2) return { outcome: "last_coordinator" as const };
     }
     await tx
       .delete(workingGroupMemberships)
@@ -156,6 +170,20 @@ export async function removeMembership(
       },
     });
     await notifyAccessChanged(tx, membership.userId);
-    return { outcome: "removed" };
+    return {
+      outcome: "removed" as const,
+      userId: membership.userId,
+      hasLoggedIn: membership.hasLoggedIn,
+    };
   });
+  if (result.outcome !== "removed") return result;
+  // Only an account that never logged in can be unused; skip the locks of `deleteAccount` else.
+  if (result.hasLoggedIn) return { outcome: "removed", accountDeleted: false };
+  const deletion = await deleteAccount(db, {
+    userId: result.userId,
+    now: new Date(),
+    deletedBy: { kind: "user", userId: input.removedBy },
+    onlyIfUnused: true,
+  }).catch(() => null);
+  return { outcome: "removed", accountDeleted: deletion?.outcome === "deleted" };
 }

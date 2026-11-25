@@ -42,7 +42,12 @@ afterAll(async () => {
   await t?.drop();
 });
 
-async function addMember(name: string, role: "volunteer" | "coordinator" = "volunteer") {
+/** A member who has logged in, unless `loggedIn` is false. */
+async function addMember(
+  name: string,
+  role: "volunteer" | "coordinator" = "volunteer",
+  { loggedIn = true }: { loggedIn?: boolean } = {},
+) {
   const [user] = await t!.db
     .insert(users)
     .values({
@@ -50,6 +55,7 @@ async function addMember(name: string, role: "volunteer" | "coordinator" = "volu
       email: `${randomUUID()}@example.test`,
       phone: name === "Zoë" ? null : "06 11112222",
       emailVerified: true,
+      lastLoginAt: loggedIn ? new Date() : null,
     })
     .returning({ id: users.id });
   const [membership] = await t!.db
@@ -86,9 +92,8 @@ test("with contact, the email address and phone come along", async () => {
 });
 
 test("with contact, a member carries hasLoggedIn; without, the key is absent", async () => {
-  const never = await addMember("Nooit");
+  const never = await addMember("Nooit", "volunteer", { loggedIn: false });
   const been = await addMember("Geweest");
-  await t!.db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, been.userId));
   const withContact = await listMembers(t!.db, groupId, { contact: true });
   expect(withContact.find((m) => m.userId === never.userId)!.hasLoggedIn).toBe(false);
   expect(withContact.find((m) => m.userId === been.userId)!.hasLoggedIn).toBe(true);
@@ -123,7 +128,7 @@ test("removes a membership with one audit entry that holds no personal data", as
   const actor = await addMember("Actor", "coordinator");
   expect(
     await removeMembership(t!.db, { membershipId: m.membershipId, removedBy: actor.userId }),
-  ).toEqual({ outcome: "removed" });
+  ).toEqual({ outcome: "removed", accountDeleted: false });
   expect(await getMembership(t!.db, m.membershipId)).toBeNull();
   const entries = await t!.db
     .select()
@@ -178,7 +183,7 @@ test("with expectedIsCoordinator, a membership whose flag changed is coordinator
       removedBy: m.userId,
       expectedIsCoordinator: true,
     }),
-  ).toEqual({ outcome: "removed" });
+  ).toEqual({ outcome: "removed", accountDeleted: false });
 });
 
 const system = { kind: "system" } as const;
@@ -254,7 +259,7 @@ test("removing the last coordinator of an active group is last_coordinator and c
       removedBy: group.userId,
       expectedIsCoordinator: true,
     }),
-  ).toEqual({ outcome: "removed" });
+  ).toEqual({ outcome: "removed", accountDeleted: true });
 });
 
 test("a coordinator removed and another losing the role at the same moment leave one", async () => {
@@ -323,7 +328,7 @@ test("two removals of the two coordinators at the same moment leave one", async 
 });
 
 test("getMember gives one member with contact details and hasLoggedIn, or null", async () => {
-  const m = await addMember("Eén");
+  const m = await addMember("Eén", "volunteer", { loggedIn: false });
   expect(await getMember(t!.db, m.membershipId)).toEqual({
     membershipId: m.membershipId,
     userId: m.userId,
@@ -336,4 +341,48 @@ test("getMember gives one member with contact details and hasLoggedIn, or null",
   expect(await getMember(t!.db, randomUUID())).toBeNull();
   await t!.db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, m.userId));
   expect(await getMember(t!.db, m.membershipId)).toBeNull();
+});
+
+test("removing someone who never logged in and has nothing else deletes the account", async () => {
+  const m = await addMember("Tikfout", "volunteer", { loggedIn: false });
+  const remover = await addMember("Verwijderaar", "coordinator");
+  expect(
+    await removeMembership(t!.db, { membershipId: m.membershipId, removedBy: remover.userId }),
+  ).toEqual({ outcome: "removed", accountDeleted: true });
+  const [user] = await t!.db.select().from(users).where(eq(users.id, m.userId));
+  expect(user).toMatchObject({
+    name: "Verwijderd account",
+    email: `deleted-${m.userId}@deleted.invalid`,
+    deletedAt: expect.any(Date),
+  });
+  const entries = await t!.db
+    .select()
+    .from(auditLogEntries)
+    .where(eq(auditLogEntries.subjectId, m.userId));
+  expect(entries.map((e) => e.action)).toEqual(["membership.removed", "account.deleted"]);
+  expect(entries[1]).toMatchObject({ actorKind: "user", actorUserId: remover.userId });
+});
+
+test("removing someone who never logged in but is in another group keeps the account", async () => {
+  const m = await addMember("Elders", "volunteer", { loggedIn: false });
+  const other = await groupWithCoordinator();
+  await t!.db
+    .insert(workingGroupMemberships)
+    .values({ userId: m.userId, workingGroupId: other.workingGroupId });
+  const remover = await addMember("Verwijderaar twee", "coordinator");
+  expect(
+    await removeMembership(t!.db, { membershipId: m.membershipId, removedBy: remover.userId }),
+  ).toEqual({ outcome: "removed", accountDeleted: false });
+  const [user] = await t!.db.select().from(users).where(eq(users.id, m.userId));
+  expect(user).toMatchObject({ name: "Elders", deletedAt: null });
+});
+
+test("removing someone who logged in keeps the account", async () => {
+  const m = await addMember("Ingelogd");
+  const remover = await addMember("Verwijderaar drie", "coordinator");
+  expect(
+    await removeMembership(t!.db, { membershipId: m.membershipId, removedBy: remover.userId }),
+  ).toEqual({ outcome: "removed", accountDeleted: false });
+  const [user] = await t!.db.select().from(users).where(eq(users.id, m.userId));
+  expect(user).toMatchObject({ name: "Ingelogd", deletedAt: null });
 });

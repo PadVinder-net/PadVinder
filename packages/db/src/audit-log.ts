@@ -19,6 +19,8 @@ export type AuditAction =
   | "membership_request.approved"
   | "membership_request.rejected"
   | "membership.removed"
+  | "membership.added"
+  | "membership.invited"
   | "account.deleted"
   | "species.created"
   | "species.updated"

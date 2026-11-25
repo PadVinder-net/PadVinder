@@ -1,4 +1,5 @@
 export * from "./access";
+export * from "./add-members";
 export * from "./accounts";
 export * from "./admin";
 export * from "./client";

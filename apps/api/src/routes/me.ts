@@ -132,6 +132,9 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
             blockers: result.blockers,
           });
         }
+        case "kept":
+          // Only with `onlyIfUnused`, which this route does not pass.
+          throw new Error("An own account deletion was kept");
         default: {
           const unreachable: never = result;
           throw new Error(`Unknown outcome ${JSON.stringify(unreachable)}`);

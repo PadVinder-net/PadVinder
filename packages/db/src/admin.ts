@@ -249,7 +249,7 @@ async function requireWorkingGroup(
  * for this transaction and counts the new role. A plain read would not do: the role's foreign key check waits for the deletion too, but
  * then accepts the row, whose id has not changed.
  */
-async function findOrCreateUser(
+export async function findOrCreateUser(
   tx: DbTransaction,
   email: string,
 ): Promise<{ id: string; created: boolean }> {

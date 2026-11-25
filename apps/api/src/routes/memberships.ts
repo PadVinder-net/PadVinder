@@ -57,7 +57,7 @@ export const membershipRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, {
             "The member is the last coordinator of an active working group",
           );
         default: {
-          const unreachable: never = result.outcome;
+          const unreachable: never = result;
           throw new Error(`Unknown outcome ${JSON.stringify(unreachable)}`);
         }
       }
