@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * A member of a working group. `email` and `phone` are only there for a coordinator of the group,
+ * A member of a working group. `email`, `phone` and `hasLoggedIn` are only there for a coordinator of the group,
  * an admin of its organization or a platform admin; for everyone else the keys are left out.
  */
 export const memberSchema = z
@@ -14,6 +14,8 @@ export const memberSchema = z
     isCoordinator: z.boolean(),
     email: z.string().optional(),
     phone: z.string().nullable().optional(),
+    /** Whether the person has ever logged in. Only there together with `email`. */
+    hasLoggedIn: z.boolean().optional(),
   })
   .meta({ id: "Member" });
 export type Member = z.infer<typeof memberSchema>;

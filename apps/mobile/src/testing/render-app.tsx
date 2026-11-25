@@ -22,8 +22,12 @@ export function renderApp(path: string, client = createTestQueryClient()) {
 }
 
 /** An error body of our API. */
-export function errorResponse(status: number, code: string) {
-  return Response.json({ statusCode: status, error: "Error", message: "x", code }, { status });
+/** An error answer of our API; `extra` adds keys, such as the `blockers` of a blocked deletion. */
+export function errorResponse(status: number, code: string, extra: Record<string, unknown> = {}) {
+  return Response.json(
+    { statusCode: status, error: "Error", message: "x", code, ...extra },
+    { status },
+  );
 }
 
 export const notLoggedIn = () => errorResponse(401, "not_logged_in");

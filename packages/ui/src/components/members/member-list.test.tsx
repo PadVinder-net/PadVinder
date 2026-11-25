@@ -1,4 +1,8 @@
-import { membersFixture, workingGroupsFixture } from "@padvinder/contracts/fixtures";
+import {
+  membersFixture,
+  membersWithContactFixture,
+  workingGroupsFixture,
+} from "@padvinder/contracts/fixtures";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
@@ -64,4 +68,19 @@ test("with canOpen, only the rows of groups it allows open", async () => {
   expect(screen.getByRole("button", { name: /Bram Jansen/ })).toBeVisible();
   expect(screen.queryByRole("button", { name: /Lotte Smit/ })).toBeNull();
   expect(screen.getByText("Lotte Smit")).toBeVisible();
+});
+
+test("a member without a name, and one who never logged in, get their placeholder", () => {
+  render(
+    <MemberList
+      groups={[
+        {
+          workingGroup: noord,
+          members: [membersFixture[3]!, { ...membersWithContactFixture[3]!, name: "" }],
+        },
+      ]}
+    />,
+  );
+  expect(screen.getByText("(nog geen naam)")).toBeVisible();
+  expect(screen.getByText("(nog niet ingelogd)")).toBeVisible();
 });

@@ -10,6 +10,8 @@ export type Environment = {
   allowedOrigins: string[];
   /** The origin users open, for `PUBLIC_ORIGIN`; must be one of `allowedOrigins`. */
   publicOrigin: string;
+  /** Put before the subject of every mail, for `MAIL_SUBJECT_PREFIX`; absent for production. */
+  mailSubjectPrefix?: string;
 };
 
 export const environments: Record<EnvironmentName, Environment> = {
@@ -24,6 +26,7 @@ export const environments: Record<EnvironmentName, Environment> = {
     apiPort: 8301,
     allowedOrigins: ["https://staging.padvinder.net"],
     publicOrigin: "https://staging.padvinder.net",
+    mailSubjectPrefix: "[STAGING]",
   },
 };
 

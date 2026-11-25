@@ -38,6 +38,9 @@ export const users = pgTable("users", {
   isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
   // Ours. Set when an account is deleted; never through Better Auth's client.
   deletedAt: timestamptz("deleted_at"),
+  // Ours. The moment of the newest login (a session made, not renewed); null until someone has
+  // logged in, so an account made by the admin tool is told apart from one that was used.
+  lastLoginAt: timestamptz("last_login_at"),
 });
 
 export const sessions = pgTable(

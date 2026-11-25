@@ -1,4 +1,4 @@
-import type { LoginError } from "@padvinder/contracts";
+import type { AccountDeletionBlocker, LoginError } from "@padvinder/contracts";
 
 // Dutch texts that more than one screen shows. Written once, here.
 
@@ -32,6 +32,11 @@ const apiErrorMessages: Record<string, string> = {
   not_found: "Dit bestaat niet meer.",
   membership_changed: "Deze persoon heeft intussen een andere rol. Kijk opnieuw.",
   name_taken: "Deze naam bestaat al.",
+  last_organization_admin:
+    "Een organisatie heeft altijd een beheerder. Maak eerst iemand anders beheerder.",
+  last_coordinator:
+    "Een werkgroep heeft altijd een coördinator. Maak eerst iemand anders coördinator.",
+  no_coordinator: "Deze werkgroep heeft geen coördinator. Maak eerst iemand coördinator.",
 };
 
 /**
@@ -56,4 +61,26 @@ export function speciesNameTakenMessage(field: string): string {
   return Object.hasOwn(speciesNameTakenMessages, field)
     ? speciesNameTakenMessages[field]!
     : apiErrorMessage("name_taken");
+}
+
+/** The text for `person_outside_organization`: the address belongs to someone with a profile in another organization. */
+export function personOutsideOrganizationMessage(organizationName: string): string {
+  return `Deze persoon heeft al een account buiten ${organizationName}. Kies iemand anders of word eerst zelf coördinator.`;
+}
+
+export const organizationNameTakenMessage = "Er is al een organisatie met deze naam.";
+export const workingGroupNameTakenMessage = "Er is al een werkgroep met deze naam.";
+
+/**
+ * Why the user cannot delete their account, for one blocker (`accountDeletionBlockers` in
+ * `@padvinder/api-client`), and whom to ask: the organization's contact address, otherwise the
+ * organization's admin (for a coordinator) or a platform admin (for the only admin).
+ */
+export function accountDeletionBlockedMessage(blocker: AccountDeletionBlocker): string {
+  if (blocker.role === "coordinator") {
+    const ask = blocker.contactEmail ?? `de beheerder van ${blocker.organizationName}`;
+    return `Je bent de enige coördinator van ${blocker.workingGroupName ?? "je werkgroep"}. Vraag ${ask} om eerst iemand anders coördinator te maken.`;
+  }
+  const ask = blocker.contactEmail ?? "een hoofdbeheerder";
+  return `Je bent de enige beheerder van ${blocker.organizationName}. Vraag ${ask} om eerst iemand anders beheerder te maken.`;
 }

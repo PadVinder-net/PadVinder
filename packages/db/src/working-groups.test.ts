@@ -15,11 +15,23 @@ afterAll(async () => {
 const system = { kind: "system" } as const;
 
 const group = (organizationId: string, name: string, city = "Voorbeeldstad") =>
-  createWorkingGroup(t!.db, { organizationId, name, city }, system);
+  createWorkingGroup(
+    t!.db,
+    { organizationId, name, city, coordinatorEmail: "wg-coordinator@example.test" },
+    system,
+  );
 
 test("lists active groups of all organizations by name", async () => {
-  const one = await createOrganization(t!.db, { name: "Lijst Een" }, system);
-  const two = await createOrganization(t!.db, { name: "Lijst Twee" }, system);
+  const one = await createOrganization(
+    t!.db,
+    { name: "Lijst Een", adminEmail: "org-admin@example.test" },
+    system,
+  );
+  const two = await createOrganization(
+    t!.db,
+    { name: "Lijst Twee", adminEmail: "org-admin@example.test" },
+    system,
+  );
   await group(one.id, "Zuid");
   await group(one.id, "Noord");
   await group(two.id, "Dorp");
@@ -37,7 +49,11 @@ test("lists active groups of all organizations by name", async () => {
 });
 
 test("sorts Dutch names the Dutch way", async () => {
-  const org = await createOrganization(t!.db, { name: "Sorteer" }, system);
+  const org = await createOrganization(
+    t!.db,
+    { name: "Sorteer", adminEmail: "org-admin@example.test" },
+    system,
+  );
   await group(org.id, "Zuid-Oost");
   await group(org.id, "Éénhoorn");
   await group(org.id, "Noord");
@@ -48,7 +64,11 @@ test("sorts Dutch names the Dutch way", async () => {
 });
 
 test("getWorkingGroup returns the organization and the active flag", async () => {
-  const org = await createOrganization(t!.db, { name: "Een groep" }, system);
+  const org = await createOrganization(
+    t!.db,
+    { name: "Een groep", adminEmail: "org-admin@example.test" },
+    system,
+  );
   const made = await group(org.id, "Actief");
   expect(await getWorkingGroup(t!.db, made.id)).toEqual({
     workingGroupId: made.id,

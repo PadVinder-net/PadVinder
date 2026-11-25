@@ -47,7 +47,12 @@ const rowsOf = (userId: string) =>
 async function newGroup(name: string) {
   const group = await createWorkingGroup(
     ctx.t.db,
-    { organizationId: cast.organization.id, name, city: "Enschede" },
+    {
+      organizationId: cast.organization.id,
+      name,
+      city: "Enschede",
+      coordinatorEmail: `coordinator-${name.toLowerCase().replace(/\W+/g, "-")}@example.test`,
+    },
     { kind: "system" },
   );
   return group.id;
@@ -66,6 +71,7 @@ test("everyone logged in may ask, except for a group they belong to", async () =
         volunteer: 409,
         volunteerOtherGroup: 201,
         coordinatorOtherOrganization: 201,
+        organizationAdminOtherOrganization: 201,
         applicant: 201,
         anonymous: 401,
       },
@@ -323,6 +329,7 @@ test("only the applicant may withdraw their request; for everyone else it does n
       volunteer: 404,
       volunteerOtherGroup: 404,
       coordinatorOtherOrganization: 404,
+      organizationAdminOtherOrganization: 404,
       applicant: 200,
       anonymous: 401,
     },

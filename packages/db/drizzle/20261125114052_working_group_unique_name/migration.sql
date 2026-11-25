@@ -1,0 +1,2 @@
+ALTER TABLE "working_groups" DROP CONSTRAINT "working_groups_organization_id_name_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "working_groups_name_key" ON "working_groups" ("organization_id",lower("name"));

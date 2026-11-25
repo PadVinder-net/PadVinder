@@ -23,6 +23,7 @@ test("everyone logged in gets the list, nobody else", async () =>
       volunteer: 200,
       volunteerOtherGroup: 200,
       coordinatorOtherOrganization: 200,
+      organizationAdminOtherOrganization: 200,
       applicant: 200,
       anonymous: 401,
     },

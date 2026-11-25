@@ -1,4 +1,10 @@
-import { auditLogEntries, liveEventsChannel, users, workingGroupMemberships } from "@padvinder/db";
+import {
+  auditLogEntries,
+  createWorkingGroup,
+  liveEventsChannel,
+  users,
+  workingGroupMemberships,
+} from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -81,6 +87,7 @@ test("who may list the members", async () => {
       volunteer: 200,
       volunteerOtherGroup: 404,
       coordinatorOtherOrganization: 404,
+      organizationAdminOtherOrganization: 404,
       applicant: 404,
       anonymous: 401,
     },
@@ -97,6 +104,11 @@ test("a volunteer gets names and the coordinator flag and no contact keys at all
   }
   expect(res.body).not.toMatch(/example\.test/);
   expect(res.body).not.toContain('"phone"');
+});
+
+test("a volunteer's raw response has no hasLoggedIn key", async () => {
+  const res = await list(cast.members.volunteer);
+  expect(res.body).not.toContain("hasLoggedIn");
 });
 
 test("a coordinator, an organization admin and a platform admin get email and phone", async () => {
@@ -118,6 +130,7 @@ test("a coordinator, an organization admin and a platform admin get email and ph
       isCoordinator: false,
       email: cast.members.volunteer.email,
       phone: "06 12345678",
+      hasLoggedIn: true,
     });
   }
 });
@@ -138,6 +151,7 @@ test("who may remove a volunteer", async () => {
       volunteer: 403,
       volunteerOtherGroup: 404,
       coordinatorOtherOrganization: 404,
+      organizationAdminOtherOrganization: 404,
       applicant: 404,
       anonymous: 401,
     },
@@ -205,4 +219,101 @@ test("removing twice is 404 the second time", async () => {
 
 test("a malformed id is 400", async () => {
   expect((await remove(cast.members.platformAdmin, "nope")).statusCode).toBe(400);
+});
+
+test("removing the last coordinator answers 409 last_coordinator", async () => {
+  const group = await createWorkingGroup(
+    ctx.t.db,
+    {
+      organizationId: cast.organization.id,
+      name: "Eén coördinator",
+      city: "Enschede",
+      coordinatorEmail: "enige-coordinator@example.test",
+    },
+    { kind: "system" },
+  );
+  const [membership] = await ctx.t.db
+    .select({ id: workingGroupMemberships.id })
+    .from(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.workingGroupId, group.id));
+  const res = await remove(cast.members.organizationAdmin, membership!.id);
+  expect(res.statusCode).toBe(409);
+  expect(res.json()).toMatchObject({ statusCode: 409, code: "last_coordinator" });
+  expect(await membershipRows(membership!.id)).toHaveLength(1);
+});
+
+test("a member's event stream gets access-changed when the group is switched off", async () => {
+  const created = await createWorkingGroup(
+    ctx.t.db,
+    {
+      organizationId: cast.organization.id,
+      name: `Uitgezet ${uuidv7().slice(-8)}`,
+      city: "Enschede",
+      coordinatorEmail: `uit-${uuidv7().slice(-8)}@example.test`,
+    },
+    { kind: "system" },
+  );
+  const session = await loginAs(ctx, `uit-lid-${uuidv7().slice(-8)}@example.test`, {
+    name: "Uit lid",
+  });
+  await ctx.t.db
+    .insert(workingGroupMemberships)
+    .values({ userId: session.userId, workingGroupId: created.id, isCoordinator: false });
+  const stream = await openEvents(baseUrl, session.headers);
+  try {
+    expect(stream.status).toBe(200);
+    const res = await ctx.app.inject({
+      method: "PATCH",
+      url: `/api/working-groups/${created.id}`,
+      headers: cast.members.organizationAdmin.headers,
+      payload: { active: false },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await stream.nextEvent()).toEqual({
+      event: "access-changed",
+      data: { type: "access-changed", userId: session.userId },
+    });
+  } finally {
+    stream.close();
+  }
+});
+
+test("an admin still lists the members of a group that is off, and makes one coordinator", async () => {
+  const created = await createWorkingGroup(
+    ctx.t.db,
+    {
+      organizationId: cast.organization.id,
+      name: `Uit ${uuidv7().slice(-8)}`,
+      city: "Enschede",
+      coordinatorEmail: `uit2-${uuidv7().slice(-8)}@example.test`,
+    },
+    { kind: "system" },
+  );
+  const session = await loginAs(ctx, `uit2-lid-${uuidv7().slice(-8)}@example.test`, {
+    name: "Uit lid",
+  });
+  const [row] = await ctx.t.db
+    .insert(workingGroupMemberships)
+    .values({ userId: session.userId, workingGroupId: created.id, isCoordinator: false })
+    .returning({ id: workingGroupMemberships.id });
+  const off = await ctx.app.inject({
+    method: "PATCH",
+    url: `/api/working-groups/${created.id}`,
+    headers: cast.members.platformAdmin.headers,
+    payload: { active: false },
+  });
+  expect(off.statusCode).toBe(200);
+  for (const who of [cast.members.organizationAdmin, cast.members.platformAdmin]) {
+    const res = await list(who, created.id);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().members).toHaveLength(2);
+  }
+  const made = await ctx.app.inject({
+    method: "PATCH",
+    url: `/api/memberships/${row!.id}`,
+    headers: cast.members.organizationAdmin.headers,
+    payload: { isCoordinator: true },
+  });
+  expect(made.statusCode).toBe(200);
+  expect(made.json()).toMatchObject({ userId: session.userId, isCoordinator: true });
 });

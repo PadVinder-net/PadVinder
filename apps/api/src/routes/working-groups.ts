@@ -1,21 +1,30 @@
 import {
   apiErrorCodes,
+  managedWorkingGroupListResponseSchema,
+  managedWorkingGroupSchema,
   memberListResponseSchema,
   membershipRequestListResponseSchema,
   workingGroupDirectoryResponseSchema,
+  updateWorkingGroupRequestSchema,
+  type ManagedWorkingGroup,
+  type ManagedWorkingGroupListResponse,
   type MemberListResponse,
   type MembershipRequestListResponse,
   type WorkingGroupDirectoryResponse,
 } from "@padvinder/contracts";
 import {
+  getManagedWorkingGroup,
   getWorkingGroup,
+  listManagedWorkingGroups,
   listMembers,
   listPendingMembershipRequests,
   listWorkingGroupDirectory,
+  updateWorkingGroup,
   type Db,
 } from "@padvinder/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
+import { mapAdminErrors } from "../admin-errors";
 import { apiError, errorResponses } from "../errors";
 import { authorize, decide } from "../permissions/rules";
 import { toMembershipRequestForReview } from "../serializers/membership-requests";
@@ -88,6 +97,58 @@ export const workingGroupRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app,
       const contact =
         decide(request.actor!, { action: "workingGroup.viewMemberContact", target }) === "allowed";
       return { members: await listMembers(db, group.workingGroupId, { contact }) };
+    },
+  );
+
+  // Every logged-in user may ask: the list holds only the groups the actor manages.
+  app.get(
+    "/managed-working-groups",
+    {
+      preHandler: app.requireActor,
+      schema: {
+        operationId: "listManagedWorkingGroups",
+        summary:
+          "The working groups you manage, with counts: all for a platform admin, those of your organizations for an admin, the ones you coordinate for a coordinator",
+        response: { 200: managedWorkingGroupListResponseSchema, ...errorResponses(401) },
+      },
+    },
+    async (request): Promise<ManagedWorkingGroupListResponse> => ({
+      workingGroups: await listManagedWorkingGroups(db, request.actor!),
+    }),
+  );
+
+  app.patch(
+    "/working-groups/:workingGroupId",
+    {
+      preHandler: app.requireActor,
+      schema: {
+        operationId: "updateWorkingGroup",
+        summary:
+          "Change the name, the city or whether the group is active (admins of its organization and platform admins). Saving without a change is 200 too",
+        params: workingGroupParamsSchema,
+        body: updateWorkingGroupRequestSchema,
+        response: { 200: managedWorkingGroupSchema, ...errorResponses(400, 401, 403, 404, 409) },
+      },
+    },
+    async (request): Promise<ManagedWorkingGroup> => {
+      const actor = request.actor!;
+      // A group that does not exist is the same 404 an outsider gets.
+      const group = await getWorkingGroup(db, request.params.workingGroupId);
+      if (!group) throw apiError(404, apiErrorCodes.notFound, "Not found");
+      authorize(actor, {
+        action: "workingGroup.manage",
+        target: { workingGroupId: group.workingGroupId, organizationId: group.organizationId },
+      });
+      await mapAdminErrors(() =>
+        updateWorkingGroup(
+          db,
+          { workingGroupId: group.workingGroupId, patch: request.body },
+          { kind: "user", userId: actor.userId },
+        ),
+      );
+      const changed = await getManagedWorkingGroup(db, group.workingGroupId);
+      if (!changed) throw apiError(404, apiErrorCodes.notFound, "Not found");
+      return changed;
     },
   );
 };

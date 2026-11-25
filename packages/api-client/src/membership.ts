@@ -47,8 +47,8 @@ export function refetchMembershipRequests(queryClient: QueryClient, workingGroup
 }
 
 /** Refetches every member list. */
-export function refetchMembers(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({
+export function refetchMembers(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({
     predicate: (query) => operationOf(query) === "listMembers",
   });
 }
@@ -75,7 +75,7 @@ export function useCreateMembershipRequest() {
       }
     },
     retry: (failureCount, error) => failureCount < 3 && apiErrorCode(error) === null,
-    onSuccess: () => refetchMe(queryClient),
+    onSuccess: () => void refetchMe(queryClient),
   });
 }
 
@@ -87,7 +87,7 @@ export function useWithdrawMembershipRequest() {
       const { data } = await withdrawMembershipRequest({ path: { id }, throwOnError: true });
       return data;
     },
-    onSettled: () => refetchMe(queryClient),
+    onSettled: () => void refetchMe(queryClient),
   });
 }
 
@@ -105,7 +105,7 @@ export function useApproveMembershipRequest() {
     },
     onSettled: () => {
       refetchMembershipRequests(queryClient);
-      refetchMembers(queryClient);
+      void refetchMembers(queryClient);
     },
   });
 }
@@ -129,7 +129,7 @@ export function useRemoveMembership() {
     mutationFn: async ({ membershipId }: { membershipId: string }) => {
       await removeMembership({ path: { membershipId }, throwOnError: true });
     },
-    onSettled: () => refetchMembers(queryClient),
+    onSettled: () => void refetchMembers(queryClient),
   });
 }
 

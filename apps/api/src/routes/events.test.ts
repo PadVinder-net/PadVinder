@@ -373,6 +373,7 @@ test("a coordinator receives membership-requests-changed for their group; the vo
     "volunteer",
     "volunteerOtherGroup",
     "coordinatorOtherOrganization",
+    "organizationAdminOtherOrganization",
     "applicant",
   ] as const);
   // First an event for another group of the same organization, which the coordinator must skip.
@@ -385,6 +386,7 @@ test("a coordinator receives membership-requests-changed for their group; the vo
     streams.volunteer,
     streams.volunteerOtherGroup,
     streams.coordinatorOtherOrganization,
+    streams.organizationAdminOtherOrganization,
     streams.applicant,
   ]);
   closeAll(streams);

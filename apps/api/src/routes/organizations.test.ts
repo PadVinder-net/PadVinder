@@ -1,0 +1,382 @@
+import { auditLogEntries, organizationAdmins, organizations, users } from "@padvinder/db";
+import { and, eq } from "drizzle-orm";
+import { v7 as uuidv7 } from "uuid";
+import { afterAll, beforeAll, expect, test } from "vitest";
+import { testEnv } from "../test-env";
+import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import { createTestApp, type TestApp } from "../testing/login";
+
+let ctx: TestApp;
+let cast: Cast;
+beforeAll(async () => {
+  ctx = await createTestApp();
+  cast = await createCast(ctx);
+});
+afterAll(() => ctx.close());
+
+type Headers = Record<string, string>;
+type Who = CastLogin | { headers: Headers };
+const send = (
+  who: Who,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  url: string,
+  payload?: object,
+) => ctx.app.inject({ method, url, headers: who.headers, payload });
+const post = (who: Who, payload: object) => send(who, "POST", "/api/organizations", payload);
+const patch = (who: Who, id: string, payload: object) =>
+  send(who, "PATCH", `/api/organizations/${id}`, payload);
+const addAdmin = (who: Who, id: string, email: string) =>
+  send(who, "POST", `/api/organizations/${id}/admins`, { email });
+const removeAdmin = (who: Who, id: string, userId: string) =>
+  send(who, "DELETE", `/api/organizations/${id}/admins/${userId}`);
+
+let n = 0;
+const uniqueName = () => `Testorganisatie ${++n} ${uuidv7().slice(-8)}`;
+const uniqueAddress = (label: string) => `${label}-${++n}-${uuidv7().slice(-8)}@example.test`;
+const newBody = (extra: Record<string, unknown> = {}) => ({
+  name: uniqueName(),
+  adminEmail: uniqueAddress("eerste"),
+  ...extra,
+});
+/** An organization made by the platform admin; returns its detail. */
+async function makeOrganization(extra: Record<string, unknown> = {}) {
+  const res = await post(cast.members.platformAdmin, newBody(extra));
+  expect(res.statusCode).toBe(201);
+  return res.json() as {
+    id: string;
+    name: string;
+    contactEmail: string | null;
+    admins: { userId: string; email: string }[];
+  };
+}
+
+const everyone = {
+  platformAdmin: 200,
+  organizationAdmin: 200,
+  coordinator: 200,
+  volunteer: 200,
+  volunteerOtherGroup: 200,
+  coordinatorOtherOrganization: 200,
+  organizationAdminOtherOrganization: 200,
+  applicant: 200,
+  anonymous: 401,
+};
+const adminsOfIt = (ok: number, admin = ok) => ({
+  platformAdmin: ok,
+  organizationAdmin: admin,
+  coordinator: 404,
+  volunteer: 404,
+  volunteerOtherGroup: 404,
+  coordinatorOtherOrganization: 404,
+  organizationAdminOtherOrganization: 404,
+  applicant: 404,
+  anonymous: 401,
+});
+const platformOnly = (ok: number) => ({
+  platformAdmin: ok,
+  organizationAdmin: 403,
+  coordinator: 403,
+  volunteer: 403,
+  volunteerOtherGroup: 403,
+  coordinatorOtherOrganization: 403,
+  organizationAdminOtherOrganization: 403,
+  applicant: 403,
+  anonymous: 401,
+});
+
+test("everyone logged in gets their own list", async () =>
+  await expectStatuses(cast, everyone, (headers) =>
+    ctx.app.inject({ url: "/api/organizations", headers }),
+  ));
+
+test("the list holds all for a platform admin, one for an admin, none for a coordinator", async () => {
+  const names = async (who: CastLogin) =>
+    ((await send(who, "GET", "/api/organizations")).json().organizations as { id: string }[]).map(
+      (o) => o.id,
+    );
+  const all = await names(cast.members.platformAdmin);
+  expect(all).toContain(cast.organization.id);
+  expect(all).toContain(cast.otherOrganization.id);
+  expect(await names(cast.members.organizationAdmin)).toEqual([cast.organization.id]);
+  expect(await names(cast.members.coordinator)).toEqual([]);
+  expect(await names(cast.members.applicant)).toEqual([]);
+  const row = (await send(cast.members.organizationAdmin, "GET", "/api/organizations")).json()
+    .organizations[0];
+  expect(Object.keys(row).sort()).toEqual(["contactEmail", "id", "name"]);
+});
+
+test("only its admins and platform admins see an organization", async () => {
+  await expectStatuses(cast, adminsOfIt(200), (headers) =>
+    ctx.app.inject({ url: `/api/organizations/${cast.organization.id}`, headers }),
+  );
+  const res = await send(
+    cast.members.organizationAdmin,
+    "GET",
+    `/api/organizations/${cast.organization.id}`,
+  );
+  expect(res.json()).toEqual({
+    id: cast.organization.id,
+    name: "Cast Organisatie",
+    contactEmail: null,
+    admins: [
+      {
+        userId: cast.members.organizationAdmin.userId,
+        name: "Cast organizationAdmin",
+        email: cast.members.organizationAdmin.email.toLowerCase(),
+        hasLoggedIn: true,
+      },
+    ],
+  });
+});
+
+test("only a platform admin creates an organization", async () =>
+  await expectStatuses(cast, platformOnly(201), (headers) => post({ headers }, newBody())));
+
+test("its admin changes the contact address", async () =>
+  await expectStatuses(cast, adminsOfIt(200), (headers) =>
+    patch({ headers }, cast.organization.id, { contactEmail: "contact@example.test" }),
+  ));
+
+test("only a platform admin renames it", async () => {
+  const { id } = await makeOrganization();
+  // The organization admin is not an admin of this one: use the cast organization for the admin.
+  await expectStatuses(cast, adminsOfIt(200, 403), (headers) =>
+    patch({ headers }, cast.organization.id, { name: "Cast Organisatie" }),
+  );
+  const res = await patch(cast.members.platformAdmin, id, { name: uniqueName() });
+  expect(res.statusCode).toBe(200);
+});
+
+test("a body with name and contactEmail from its admin changes nothing", async () => {
+  await patch(cast.members.platformAdmin, cast.organization.id, {
+    contactEmail: "vast@example.test",
+  });
+  const res = await patch(cast.members.organizationAdmin, cast.organization.id, {
+    name: uniqueName(),
+    contactEmail: "nieuw@example.test",
+  });
+  expect(res.statusCode).toBe(403);
+  const [row] = await ctx.t.db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, cast.organization.id));
+  expect(row).toMatchObject({ name: "Cast Organisatie", contactEmail: "vast@example.test" });
+});
+
+test("only a platform admin appoints an admin", async () =>
+  await expectStatuses(cast, adminsOfIt(200, 403), (headers) =>
+    addAdmin({ headers }, cast.organization.id, uniqueAddress("beheerder")),
+  ));
+
+test("only a platform admin removes an admin", async () => {
+  const org = await makeOrganization();
+  const second = await addAdmin(cast.members.platformAdmin, org.id, uniqueAddress("tweede"));
+  expect(second.statusCode).toBe(200);
+  const spare = async () => {
+    const res = await addAdmin(cast.members.platformAdmin, org.id, uniqueAddress("extra"));
+    const admins = res.json().admins as { email: string; userId: string }[];
+    return admins[admins.length - 1]!;
+  };
+  // Each call needs its own admin to remove; the statuses of 403 and 404 do not remove anyone.
+  const expected = adminsOfIt(204, 403);
+  const who = [...Object.keys(cast.members), "anonymous"] as (keyof typeof expected)[];
+  for (const name of who) {
+    const headers = name === "anonymous" ? {} : cast.members[name].headers;
+    const target = await spare();
+    const res = await removeAdmin({ headers }, org.id, target.userId);
+    // The cast has no admin of this fresh organization: only a platform admin passes.
+    const want = name === "platformAdmin" ? 204 : name === "anonymous" ? 401 : 404;
+    expect(res.statusCode, name).toBe(want);
+  }
+  // On the cast organization the admin of it is refused with 403, not 404.
+  const own = await removeAdmin(
+    cast.members.organizationAdmin,
+    cast.organization.id,
+    cast.members.organizationAdmin.userId,
+  );
+  expect(own.statusCode).toBe(403);
+});
+
+test("creating makes the first admin, also for an address without an account", async () => {
+  const adminEmail = uniqueAddress("nieuw");
+  const res = await post(cast.members.platformAdmin, {
+    name: uniqueName(),
+    adminEmail: `  ${adminEmail.toUpperCase()} `,
+    contactEmail: "Contact@Example.test",
+  });
+  expect(res.statusCode).toBe(201);
+  expect(res.json()).toMatchObject({
+    contactEmail: "contact@example.test",
+    admins: [{ email: adminEmail, name: "", hasLoggedIn: false }],
+  });
+  const [account] = await ctx.t.db.select().from(users).where(eq(users.email, adminEmail));
+  expect(account).toBeDefined();
+  const rows = await ctx.t.db
+    .select()
+    .from(organizationAdmins)
+    .where(eq(organizationAdmins.organizationId, res.json().id));
+  expect(rows).toHaveLength(1);
+});
+
+test("a taken name in other capitals is 409 name_taken on name, and no second organization", async () => {
+  const org = await makeOrganization();
+  for (const name of [org.name.toUpperCase(), `  ${org.name.replace(" ", "   ")} `]) {
+    const res = await post(cast.members.platformAdmin, newBody({ name }));
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      code: "name_taken",
+      issues: [{ path: "name", message: expect.any(String) }],
+    });
+  }
+  const rows = await ctx.t.db.select().from(organizations);
+  expect(rows.filter((row) => row.name.toLowerCase() === org.name.toLowerCase())).toHaveLength(1);
+
+  const other = await makeOrganization();
+  const renamed = await patch(cast.members.platformAdmin, other.id, {
+    name: org.name.toLowerCase(),
+  });
+  expect(renamed.statusCode).toBe(409);
+  expect(renamed.json()).toMatchObject({ code: "name_taken", issues: [{ path: "name" }] });
+});
+
+test.each([
+  { name: "X", adminEmail: "jan@" },
+  { name: " ", adminEmail: "jan@example.test" },
+  { name: "X" },
+  { name: "X", adminEmail: "jan@example.test", extra: 1 },
+  { name: "a@b", adminEmail: "jan@example.test" },
+])("create rejects %j with 400", async (body) => {
+  const res = await post(cast.members.platformAdmin, body);
+  expect(res.statusCode).toBe(400);
+  expect(res.json()).toMatchObject({ code: "invalid_request" });
+});
+
+test("the address of a deleted account is 400 with an issue on adminEmail", async () => {
+  const name = uniqueName();
+  const res = await post(cast.members.platformAdmin, {
+    name,
+    adminEmail: "deleted-0192f3c0@deleted.invalid",
+  });
+  expect(res.statusCode).toBe(400);
+  expect(res.json()).toMatchObject({
+    code: "invalid_request",
+    issues: [{ path: "adminEmail" }],
+  });
+  const rows = await ctx.t.db.select().from(organizations).where(eq(organizations.name, name));
+  expect(rows).toHaveLength(0);
+});
+
+test("removing the last admin is 409 last_organization_admin", async () => {
+  const res = await removeAdmin(
+    cast.members.platformAdmin,
+    cast.otherOrganization.id,
+    cast.members.organizationAdminOtherOrganization.userId,
+  );
+  expect(res.statusCode).toBe(409);
+  expect(res.json()).toMatchObject({ code: "last_organization_admin" });
+});
+
+test("removing someone who is no admin there is 404", async () => {
+  const res = await removeAdmin(
+    cast.members.platformAdmin,
+    cast.organization.id,
+    cast.members.volunteer.userId,
+  );
+  expect(res.statusCode).toBe(404);
+  expect(res.json()).toMatchObject({ code: "not_found" });
+});
+
+test("appointing the same admin twice answers 200 twice and writes one entry", async () => {
+  const org = await makeOrganization();
+  const email = uniqueAddress("dubbel");
+  const first = await addAdmin(cast.members.platformAdmin, org.id, email);
+  const again = await addAdmin(cast.members.platformAdmin, org.id, ` ${email.toUpperCase()}`);
+  expect(first.statusCode).toBe(200);
+  expect(again.statusCode).toBe(200);
+  expect(again.json()).toEqual(first.json());
+  expect(first.json().admins).toHaveLength(2);
+  const entries = await ctx.t.db
+    .select()
+    .from(auditLogEntries)
+    .where(
+      and(
+        eq(auditLogEntries.organizationId, org.id),
+        eq(auditLogEntries.action, "role.organization_admin_granted"),
+      ),
+    );
+  expect(entries).toHaveLength(2); // the first admin at creation, and this one
+});
+
+test("an address of a deleted account or no address cannot be appointed", async () => {
+  const org = await makeOrganization();
+  for (const email of ["x@deleted.invalid", "geen-adres"]) {
+    const res = await addAdmin(cast.members.platformAdmin, org.id, email);
+    expect(res.statusCode, email).toBe(400);
+    expect(res.json()).toMatchObject({ code: "invalid_request", issues: [{ path: "email" }] });
+  }
+});
+
+test("the audit entries name the platform admin as actor", async () => {
+  const admin = cast.members.platformAdmin;
+  const org = await makeOrganization();
+  await patch(admin, org.id, { contactEmail: "a@example.test" });
+  const entries = await ctx.t.db
+    .select()
+    .from(auditLogEntries)
+    .where(
+      and(eq(auditLogEntries.subjectType, "organization"), eq(auditLogEntries.subjectId, org.id)),
+    );
+  expect(entries.map((entry) => entry.action).sort()).toEqual([
+    "organization.created",
+    "organization.updated",
+  ]);
+  for (const entry of entries) {
+    expect(entry).toMatchObject({ actorKind: "user", actorUserId: admin.userId });
+  }
+});
+
+test("contactEmail null empties it; an empty PATCH body and an unknown key are 400", async () => {
+  const admin = cast.members.platformAdmin;
+  const org = await makeOrganization({ contactEmail: "contact@example.test" });
+  const emptied = await patch(admin, org.id, { contactEmail: null });
+  expect(emptied.statusCode).toBe(200);
+  expect(emptied.json().contactEmail).toBeNull();
+  const again = await patch(admin, org.id, { contactEmail: null });
+  expect(again.json()).toEqual(emptied.json());
+  expect((await patch(admin, org.id, {})).statusCode).toBe(400);
+  expect((await patch(admin, org.id, { color: "red" })).statusCode).toBe(400);
+  expect((await patch(admin, org.id, { contactEmail: "geen" })).statusCode).toBe(400);
+});
+
+test("an unknown organization is 404; an id that is not a UUID is 400", async () => {
+  const admin = cast.members.platformAdmin;
+  for (const res of [
+    await send(admin, "GET", `/api/organizations/${uuidv7()}`),
+    await patch(admin, uuidv7(), { contactEmail: null }),
+    await addAdmin(admin, uuidv7(), "x@example.test"),
+    await removeAdmin(admin, uuidv7(), uuidv7()),
+  ]) {
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ code: "not_found" });
+  }
+  const notUuid = await send(admin, "GET", "/api/organizations/abc");
+  expect(notUuid.statusCode).toBe(400);
+  expect(notUuid.json()).toMatchObject({ code: "invalid_request" });
+});
+
+test("a POST from a foreign Origin is refused", async () => {
+  const body = newBody();
+  const res = await post(
+    { headers: { ...cast.members.platformAdmin.headers, origin: "https://evil.example" } },
+    body,
+  );
+  expect(res.statusCode).toBe(403);
+  expect(res.json()).toMatchObject({ code: "origin_not_allowed" });
+  const rows = await ctx.t.db.select().from(organizations).where(eq(organizations.name, body.name));
+  expect(rows).toHaveLength(0);
+  const own = await post(
+    { headers: { ...cast.members.platformAdmin.headers, origin: testEnv.PUBLIC_ORIGIN } },
+    newBody(),
+  );
+  expect(own.statusCode).toBe(201);
+});

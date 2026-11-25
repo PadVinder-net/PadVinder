@@ -40,6 +40,7 @@ const everyone = {
   volunteer: 200,
   volunteerOtherGroup: 200,
   coordinatorOtherOrganization: 200,
+  organizationAdminOtherOrganization: 200,
   applicant: 200,
   anonymous: 401,
 };
@@ -50,6 +51,7 @@ const adminsOnly = (ok: number) => ({
   volunteer: 403,
   volunteerOtherGroup: 403,
   coordinatorOtherOrganization: 403,
+  organizationAdminOtherOrganization: 403,
   applicant: 403,
   anonymous: 401,
 });

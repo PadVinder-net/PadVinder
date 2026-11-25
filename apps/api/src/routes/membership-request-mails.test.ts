@@ -1,4 +1,10 @@
-import { createOrganization, createWorkingGroup, workingGroupMemberships } from "@padvinder/db";
+import { eq } from "drizzle-orm";
+import {
+  createOrganization,
+  createWorkingGroup,
+  organizationAdmins,
+  workingGroupMemberships,
+} from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance } from "fastify";
 import { Writable } from "node:stream";
@@ -95,22 +101,53 @@ test("a new request mails every coordinator of the group, once", async () => {
 });
 
 test("without a coordinator it mails the organization's admins", async () => {
+  const group = await createWorkingGroup(
+    t!.db,
+    {
+      organizationId: cast.organization.id,
+      name: "Zonder coördinator",
+      city: "Enschede",
+      coordinatorEmail: "zonder-coordinator@example.test",
+    },
+    { kind: "system" },
+  );
+  // Data from before every active working group had a coordinator: the row is removed by hand.
+  await t!.db
+    .delete(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.workingGroupId, group.id));
   const before = requestMails().length;
-  const res = await create(await newApplicant(), cast.otherGroup.workingGroupId);
+  const res = await create(await newApplicant(), group.id);
   expect(res.statusCode).toBe(201);
   await expect.poll(() => requestMails().length - before).toBe(1);
   expect(requestMails().at(-1)!.to).toBe(cast.members.organizationAdmin.email.toLowerCase());
-  expect(requestMails().at(-1)!.subject).toBe("Nieuwe aanmelding bij Cast Andere werkgroep");
+  expect(requestMails().at(-1)!.subject).toBe("Nieuwe aanmelding bij Zonder coördinator");
 });
 
 test("without a coordinator and without an admin it mails nobody and logs the group's ID", async () => {
   const system = { kind: "system" } as const;
-  const organization = await createOrganization(t!.db, { name: "Zonder beheer" }, system);
-  const group = await createWorkingGroup(
+  const organization = await createOrganization(
     t!.db,
-    { organizationId: organization.id, name: "Verlaten", city: "Nergensdorp" },
+    { name: "Zonder beheer", adminEmail: "zonder-beheer@example.test" },
     system,
   );
+  // Data from before every organization had an admin: the row is removed by hand.
+  await t!.db
+    .delete(organizationAdmins)
+    .where(eq(organizationAdmins.organizationId, organization.id));
+  const group = await createWorkingGroup(
+    t!.db,
+    {
+      organizationId: organization.id,
+      name: "Verlaten",
+      city: "Nergensdorp",
+      coordinatorEmail: "verlaten-coordinator@example.test",
+    },
+    system,
+  );
+  // Data from before every active working group had a coordinator: the row is removed by hand.
+  await t!.db
+    .delete(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.workingGroupId, group.id));
   const name = "Eenzame Aanvrager";
   const applicant = await newApplicant(name);
   logLines.length = 0;

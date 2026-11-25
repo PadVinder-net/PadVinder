@@ -1,4 +1,5 @@
 import {
+  accountDeletionBlockedSchema,
   apiErrorCodes,
   meResponseSchema,
   updateMeRequestSchema,
@@ -16,7 +17,7 @@ import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import type { Actor } from "../permissions/actor";
-import { apiError, errorResponses } from "../errors";
+import { apiError, apiErrorBody, errorResponses } from "../errors";
 import { toMembershipRequest } from "../serializers/membership-requests";
 
 type CookieAttributes = {
@@ -101,8 +102,8 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
       schema: {
         operationId: "deleteMe",
         summary:
-          "Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end",
-        response: { 204: z.null(), ...errorResponses(401, 409) },
+          "Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end. Refused for the only platform admin, and for the only coordinator of an active working group or admin of an organization (with `blockers`)",
+        response: { 204: z.null(), ...errorResponses(401), 409: accountDeletionBlockedSchema },
       },
     },
     async (request, reply) => {
@@ -119,8 +120,20 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
             apiErrorCodes.lastPlatformAdmin,
             "The only platform admin cannot delete their account",
           );
+        case "blocked": {
+          // The session stays: nothing changed. Groups come first in `blockers`.
+          const isCoordinator = result.blockers[0]?.role === "coordinator";
+          return reply.code(409).send({
+            ...apiErrorBody(
+              409,
+              isCoordinator ? apiErrorCodes.lastCoordinator : apiErrorCodes.lastOrganizationAdmin,
+              "The only coordinator of an active working group or admin of an organization cannot delete their account",
+            ),
+            blockers: result.blockers,
+          });
+        }
         default: {
-          const unreachable: never = result.outcome;
+          const unreachable: never = result;
           throw new Error(`Unknown outcome ${JSON.stringify(unreachable)}`);
         }
       }

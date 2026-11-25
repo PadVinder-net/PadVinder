@@ -1,6 +1,12 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { users } from "@padvinder/db";
+import {
+  organizationAdmins,
+  organizations,
+  users,
+  workingGroupMemberships,
+  workingGroups,
+} from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import { runAdminCommand } from "./run-admin-command";
 
@@ -28,14 +34,86 @@ async function addUser(email: string) {
   await t!.db.insert(users).values({ email, name: "", emailVerified: true });
 }
 
-test("create-organization prints only the new id", async () => {
-  expect(await run("create-organization", "--name", "Paddentrek Voorbeeldstad")).toBe(0);
+test("create-organization needs --admin-email and prints the id first", async () => {
+  expect(await run("create-organization", "--name", "Paddentrek Voorbeeldstad")).toBe(1);
+  expect(err).toEqual([expect.stringContaining("--admin-email")]);
+  expect(await t!.db.select().from(organizations)).toEqual([]);
+  err.length = 0;
+  await addUser("bram@example.test");
+  expect(
+    await run(
+      "create-organization",
+      "--name",
+      "Paddentrek Voorbeeldstad",
+      "--admin-email",
+      "Bram@Example.test",
+    ),
+  ).toBe(0);
   expect(out).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/)]);
   expect(err).toEqual([]);
+  const [admin] = await t!.db.select().from(organizationAdmins);
+  expect(admin?.organizationId).toBe(out[0]);
+});
+
+test("create-organization says when it made an account", async () => {
+  expect(
+    await run(
+      "create-organization",
+      "--name",
+      "Paddentrek Voorbeeldstad",
+      "--admin-email",
+      " Bram@Example.test ",
+      "--contact-email",
+      "Info@Example.test",
+    ),
+  ).toBe(0);
+  expect(out).toEqual([
+    expect.stringMatching(/^[0-9a-f-]{36}$/),
+    "new account for bram@example.test",
+  ]);
+  const [organization] = await t!.db.select().from(organizations);
+  expect(organization).toMatchObject({ id: out[0], contactEmail: "info@example.test" });
+});
+
+test("create-organization refuses a taken name with one line", async () => {
+  await run("create-organization", "--name", "Org", "--admin-email", "a@example.test");
+  expect(
+    await run("create-organization", "--name", " org ", "--admin-email", "b@example.test"),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/name is already taken/)]);
+});
+
+test("revoke-organization-admin refuses the last admin", async () => {
+  await run("create-organization", "--name", "Org", "--admin-email", "a@example.test");
+  const orgId = out[0]!;
+  out.length = 0;
+  expect(
+    await run("revoke-organization-admin", "--email", "a@example.test", "--organization", orgId),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/last admin/i)]);
+  expect(out).toEqual([]);
+  expect(await t!.db.select().from(organizationAdmins)).toHaveLength(1);
+});
+
+test("list marks an organization without an admin", async () => {
+  await run("create-organization", "--name", "Met beheer", "--admin-email", "a@example.test");
+  await run("create-organization", "--name", "Zonder beheer", "--admin-email", "b@example.test");
+  const withoutId = out[2]!;
+  await t!.db.delete(organizationAdmins).where(eq(organizationAdmins.organizationId, withoutId));
+  out.length = 0;
+  expect(await run("list")).toBe(0);
+  expect(out).toContain(`organization ${withoutId} Zonder beheer [no admin]`);
+  expect(out.find((line) => line.includes("Met beheer"))).not.toContain("[no admin]");
 });
 
 test("create-working-group, grant-coordinator and list work together", async () => {
-  await run("create-organization", "--name", "Paddentrek Voorbeeldstad");
+  await run(
+    "create-organization",
+    "--name",
+    "Paddentrek Voorbeeldstad",
+    "--admin-email",
+    "beheer@example.test",
+  );
   const orgId = out[0]!;
   out.length = 0;
   expect(
@@ -47,10 +125,12 @@ test("create-working-group, grant-coordinator and list work together", async () 
       "Noord",
       "--city",
       "Voorbeeldstad",
+      "--coordinator-email",
+      "beheer@example.test",
     ),
   ).toBe(0);
   const groupId = out[0]!;
-  expect(groupId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(out).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/)]);
   await addUser("co@example.test");
   out.length = 0;
   expect(
@@ -65,6 +145,98 @@ test("create-working-group, grant-coordinator and list work together", async () 
   expect(text).toContain(orgId);
   expect(text).toContain(groupId);
   expect(text).not.toContain("example.test");
+  expect(text).not.toContain("[no coordinator]");
+});
+
+async function newOrganizationId() {
+  await run("create-organization", "--name", "Org", "--admin-email", "beheer@example.test");
+  const id = out[0]!;
+  out.length = 0;
+  return id;
+}
+
+test("create-working-group needs --coordinator-email", async () => {
+  const orgId = await newOrganizationId();
+  expect(
+    await run("create-working-group", "--organization", orgId, "--name", "Noord", "--city", "X"),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringContaining("--coordinator-email")]);
+  expect(await t!.db.select().from(workingGroups)).toEqual([]);
+  err.length = 0;
+  expect(
+    await run(
+      "create-working-group",
+      "--organization",
+      orgId,
+      "--name",
+      "Noord",
+      "--city",
+      "X",
+      "--coordinator-email",
+      " Carla@Example.test ",
+    ),
+  ).toBe(0);
+  expect(out).toEqual([
+    expect.stringMatching(/^[0-9a-f-]{36}$/),
+    "new account for carla@example.test",
+  ]);
+  expect(err).toEqual([]);
+  const [membership] = await t!.db.select().from(workingGroupMemberships);
+  expect(membership).toMatchObject({ workingGroupId: out[0], isCoordinator: true });
+});
+
+test("revoke-coordinator refuses the last coordinator of an active group", async () => {
+  const orgId = await newOrganizationId();
+  await run(
+    "create-working-group",
+    "--organization",
+    orgId,
+    "--name",
+    "Noord",
+    "--city",
+    "X",
+    "--coordinator-email",
+    "carla@example.test",
+  );
+  const groupId = out[0]!;
+  out.length = 0;
+  expect(
+    await run("revoke-coordinator", "--email", "carla@example.test", "--working-group", groupId),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/last coordinator/i)]);
+  expect(out).toEqual([]);
+  expect(await t!.db.select().from(workingGroupMemberships)).toMatchObject([
+    { isCoordinator: true },
+  ]);
+});
+
+test("list marks an active working group without a coordinator", async () => {
+  const orgId = await newOrganizationId();
+  for (const name of ["Met", "Zonder", "Uit"]) {
+    await run(
+      "create-working-group",
+      "--organization",
+      orgId,
+      "--name",
+      name,
+      "--city",
+      "X",
+      "--coordinator-email",
+      `${name.toLowerCase()}@example.test`,
+    );
+  }
+  const [, withoutId, offId] = out.filter((line) => /^[0-9a-f-]{36}$/.test(line));
+  for (const id of [withoutId!, offId!]) {
+    await t!.db
+      .delete(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.workingGroupId, id));
+  }
+  await t!.db.update(workingGroups).set({ active: false }).where(eq(workingGroups.id, offId!));
+  out.length = 0;
+  expect(await run("list")).toBe(0);
+  expect(out).toContain(`  working group ${withoutId} Zonder (X) [no coordinator]`);
+  expect(out).toContain(`  working group ${offId} Uit (X) [inactive]`);
+  expect(out.find((line) => line.includes(" Met "))).not.toContain("[no coordinator]");
 });
 
 test("grant twice prints changed, then unchanged", async () => {
@@ -77,7 +249,7 @@ test("grant twice prints changed, then unchanged", async () => {
 });
 
 test("organization admin grant and revoke", async () => {
-  await run("create-organization", "--name", "Org");
+  await run("create-organization", "--name", "Org", "--admin-email", "beheer@example.test");
   const orgId = out[0]!;
   await addUser("a@example.test");
   out.length = 0;
@@ -94,6 +266,30 @@ test("revoking the last platform admin exits 1 with a clear line", async () => {
   expect(await run("revoke-platform-admin", "--email", "a@example.test")).toBe(1);
   expect(err.join("\n")).toMatch(/last platform admin/i);
   expect(out).toEqual([]);
+});
+
+test("a name or city of only spaces exits 1 with one line", async () => {
+  expect(await run("create-organization", "--name", "  ", "--admin-email", "a@example.test")).toBe(
+    1,
+  );
+  expect(err).toEqual([expect.stringMatching(/cannot be empty/)]);
+  err.length = 0;
+  const orgId = await newOrganizationId();
+  expect(
+    await run(
+      "create-working-group",
+      "--organization",
+      orgId,
+      "--name",
+      "Noord",
+      "--city",
+      " ",
+      "--coordinator-email",
+      "c@example.test",
+    ),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/cannot be empty/)]);
+  expect(await t!.db.select().from(workingGroups)).toEqual([]);
 });
 
 test("an unknown user exits 1 with one line", async () => {

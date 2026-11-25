@@ -32,17 +32,27 @@ const adminErrorText: Record<AdminErrorCode, string> = {
   working_group_inactive: "That working group is inactive; a role there gives no rights.",
   user_not_found: "There is no user with that email address.",
   invalid_email: "That is not a valid email address.",
+  invalid_name: "A name or a city cannot be empty.",
   name_taken: "That name is already taken.",
   last_platform_admin:
     "That is the last platform admin who has logged in. Make another one, and let them log in first.",
+  last_organization_admin:
+    "That is the last admin of the organization. Make someone else admin first.",
+  membership_not_found: "There is no membership with that ID.",
+  last_coordinator:
+    "That is the last coordinator of the working group. Make someone else coordinator first.",
+  no_coordinator: "That working group has no coordinator. Make someone coordinator first.",
+  person_outside_organization:
+    "That person has an account outside the organization. Choose someone else.",
 };
 
 const helpLines = [
   "Usage: admin <command> [options]",
   "",
   "  list                                              Organizations with their working groups",
-  "  create-organization --name <name>                 Prints the new ID",
-  "  create-working-group --organization <id> --name <name> --city <city>",
+  "  create-organization --name <name> --admin-email <address> [--contact-email <address>]",
+  "                                                    Prints the new ID",
+  "  create-working-group --organization <id> --name <name> --city <city> --coordinator-email <address>",
   "                                                    Prints the new ID",
   "  grant-platform-admin --email <address>            Prints changed or unchanged",
   "  revoke-platform-admin --email <address>",
@@ -51,13 +61,17 @@ const helpLines = [
   "  grant-coordinator --email <address> --working-group <id>",
   "  revoke-coordinator --email <address> --working-group <id>",
   "",
+  "An organization always has an admin, and an active working group a coordinator: the last one",
+  "cannot be revoked. list marks data from before that rule with [no admin] or [no coordinator].",
   "The grant commands create the account when the address is unknown: check the address carefully.",
   "Every change is written to the audit log as the system.",
 ];
 
 type Handler = {
   options: readonly string[];
-  run(values: Record<string, string>, deps: AdminDeps): Promise<void>;
+  /** Options that may be left out. */
+  optional?: readonly string[];
+  run(values: Record<string, string | undefined>, deps: AdminDeps): Promise<void>;
 };
 
 const printChange = (deps: AdminDeps, result: RoleChange, email: string) => {
@@ -73,26 +87,48 @@ const commands: Record<string, Handler> = {
     options: [],
     async run(_values, { db, out }) {
       for (const organization of await listOrganizations(db)) {
-        out(`organization ${organization.id} ${organization.name}`);
+        out(
+          `organization ${organization.id} ${organization.name}${organization.hasAdmin ? "" : " [no admin]"}`,
+        );
         for (const group of organization.workingGroups) {
-          out(
-            `  working group ${group.id} ${group.name} (${group.city})${group.active ? "" : " [inactive]"}`,
-          );
+          const mark = !group.active
+            ? " [inactive]"
+            : group.hasCoordinator
+              ? ""
+              : " [no coordinator]";
+          out(`  working group ${group.id} ${group.name} (${group.city})${mark}`);
         }
       }
     },
   },
   "create-organization": {
-    options: ["name"],
+    options: ["name", "admin-email"],
+    optional: ["contact-email"],
     async run(v, { db, out }) {
-      out((await createOrganization(db, { name: v.name! }, system)).id);
+      const input = {
+        name: v.name!,
+        adminEmail: v["admin-email"]!,
+        contactEmail: v["contact-email"] ?? null,
+      };
+      const result = await createOrganization(db, input, system);
+      out(result.id);
+      if (result.adminCreated) out(`new account for ${normalizeEmail(input.adminEmail)}`);
     },
   },
   "create-working-group": {
-    options: ["organization", "name", "city"],
+    options: ["organization", "name", "city", "coordinator-email"],
     async run(v, { db, out }) {
-      const input = { organizationId: v.organization!, name: v.name!, city: v.city! };
-      out((await createWorkingGroup(db, input, system)).id);
+      const input = {
+        organizationId: v.organization!,
+        name: v.name!,
+        city: v.city!,
+        coordinatorEmail: v["coordinator-email"]!,
+      };
+      const result = await createWorkingGroup(db, input, system);
+      out(result.id);
+      if (result.coordinatorCreated) {
+        out(`new account for ${normalizeEmail(input.coordinatorEmail)}`);
+      }
     },
   },
   "grant-platform-admin": {
@@ -152,7 +188,12 @@ export async function runAdminCommand(argv: string[], deps: AdminDeps): Promise<
   try {
     const { values } = parseArgs({
       args: rest,
-      options: Object.fromEntries(handler.options.map((o) => [o, { type: "string" as const }])),
+      options: Object.fromEntries(
+        [...handler.options, ...(handler.optional ?? [])].map((o) => [
+          o,
+          { type: "string" as const },
+        ]),
+      ),
       allowPositionals: false,
       strict: true,
     });
@@ -169,7 +210,7 @@ export async function runAdminCommand(argv: string[], deps: AdminDeps): Promise<
         return 1;
       }
     }
-    await handler.run(given as Record<string, string>, deps);
+    await handler.run(given, deps);
     return 0;
   } catch (error) {
     if (error instanceof AdminError) {

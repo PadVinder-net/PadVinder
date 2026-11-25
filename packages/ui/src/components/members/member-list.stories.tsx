@@ -1,4 +1,8 @@
-import { membersFixture, workingGroupsFixture } from "@padvinder/contracts/fixtures";
+import {
+  membersFixture,
+  membersWithContactFixture,
+  workingGroupsFixture,
+} from "@padvinder/contracts/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemberList } from "./member-list";
 
@@ -32,3 +36,6 @@ export const TwoGroups: Story = {
   },
 };
 export const NotOpenable: Story = { args: { onOpen: undefined } };
+export const WithContactRights: Story = {
+  args: { groups: [{ workingGroup: noord, members: membersWithContactFixture }] },
+};

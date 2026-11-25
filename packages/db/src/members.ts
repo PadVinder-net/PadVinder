@@ -1,8 +1,10 @@
 import type { Member } from "@padvinder/contracts";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { countCoordinators, lockWorkingGroup } from "./admin";
 import { recordAudit } from "./audit-log";
 import type { Db } from "./client";
 import { notifyAccessChanged } from "./notifications";
+import { userHasLoggedIn } from "./users";
 import { users, workingGroupMemberships, workingGroups } from "./schema";
 
 /**
@@ -36,6 +38,13 @@ export async function listMembers(
       .where(where)
       .orderBy(...order);
   }
+  return selectMembersWithContact(db)
+    .where(where)
+    .orderBy(...order);
+}
+
+/** A member with the email address, phone and `hasLoggedIn`: for those who may see contact details. */
+function selectMembersWithContact(db: Db) {
   return db
     .select({
       membershipId: workingGroupMemberships.id,
@@ -44,11 +53,22 @@ export async function listMembers(
       isCoordinator: workingGroupMemberships.isCoordinator,
       email: users.email,
       phone: users.phone,
+      hasLoggedIn: userHasLoggedIn,
     })
     .from(workingGroupMemberships)
     .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
-    .where(where)
-    .orderBy(...order);
+    .$dynamic();
+}
+
+/**
+ * One member with contact details and `hasLoggedIn`; `null` when the membership is gone or its
+ * account was deleted. Not scoped: the route decides whether the actor may see it.
+ */
+export async function getMember(db: Db, membershipId: string): Promise<Member | null> {
+  const [row] = await selectMembersWithContact(db).where(
+    and(eq(workingGroupMemberships.id, membershipId), isNull(users.deletedAt)),
+  );
+  return row ?? null;
 }
 
 /** The facts the permission check needs about one membership; `null` when it is gone. */
@@ -77,7 +97,7 @@ export async function getMembership(
 }
 
 export type RemoveMembershipResult = {
-  outcome: "removed" | "not_found" | "coordinator_changed";
+  outcome: "removed" | "not_found" | "coordinator_changed" | "last_coordinator";
 };
 
 /**
@@ -85,52 +105,57 @@ export type RemoveMembershipResult = {
  * group and the role, `volunteer` or `coordinator`) and `access-changed` for the removed user, in
  * one transaction. May they? The caller decides that first, from the coordinator flag it loaded.
  *
- * The delete is one statement with `returning`: it locks the row, so two removals at once give one
- * `removed` and one `not_found`, and one audit entry. With `expectedIsCoordinator` it only deletes
- * a membership whose coordinator flag still has that value: if it changed in between (a volunteer
- * made coordinator) the row stays and the outcome is `coordinator_changed`, so the permission
- * decision made on the old flag is never applied to the new one.
+ * It takes the working group's lock (`lockWorkingGroup`) and reads the membership again under it,
+ * so two removals at once give one `removed` and one `not_found`, and one audit entry. With
+ * `expectedIsCoordinator` it only deletes a membership whose coordinator flag still has that
+ * value: if it changed in between (a volunteer made coordinator) the row stays and the outcome is
+ * `coordinator_changed`, so the permission decision made on the old flag is never applied to the
+ * new one. The last coordinator of an active group stays: `last_coordinator`, and nothing changes.
  */
 export async function removeMembership(
   db: Db,
   input: { membershipId: string; removedBy: string; expectedIsCoordinator?: boolean },
 ): Promise<RemoveMembershipResult> {
   return db.transaction(async (tx): Promise<RemoveMembershipResult> => {
-    const conditions = [eq(workingGroupMemberships.id, input.membershipId)];
-    if (input.expectedIsCoordinator !== undefined)
-      conditions.push(eq(workingGroupMemberships.isCoordinator, input.expectedIsCoordinator));
-    const [removed] = await tx
-      .delete(workingGroupMemberships)
-      .where(and(...conditions))
-      .returning({
+    const [found] = await tx
+      .select({ workingGroupId: workingGroupMemberships.workingGroupId })
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.id, input.membershipId));
+    if (!found) return { outcome: "not_found" };
+    const group = await lockWorkingGroup(tx, found.workingGroupId);
+    // Read again under the lock: a removal or role change that committed in between counts.
+    const [membership] = await tx
+      .select({
         userId: workingGroupMemberships.userId,
         isCoordinator: workingGroupMemberships.isCoordinator,
-        workingGroupId: workingGroupMemberships.workingGroupId,
-      });
-    if (!removed) {
-      if (input.expectedIsCoordinator === undefined) return { outcome: "not_found" };
-      // Nothing matched the flag. Is the membership still there, with the other value?
-      const [still] = await tx
-        .select({ id: workingGroupMemberships.id })
-        .from(workingGroupMemberships)
-        .where(eq(workingGroupMemberships.id, input.membershipId));
-      return { outcome: still ? "coordinator_changed" : "not_found" };
+      })
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.id, input.membershipId));
+    if (!group || !membership) return { outcome: "not_found" };
+    if (
+      input.expectedIsCoordinator !== undefined &&
+      membership.isCoordinator !== input.expectedIsCoordinator
+    ) {
+      return { outcome: "coordinator_changed" };
     }
-    const [group] = await tx
-      .select({ organizationId: workingGroups.organizationId })
-      .from(workingGroups)
-      .where(eq(workingGroups.id, removed.workingGroupId));
+    if (membership.isCoordinator && group.active) {
+      const coordinators = await countCoordinators(tx, found.workingGroupId);
+      if (coordinators < 2) return { outcome: "last_coordinator" };
+    }
+    await tx
+      .delete(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.id, input.membershipId));
     await recordAudit(tx, {
       actor: { kind: "user", userId: input.removedBy },
-      organizationId: group!.organizationId,
+      organizationId: group.organizationId,
       action: "membership.removed",
-      subject: { type: "user", id: removed.userId },
+      subject: { type: "user", id: membership.userId },
       details: {
-        workingGroupId: removed.workingGroupId,
-        role: removed.isCoordinator ? "coordinator" : "volunteer",
+        workingGroupId: found.workingGroupId,
+        role: membership.isCoordinator ? "coordinator" : "volunteer",
       },
     });
-    await notifyAccessChanged(tx, removed.userId);
+    await notifyAccessChanged(tx, membership.userId);
     return { outcome: "removed" };
   });
 }

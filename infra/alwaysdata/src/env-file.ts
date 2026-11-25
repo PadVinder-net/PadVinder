@@ -48,6 +48,9 @@ export function renderEnvFile(input: {
     `SMTP_USER=${login.smtpUser}`,
     `SMTP_PASSWORD=${login.smtpPassword}`,
     `MAIL_FROM=${mailFrom}`,
+    ...(environment.mailSubjectPrefix === undefined
+      ? []
+      : [`MAIL_SUBJECT_PREFIX=${environment.mailSubjectPrefix}`]),
   ];
   return `${lines.join("\n")}\n`;
 }

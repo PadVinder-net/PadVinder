@@ -225,6 +225,201 @@ test("the species migrations apply to a database that already holds users, organ
   }
 });
 
+test("the last_login_at migration gives each user who logged in the newest session's start, or else updated_at", async () => {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  try {
+    const all = join(import.meta.dirname, "..", "drizzle");
+    const names = (await readdir(all, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    const column = names.findIndex((n) => n.endsWith("_last_login_at"));
+    expect(column).toBeGreaterThan(0);
+    expect(names[column + 1]).toMatch(/_backfill_last_login_at$/);
+    for (const name of names.slice(0, column))
+      await cp(join(all, name), join(folder, name), { recursive: true });
+    await old.db.execute(sql`drop schema if exists drizzle cascade`);
+    await old.db.execute(sql`drop schema public cascade`);
+    await old.db.execute(sql`create schema public`);
+    await runMigrations(old.url, folder);
+    const user = async (
+      email: string,
+      { verified = true, deleted = false }: { verified?: boolean; deleted?: boolean } = {},
+    ) =>
+      (
+        await old.pool.query(
+          `insert into users (name, email, email_verified, updated_at, deleted_at)
+           values ('Oud', $1, $2, '2026-09-15T08:00:00Z', $3) returning id`,
+          [email, verified, deleted ? "2026-09-15T08:00:00Z" : null],
+        )
+      ).rows[0].id as string;
+    const withSessions = await user("sessies@example.test");
+    // Logged in once and logged out again: Better Auth deleted the session, but a code login
+    // set email_verified.
+    const loggedOut = await user("uitgelogd@example.test");
+    // Made by the admin tool and never used.
+    const neverUsed = await user("nooit@example.test", { verified: false });
+    // deleteAccount clears email_verified; the migration skips a deleted account even without that.
+    const deleted = await user("verwijderd@example.test", { deleted: true });
+    for (const [token, createdAt] of [
+      ["oud", "2026-10-01T10:00:00Z"],
+      ["nieuw", "2026-11-01T10:00:00Z"],
+    ] as const) {
+      await old.pool.query(
+        "insert into sessions (token, expires_at, created_at, user_id) values ($1, '2027-06-01T00:00:00Z', $2, $3)",
+        [token, createdAt, withSessions],
+      );
+    }
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query("select id, last_login_at from users where id = any($1)", [
+      [withSessions, loggedOut, neverUsed, deleted],
+    ]);
+    const byId = new Map(rows.rows.map((r) => [r.id, r.last_login_at as Date | null]));
+    expect(byId.get(withSessions)?.toISOString()).toBe("2026-11-01T10:00:00.000Z");
+    expect(byId.get(loggedOut)?.toISOString()).toBe("2026-09-15T08:00:00.000Z");
+    expect(byId.get(neverUsed)).toBeNull();
+    expect(byId.get(deleted)).toBeNull();
+  } finally {
+    await rm(folder, { recursive: true });
+    await old.drop();
+  }
+});
+
+/**
+ * A fresh database migrated up to, not including, the migration whose folder ends in `suffix`,
+ * and the folder of the migrations it got. The caller drops the database and removes the folder.
+ */
+async function migratedBefore(suffix: string) {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  const all = join(import.meta.dirname, "..", "drizzle");
+  const names = (await readdir(all, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  const index = names.findIndex((n) => n.endsWith(suffix));
+  expect(index).toBeGreaterThan(0);
+  for (const name of names.slice(0, index))
+    await cp(join(all, name), join(folder, name), { recursive: true });
+  await old.db.execute(sql`drop schema if exists drizzle cascade`);
+  await old.db.execute(sql`drop schema public cascade`);
+  await old.db.execute(sql`create schema public`);
+  await runMigrations(old.url, folder);
+  return {
+    old,
+    async cleanUp() {
+      await rm(folder, { recursive: true });
+      await old.drop();
+    },
+  };
+}
+
+test("the organization contact migration applies to a database that holds organizations", async () => {
+  const { old, cleanUp } = await migratedBefore("_organization_contact_and_unique_name");
+  try {
+    await old.pool.query(
+      "insert into organizations (name) values ('Paddentrek Voorbeeldstad'), ('Paddenwerkgroep Fictiefdorp')",
+    );
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query(
+      "select name, contact_email from organizations order by name",
+    );
+    expect(rows.rows).toEqual([
+      { name: "Paddentrek Voorbeeldstad", contact_email: null },
+      { name: "Paddenwerkgroep Fictiefdorp", contact_email: null },
+    ]);
+    await expect(
+      old.pool.query("insert into organizations (name) values ('PADDENTREK voorbeeldstad')"),
+    ).rejects.toMatchObject({ code: "23505", constraint: "organizations_name_key" });
+  } finally {
+    await cleanUp();
+  }
+});
+
+test("the organization contact migration fails when two names differ only in capitals", async () => {
+  const { old, cleanUp } = await migratedBefore("_organization_contact_and_unique_name");
+  try {
+    await old.pool.query(
+      "insert into organizations (name) values ('Paddentrek Voorbeeldstad'), ('paddentrek voorbeeldstad')",
+    );
+    await expect(runMigrations(old.url)).rejects.toThrow();
+    const column = await old.pool.query(
+      "select 1 from information_schema.columns where table_name = 'organizations' and column_name = 'contact_email'",
+    );
+    expect(column.rows).toEqual([]);
+  } finally {
+    await cleanUp();
+  }
+});
+
+/** Inserts organizations and their working groups; returns the organization IDs by name. */
+async function insertGroups(
+  pool: { query: (text: string, values?: unknown[]) => Promise<{ rows: { id: string }[] }> },
+  groups: Record<string, string[]>,
+) {
+  const ids: Record<string, string> = {};
+  for (const [organization, names] of Object.entries(groups)) {
+    const { rows } = await pool.query("insert into organizations (name) values ($1) returning id", [
+      organization,
+    ]);
+    ids[organization] = rows[0]!.id;
+    for (const name of names) {
+      await pool.query(
+        "insert into working_groups (organization_id, name, city) values ($1, $2, 'Voorbeeldstad')",
+        [ids[organization], name],
+      );
+    }
+  }
+  return ids;
+}
+
+test("the working group name migration applies to a database that holds working groups", async () => {
+  const { old, cleanUp } = await migratedBefore("_working_group_unique_name");
+  try {
+    // The same name in two organizations is fine, before and after.
+    const ids = await insertGroups(old.pool, {
+      "Paddentrek Voorbeeldstad": ["Noord", "Zuid"],
+      "Paddenwerkgroep Fictiefdorp": ["Noord"],
+    });
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query("select name from working_groups order by name");
+    expect(rows.rows).toEqual([{ name: "Noord" }, { name: "Noord" }, { name: "Zuid" }]);
+    await expect(
+      old.pool.query(
+        "insert into working_groups (organization_id, name, city) values ($1, 'NOORD', 'X')",
+        [ids["Paddentrek Voorbeeldstad"]],
+      ),
+    ).rejects.toMatchObject({ code: "23505", constraint: "working_groups_name_key" });
+  } finally {
+    await cleanUp();
+  }
+});
+
+test("the working group name migration fails when two names in one organization differ only in capitals", async () => {
+  const { old, cleanUp } = await migratedBefore("_working_group_unique_name");
+  try {
+    await insertGroups(old.pool, { "Paddentrek Voorbeeldstad": ["Noord", "noord"] });
+    await expect(runMigrations(old.url)).rejects.toThrow();
+    // One transaction: the old constraint is still there, the new index is not.
+    const indexes = await old.pool.query(
+      "select indexname from pg_indexes where tablename = 'working_groups' order by indexname",
+    );
+    expect(indexes.rows.map((row: { indexname: string }) => row.indexname)).toEqual([
+      "working_groups_organization_id_name_key",
+      "working_groups_pkey",
+    ]);
+  } finally {
+    await cleanUp();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.

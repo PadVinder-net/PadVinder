@@ -52,6 +52,7 @@ const reviewers = {
   volunteer: 403,
   volunteerOtherGroup: 404,
   coordinatorOtherOrganization: 404,
+  organizationAdminOtherOrganization: 404,
   applicant: 404,
   anonymous: 401,
 };

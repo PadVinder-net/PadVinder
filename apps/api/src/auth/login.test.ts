@@ -1,7 +1,15 @@
 import { Writable } from "node:stream";
-import { grantPlatformAdmin, sessions, users, verifications } from "@padvinder/db";
+import {
+  createOrganization,
+  createWorkingGroup,
+  grantCoordinator,
+  grantPlatformAdmin,
+  sessions,
+  users,
+  verifications,
+} from "@padvinder/db";
 import { createTestDatabase } from "@padvinder/db/testing";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
 import { createMemoryMailer } from "../mail/mailer";
@@ -28,6 +36,7 @@ afterEach(async () => {
 const setCookies = (res: { headers: Record<string, unknown> }): string[] =>
   [res.headers["set-cookie"] ?? []].flat() as string[];
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 test("a new address gets a code and becomes an account", async () => {
@@ -494,4 +503,43 @@ test("an account made by a grant is the one that logs in with that address", asy
   expect(await ctx.t.db.select().from(users)).toMatchObject([
     { id: granted.userId, isPlatformAdmin: true },
   ]);
+});
+
+test("a login sets last_login_at; a second login moves it", async () => {
+  const { userId } = await loginAs(ctx, "eerste@example.test");
+  const [first] = await ctx.t.db.select().from(users).where(eq(users.id, userId));
+  expect(first!.lastLoginAt).toBeInstanceOf(Date);
+  await sleep(20);
+  await loginAs(ctx, "eerste@example.test");
+  const [second] = await ctx.t.db.select().from(users).where(eq(users.id, userId));
+  expect(second!.lastLoginAt!.getTime()).toBeGreaterThan(first!.lastLoginAt!.getTime());
+});
+
+test("an account made by the admin tool has no last_login_at until its first login", async () => {
+  const system = { kind: "system" } as const;
+  const org = await createOrganization(
+    ctx.t.db,
+    { name: "Login Org", adminEmail: "org-admin@example.test" },
+    system,
+  );
+  const wg = await createWorkingGroup(
+    ctx.t.db,
+    {
+      organizationId: org.id,
+      name: "Login Groep",
+      city: "Enschede",
+      coordinatorEmail: "login-coordinator@example.test",
+    },
+    system,
+  );
+  const made = await grantCoordinator(
+    ctx.t.db,
+    { email: "nieuw@example.test", workingGroupId: wg.id },
+    system,
+  );
+  const [before] = await ctx.t.db.select().from(users).where(eq(users.id, made.userId));
+  expect(before!.lastLoginAt).toBeNull();
+  await loginAs(ctx, "nieuw@example.test");
+  const [after] = await ctx.t.db.select().from(users).where(eq(users.id, made.userId));
+  expect(after!.lastLoginAt).toBeInstanceOf(Date);
 });

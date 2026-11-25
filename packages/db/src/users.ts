@@ -1,6 +1,9 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { users } from "./schema";
+
+/** Whether the user has ever logged in: `users.last_login_at is not null`. */
+export const userHasLoggedIn = sql<boolean>`${users.lastLoginAt} is not null`;
 
 export type UserProfile = { id: string; name: string; email: string; phone: string | null };
 

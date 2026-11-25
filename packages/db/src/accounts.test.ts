@@ -11,7 +11,10 @@ import {
   grantCoordinator,
   grantOrganizationAdmin,
   grantPlatformAdmin,
+  removeOrganizationAdmin,
   revokePlatformAdmin,
+  setCoordinator,
+  updateWorkingGroup,
 } from "./admin";
 import { getMeRoles } from "./me";
 import {
@@ -26,13 +29,15 @@ import {
   loginCodeRequests,
   membershipRequests,
   organizationAdmins,
+  organizations,
   sessions,
   users,
   verifications,
   workingGroupMemberships,
+  workingGroups,
 } from "./schema";
 import type { Db } from "./client";
-import { createTestDatabase, type TestDatabase } from "./testing";
+import { createTestDatabase, holdLock, waitUntilBlocked, type TestDatabase } from "./testing";
 import { getUserProfile, updateUserProfile } from "./users";
 
 let t: TestDatabase | undefined;
@@ -44,11 +49,28 @@ let groups: string[];
 
 beforeAll(async () => {
   t = await createTestDatabase();
-  organizationId = (await createOrganization(db(), { name: "Verwijder Org" }, system)).id;
+  organizationId = (
+    await createOrganization(
+      db(),
+      { name: "Verwijder Org", adminEmail: "org-admin@example.test" },
+      system,
+    )
+  ).id;
   groups = [];
   for (const name of ["Noord", "Zuid", "Oost"]) {
     groups.push(
-      (await createWorkingGroup(db(), { organizationId, name, city: "Voorbeeldstad" }, system)).id,
+      (
+        await createWorkingGroup(
+          db(),
+          {
+            organizationId,
+            name,
+            city: "Voorbeeldstad",
+            coordinatorEmail: "eerste-coordinator@example.test",
+          },
+          system,
+        )
+      ).id,
     );
   }
   // Every test that is not about the last platform admin has another one around, who has
@@ -451,21 +473,6 @@ test("the only two platform admins deleting themselves at the same moment: exact
   }
 });
 
-/** Waits until some connection of this database waits on a lock; fails after two seconds. */
-async function waitUntilBlocked(): Promise<void> {
-  for (let i = 0; i < 100; i++) {
-    const [blocked] = await db()
-      .execute<{ n: number }>(
-        sql`select count(*)::int as n from pg_stat_activity
-          where datname = current_database() and wait_event_type = 'Lock'`,
-      )
-      .then((r) => r.rows);
-    if (blocked!.n > 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error("No connection waited on a lock");
-}
-
 test("an approval that holds the request while the account is deleted: no deadlock", async () => {
   // The approval's own order (decideMembershipRequest): lock the request row, update it, then
   // insert the membership, whose foreign key check takes a share lock on the users row.
@@ -490,7 +497,7 @@ test("an approval that holds the request while the account is deleted: no deadlo
   });
   await ready;
   const deletion = deleteAccount(db(), { userId: user.id, now });
-  await waitUntilBlocked();
+  await waitUntilBlocked(db());
   continueApproval();
   // Both finish: before the fix, PostgreSQL ended one of them with "deadlock detected".
   await approval;
@@ -531,7 +538,7 @@ test("a deletion and an approval waiting for the same request: no deadlock, no m
     decidedBy: decider.id,
     now,
   });
-  await waitUntilBlocked();
+  await waitUntilBlocked(db());
   release();
   await holder;
   const [deleted, decided] = await Promise.all([deletion, decision]);
@@ -545,3 +552,545 @@ test("a deletion and an approval waiting for the same request: no deadlock, no m
       .where(eq(workingGroupMemberships.userId, user.id)),
   ).toEqual([]);
 });
+
+// The last coordinator and the last admin (the design, "Deleting an account").
+
+let organizationCount = 0;
+/** A fresh organization with `adminEmail` as its only admin, so tests do not share one. */
+async function newOrganization(
+  adminEmail: string,
+  {
+    name = `Blokkade Org ${organizationCount++}`,
+    contactEmail = null,
+  }: { name?: string; contactEmail?: string | null } = {},
+): Promise<string> {
+  return (await createOrganization(db(), { name, adminEmail, contactEmail }, system)).id;
+}
+
+/** A fresh active working group with `coordinatorEmail` as its only coordinator. */
+async function newGroup(
+  organization: string,
+  name: string,
+  coordinatorEmail: string,
+): Promise<string> {
+  return (
+    await createWorkingGroup(
+      db(),
+      { organizationId: organization, name, city: "Voorbeeldstad", coordinatorEmail },
+      system,
+    )
+  ).id;
+}
+
+/** The ID of the user's membership of the group. */
+async function membershipId(userId: string, workingGroupId: string): Promise<string> {
+  const [row] = await db()
+    .select({ id: workingGroupMemberships.id })
+    .from(workingGroupMemberships)
+    .where(
+      and(
+        eq(workingGroupMemberships.userId, userId),
+        eq(workingGroupMemberships.workingGroupId, workingGroupId),
+      ),
+    );
+  return row!.id;
+}
+
+const deletedEntries = async (userId: string) =>
+  db()
+    .select()
+    .from(auditLogEntries)
+    .where(
+      and(eq(auditLogEntries.subjectId, userId), eq(auditLogEntries.action, "account.deleted")),
+    );
+
+/** The user still has everything: name, address, session, memberships and admin rows. */
+async function expectUntouched(user: { id: string; email: string }) {
+  expect(await userRow(user.id)).toMatchObject({
+    name: "Noor de Vries",
+    email: user.email,
+    phone: "06 12345678",
+    deletedAt: null,
+  });
+  expect(await db().select().from(sessions).where(eq(sessions.userId, user.id))).toHaveLength(1);
+  expect(await deletedEntries(user.id)).toEqual([]);
+}
+
+test("the last coordinator of an active group cannot delete their account", async () => {
+  const fresh = await createTestDatabase();
+  try {
+    const [row] = await fresh.db
+      .insert(users)
+      .values({ name: "Noor de Vries", email: "noor@example.test", emailVerified: true })
+      .returning({ id: users.id });
+    const organization = await createOrganization(
+      fresh.db,
+      {
+        name: "Paddentrek Voorbeeldstad",
+        adminEmail: "org-admin@example.test",
+        contactEmail: "contact-voorbeeldstad@example.test",
+      },
+      system,
+    );
+    const group = await createWorkingGroup(
+      fresh.db,
+      {
+        organizationId: organization.id,
+        name: "Noord",
+        city: "Voorbeeldstad",
+        coordinatorEmail: "noor@example.test",
+      },
+      system,
+    );
+    const entriesBefore = await fresh.db.select().from(auditLogEntries);
+    expect(await deleteAccount(fresh.db, { userId: row!.id, now })).toEqual({
+      outcome: "blocked",
+      blockers: [
+        {
+          role: "coordinator",
+          workingGroupName: "Noord",
+          organizationName: "Paddentrek Voorbeeldstad",
+          contactEmail: "contact-voorbeeldstad@example.test",
+        },
+      ],
+    });
+    // Nothing changes: the user keeps name, address and membership; no audit entry.
+    const [after] = await fresh.db.select().from(users).where(eq(users.id, row!.id));
+    expect(after).toMatchObject({ name: "Noor de Vries", email: "noor@example.test" });
+    expect(after!.deletedAt).toBeNull();
+    expect(
+      await fresh.db
+        .select()
+        .from(workingGroupMemberships)
+        .where(eq(workingGroupMemberships.workingGroupId, group.id)),
+    ).toEqual([expect.objectContaining({ userId: row!.id, isCoordinator: true })]);
+    expect(await fresh.db.select().from(auditLogEntries)).toHaveLength(entriesBefore.length);
+  } finally {
+    await fresh.drop();
+  }
+});
+
+test("a blocked deletion keeps the sessions, the pending requests and the admin rows", async () => {
+  const user = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  await newGroup(organization, "Enige", user.email);
+  await grantOrganizationAdmin(db(), { email: user.email, organizationId }, system);
+  const pending = await request(user.id, groups[1]!);
+  const result = await deleteAccount(db(), { userId: user.id, now });
+  expect(result.outcome).toBe("blocked");
+  await expectUntouched(user);
+  const [stored] = await db()
+    .select()
+    .from(membershipRequests)
+    .where(eq(membershipRequests.id, pending));
+  expect(stored!.status).toBe("pending");
+  expect(
+    await db().select().from(organizationAdmins).where(eq(organizationAdmins.userId, user.id)),
+  ).toHaveLength(1);
+});
+
+test("with a second coordinator the deletion goes through", async () => {
+  const user = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  const group = await newGroup(organization, "Twee", user.email);
+  await grantCoordinator(
+    db(),
+    { email: "tweede-coordinator@example.test", workingGroupId: group },
+    system,
+  );
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({ outcome: "deleted" });
+});
+
+test("a second coordinator who never logged in counts", async () => {
+  const user = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  const group = await newGroup(organization, "Nooit", user.email);
+  // The tool makes an account for the address; it has never logged in.
+  await grantCoordinator(
+    db(),
+    { email: "nooit-ingelogd@example.test", workingGroupId: group },
+    system,
+  );
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({ outcome: "deleted" });
+});
+
+test("a deleted second coordinator does not count", async () => {
+  const user = await newUser();
+  const other = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  const group = await newGroup(organization, "Weg", user.email);
+  await grantCoordinator(db(), { email: other.email, workingGroupId: group }, system);
+  expect(await deleteAccount(db(), { userId: other.id, now })).toEqual({ outcome: "deleted" });
+  expect((await deleteAccount(db(), { userId: user.id, now })).outcome).toBe("blocked");
+});
+
+test("the last coordinator of an inactive group can delete their account", async () => {
+  const user = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  const group = await newGroup(organization, "Uit", user.email);
+  await updateWorkingGroup(db(), { workingGroupId: group, patch: { active: false } }, system);
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({ outcome: "deleted" });
+  expect(
+    await db()
+      .select()
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.workingGroupId, group)),
+  ).toEqual([]);
+});
+
+test("the last admin of an organization cannot; with a second admin it goes through", async () => {
+  const user = await newUser();
+  const organization = await newOrganization(user.email, { name: "Enige Beheer" });
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({
+    outcome: "blocked",
+    blockers: [
+      {
+        role: "organizationAdmin",
+        workingGroupName: null,
+        organizationName: "Enige Beheer",
+        contactEmail: null,
+      },
+    ],
+  });
+  await expectUntouched(user);
+  // A second admin who never logged in counts.
+  await grantOrganizationAdmin(
+    db(),
+    { email: "tweede-beheerder@example.test", organizationId: organization },
+    system,
+  );
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({ outcome: "deleted" });
+  expect(
+    await db()
+      .select()
+      .from(organizationAdmins)
+      .where(eq(organizationAdmins.organizationId, organization)),
+  ).toHaveLength(1);
+});
+
+test("the blocker of an admin carries the organization's contact address", async () => {
+  const user = await newUser();
+  await newOrganization(user.email, {
+    name: "Met Contact",
+    contactEmail: "contact-met@example.test",
+  });
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({
+    outcome: "blocked",
+    blockers: [
+      {
+        role: "organizationAdmin",
+        workingGroupName: null,
+        organizationName: "Met Contact",
+        contactEmail: "contact-met@example.test",
+      },
+    ],
+  });
+});
+
+test("someone who is both gets one blocker for each, groups first", async () => {
+  const user = await newUser();
+  // Names in an order where Dutch sorting differs from the bytes: É before O, z after Z.
+  const zeta = await newOrganization(user.email, { name: "Zeta Beheer" });
+  await newOrganization(user.email, { name: "Éénhoorn Beheer" });
+  const other = await newOrganization("org-admin@example.test", { name: "Ander Beheer" });
+  await newGroup(other, "Oost", user.email);
+  await newGroup(zeta, "Éemnes", user.email);
+  // A group where the user is one of two coordinators, and one where they are a volunteer: no
+  // blocker for either.
+  const shared = await newGroup(other, "Gedeeld", user.email);
+  await grantCoordinator(db(), { email: "mede@example.test", workingGroupId: shared }, system);
+  await db()
+    .insert(workingGroupMemberships)
+    .values({ userId: user.id, workingGroupId: groups[2]!, isCoordinator: false });
+
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({
+    outcome: "blocked",
+    blockers: [
+      {
+        role: "coordinator",
+        workingGroupName: "Éemnes",
+        organizationName: "Zeta Beheer",
+        contactEmail: null,
+      },
+      {
+        role: "coordinator",
+        workingGroupName: "Oost",
+        organizationName: "Ander Beheer",
+        contactEmail: null,
+      },
+      {
+        role: "organizationAdmin",
+        workingGroupName: null,
+        organizationName: "Éénhoorn Beheer",
+        contactEmail: null,
+      },
+      {
+        role: "organizationAdmin",
+        workingGroupName: null,
+        organizationName: "Zeta Beheer",
+        contactEmail: null,
+      },
+    ],
+  });
+  await expectUntouched(user);
+});
+
+test("the last platform admin who is also the last coordinator gets last_platform_admin", async () => {
+  const fresh = await createTestDatabase();
+  try {
+    await grantPlatformAdmin(fresh.db, { email: "enige@example.test" }, system);
+    const [admin] = await fresh.db
+      .select()
+      .from(users)
+      .where(eq(users.email, "enige@example.test"));
+    const organization = await createOrganization(
+      fresh.db,
+      { name: "Org", adminEmail: "enige@example.test" },
+      system,
+    );
+    expect(organization.adminUserId).toBe(admin!.id);
+    expect(await deleteAccount(fresh.db, { userId: admin!.id, now })).toEqual({
+      outcome: "last_platform_admin",
+    });
+  } finally {
+    await fresh.drop();
+  }
+});
+
+test("two coordinators of one group deleting their accounts at the same moment: one is deleted, one is blocked", async () => {
+  const first = await newUser();
+  const second = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  const group = await newGroup(organization, "Samen", first.email);
+  await grantCoordinator(db(), { email: second.email, workingGroupId: group }, system);
+  // Hold the group, so both deletions are under way before either can decide.
+  const held = await holdLock(db(), (tx) =>
+    tx.execute(sql`select id from working_groups where id = ${group} for no key update`),
+  );
+  const deletions = [first, second].map((user) => deleteAccount(db(), { userId: user.id, now }));
+  await waitUntilBlocked(db(), 2);
+  await held.release();
+  const results = await Promise.all(deletions);
+  expect(results.map((r) => r.outcome).sort()).toEqual(["blocked", "deleted"]);
+  expect(
+    await db()
+      .select()
+      .from(workingGroupMemberships)
+      .where(
+        and(
+          eq(workingGroupMemberships.workingGroupId, group),
+          eq(workingGroupMemberships.isCoordinator, true),
+        ),
+      ),
+  ).toHaveLength(1);
+});
+
+test("a coordinator deleting their account while the other loses the role: one of the two is refused", async () => {
+  const first = await newUser();
+  const second = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  const group = await newGroup(organization, "Tegelijk", first.email);
+  await grantCoordinator(db(), { email: second.email, workingGroupId: group }, system);
+  const results = await Promise.allSettled([
+    deleteAccount(db(), { userId: first.id, now }),
+    setCoordinator(
+      db(),
+      { membershipId: await membershipId(second.id, group), isCoordinator: false },
+      system,
+    ),
+  ]);
+  const [deletion, revoke] = results;
+  const deleted = deletion.status === "fulfilled" && deletion.value.outcome === "deleted";
+  const revoked = revoke.status === "fulfilled";
+  expect([deleted, revoked].filter(Boolean)).toHaveLength(1);
+  if (!revoked) expect(revoke).toMatchObject({ reason: { code: "last_coordinator" } });
+  if (!deleted) expect(deletion).toMatchObject({ value: { outcome: "blocked" } });
+  expect(
+    await db()
+      .select()
+      .from(workingGroupMemberships)
+      .where(
+        and(
+          eq(workingGroupMemberships.workingGroupId, group),
+          eq(workingGroupMemberships.isCoordinator, true),
+        ),
+      ),
+  ).toHaveLength(1);
+});
+
+test("a deletion waits for a coordinator change in progress and counts after it", async () => {
+  const first = await newUser();
+  const second = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  const group = await newGroup(organization, "Wacht", first.email);
+  await grantCoordinator(db(), { email: second.email, workingGroupId: group }, system);
+  // The other coordinator loses the role, as setCoordinator does it: lock the group, clear the
+  // flag. The deletion starts before that commits, so it must wait for the group and read again.
+  const held = await holdLock(db(), async (tx) => {
+    await tx.execute(sql`select id from working_groups where id = ${group} for no key update`);
+    await tx
+      .update(workingGroupMemberships)
+      .set({ isCoordinator: false })
+      .where(
+        and(
+          eq(workingGroupMemberships.userId, second.id),
+          eq(workingGroupMemberships.workingGroupId, group),
+        ),
+      );
+  });
+  const deletion = deleteAccount(db(), { userId: first.id, now });
+  await waitUntilBlocked(db());
+  await held.release();
+  expect((await deletion).outcome).toBe("blocked");
+  await expectUntouched(first);
+});
+
+test("a deletion waits for an admin removal in progress and counts after it", async () => {
+  const first = await newUser();
+  const second = await newUser();
+  const organization = await newOrganization(first.email);
+  await grantOrganizationAdmin(db(), { email: second.email, organizationId: organization }, system);
+  const held = await holdLock(db(), async (tx) => {
+    await tx.execute(
+      sql`select id from organizations where id = ${organization} for no key update`,
+    );
+    await tx
+      .delete(organizationAdmins)
+      .where(
+        and(
+          eq(organizationAdmins.userId, second.id),
+          eq(organizationAdmins.organizationId, organization),
+        ),
+      );
+  });
+  const deletion = deleteAccount(db(), { userId: first.id, now });
+  await waitUntilBlocked(db());
+  await held.release();
+  expect((await deletion).outcome).toBe("blocked");
+  await expectUntouched(first);
+});
+
+test("the two admins of an organization: a deletion and a removal at the same moment leave one", async () => {
+  const first = await newUser();
+  const second = await newUser();
+  const organization = await newOrganization(first.email);
+  await grantOrganizationAdmin(db(), { email: second.email, organizationId: organization }, system);
+  const results = await Promise.allSettled([
+    deleteAccount(db(), { userId: first.id, now }),
+    removeOrganizationAdmin(db(), { organizationId: organization, userId: second.id }, system),
+  ]);
+  const [deletion, removal] = results;
+  const deleted = deletion.status === "fulfilled" && deletion.value.outcome === "deleted";
+  const removed = removal.status === "fulfilled";
+  expect([deleted, removed].filter(Boolean)).toHaveLength(1);
+  // The one left is the one the winner did not take away; the loser was refused.
+  if (deleted) {
+    expect(removal).toMatchObject({ reason: { code: "last_organization_admin" } });
+  } else {
+    expect(deletion).toMatchObject({ value: { outcome: "blocked" } });
+  }
+  expect(
+    await db()
+      .select({ userId: organizationAdmins.userId })
+      .from(organizationAdmins)
+      .where(eq(organizationAdmins.organizationId, organization)),
+  ).toEqual([{ userId: deleted ? second.id : first.id }]);
+});
+
+test("a role given while the deletion waits for the user row is counted", async () => {
+  const user = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  // Another transaction makes a working group with the user as its only coordinator. Its
+  // membership insert holds a key share lock on the user row, so the deletion, which read the
+  // user's roles before, waits for the user row and must read them again.
+  const held = await holdLock(db(), async (tx) => {
+    await tx.execute(sql`select id from users where id = ${user.id} for key share`);
+    const [group] = await tx
+      .insert(workingGroups)
+      .values({ organizationId: organization, name: "Nieuw", city: "Voorbeeldstad" })
+      .returning({ id: workingGroups.id });
+    await tx
+      .insert(workingGroupMemberships)
+      .values({ userId: user.id, workingGroupId: group!.id, isCoordinator: true });
+  });
+  const deletion = deleteAccount(db(), { userId: user.id, now });
+  await waitUntilBlocked(db());
+  await held.release();
+  expect(await deletion).toEqual({
+    outcome: "blocked",
+    blockers: [expect.objectContaining({ role: "coordinator", workingGroupName: "Nieuw" })],
+  });
+  await expectUntouched(user);
+});
+
+// A role given by address while the account is being deleted. The deletion holds the user row
+// `for update` from that lock until it commits; here a transaction holds it the same way, the
+// grant starts, and then the account is deleted as `deleteAccount` does it.
+test.each([
+  [
+    "createWorkingGroup",
+    (email: string) =>
+      createWorkingGroup(
+        db(),
+        { organizationId, name: "Te laat", city: "Voorbeeldstad", coordinatorEmail: email },
+        system,
+      ),
+  ],
+  [
+    "createOrganization",
+    (email: string) => createOrganization(db(), { name: "Te laat Org", adminEmail: email }, system),
+  ],
+  [
+    "grantCoordinator",
+    (email: string) => grantCoordinator(db(), { email, workingGroupId: groups[0]! }, system),
+  ],
+  [
+    "grantOrganizationAdmin",
+    (email: string) => grantOrganizationAdmin(db(), { email, organizationId }, system),
+  ],
+])(
+  "%s naming an account that is being deleted gives no role to the deleted account",
+  async (_, grant) => {
+    const user = await newUser();
+    let continueDeletion!: () => void;
+    const resume = new Promise<void>((resolve) => (continueDeletion = resolve));
+    let locked!: () => void;
+    const ready = new Promise<void>((resolve) => (locked = resolve));
+    const deletion = db().transaction(async (tx) => {
+      await tx.execute(sql`select id from users where id = ${user.id} for update`);
+      locked();
+      await resume;
+      await tx
+        .update(users)
+        .set({
+          name: DELETED_ACCOUNT_NAME,
+          email: deletedAccountEmail(user.id),
+          deletedAt: now,
+        })
+        .where(eq(users.id, user.id));
+    });
+    await ready;
+    const granting = grant(user.email);
+    // Keep a rejection from counting as unhandled while the deletion runs.
+    granting.catch(() => {});
+    await waitUntilBlocked(db());
+    continueDeletion();
+    await deletion;
+    await expect(granting).rejects.toMatchObject({ code: "user_not_found" });
+    expect(
+      await db()
+        .select()
+        .from(workingGroupMemberships)
+        .where(eq(workingGroupMemberships.userId, user.id)),
+    ).toEqual([]);
+    expect(
+      await db().select().from(organizationAdmins).where(eq(organizationAdmins.userId, user.id)),
+    ).toEqual([]);
+    expect(
+      await db().select().from(organizations).where(eq(organizations.name, "Te laat Org")),
+    ).toEqual([]);
+    expect(
+      await db().select().from(workingGroups).where(eq(workingGroups.name, "Te laat")),
+    ).toEqual([]);
+  },
+);

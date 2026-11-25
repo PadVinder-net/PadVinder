@@ -57,6 +57,45 @@ test("the last platform admin keeps the account and reads why", async () => {
   ).toBeVisible();
 });
 
+test("a blocked deletion shows who to ask, in the dialog", async () => {
+  mockFetch({
+    "/api/me": meFixture,
+    "DELETE /api/me": errorResponse(409, "last_coordinator", {
+      blockers: [
+        {
+          role: "coordinator",
+          workingGroupName: "Noord",
+          organizationName: "Paddentrek Voorbeeldstad",
+          contactEmail: "contact-voorbeeldstad@example.test",
+        },
+        {
+          role: "organizationAdmin",
+          workingGroupName: null,
+          organizationName: "Paddentrek Voorbeeldstad",
+          contactEmail: null,
+        },
+      ],
+    }),
+  });
+  renderApp("/app/more/profile");
+  await userEvent.click(await screen.findByRole("button", { name: "Verwijder account" }));
+  const dialog = await screen.findByRole("alertdialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder account" }));
+  const alert = await within(dialog).findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "Je bent de enige coördinator van Noord. Vraag contact-voorbeeldstad@example.test om eerst iemand anders coördinator te maken.",
+  );
+  expect(alert).toHaveTextContent(
+    "Je bent de enige beheerder van Paddentrek Voorbeeldstad. Vraag een hoofdbeheerder om eerst iemand anders beheerder te maken.",
+  );
+  // In place of the text for the code.
+  expect(alert).not.toHaveTextContent("Een werkgroep heeft altijd een coördinator.");
+  // The profile stays behind the dialog; no login screen.
+  expect(screen.getByRole("heading", { name: "Profiel", hidden: true })).toBeInTheDocument();
+  expect(screen.getByText("noor@example.test")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Log in bij PadVinder", hidden: true })).toBeNull();
+});
+
 test("the deletion notice is gone after logging in again and out", async () => {
   const routes: Record<string, unknown> = {
     "/api/me": meFixture,

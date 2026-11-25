@@ -29,7 +29,9 @@ export function MemberList({ groups, onOpen, canOpen = () => true }: MemberListP
                 {members.map((member) => {
                   const content = (
                     <>
-                      <span className="font-medium">{displayName(member.name)}</span>
+                      <span className="font-medium">
+                        {displayName(member.name, member.hasLoggedIn)}
+                      </span>
                       {member.isCoordinator ? (
                         <span className="text-base text-muted-foreground">coördinator</span>
                       ) : null}

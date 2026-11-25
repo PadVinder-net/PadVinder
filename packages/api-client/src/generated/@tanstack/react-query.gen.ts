@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { approveMembershipRequest, createMembershipRequest, createSpecies, deleteMe, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, updateSpecies, withdrawMembershipRequest } from '../sdk.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { addOrganizationAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
+import type { AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -76,7 +76,7 @@ export const getVersionOptions = (options?: Options<GetVersionData>) => queryOpt
 });
 
 /**
- * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end
+ * Delete the account of the logged-in user: the name, address and phone are wiped, the sessions end. Refused for the only platform admin, and for the only coordinator of an active working group or admin of an organization (with `blockers`)
  */
 export const deleteMeMutation = (options?: Partial<Options<DeleteMeData>>): UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> => {
     const mutationOptions: UseMutationOptions<DeleteMeResponse, DeleteMeError, Options<DeleteMeData>> = {
@@ -181,13 +181,186 @@ export const listMembersOptions = (options: Options<ListMembersData>) => queryOp
     queryKey: listMembersQueryKey(options)
 });
 
+export const listManagedWorkingGroupsQueryKey = (options?: Options<ListManagedWorkingGroupsData>) => createQueryKey('listManagedWorkingGroups', options);
+
 /**
- * Remove a member from a working group. A coordinator may not remove a coordinator
+ * The working groups you manage, with counts: all for a platform admin, those of your organizations for an admin, the ones you coordinate for a coordinator
+ */
+export const listManagedWorkingGroupsOptions = (options?: Options<ListManagedWorkingGroupsData>) => queryOptions<ListManagedWorkingGroupsResponse, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ReturnType<typeof listManagedWorkingGroupsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listManagedWorkingGroups({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listManagedWorkingGroupsQueryKey(options)
+});
+
+/**
+ * Change the name, the city or whether the group is active (admins of its organization and platform admins). Saving without a change is 200 too
+ */
+export const updateWorkingGroupMutation = (options?: Partial<Options<UpdateWorkingGroupData>>): UseMutationOptions<UpdateWorkingGroupResponse, UpdateWorkingGroupError, Options<UpdateWorkingGroupData>> => {
+    const mutationOptions: UseMutationOptions<UpdateWorkingGroupResponse, UpdateWorkingGroupError, Options<UpdateWorkingGroupData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateWorkingGroup({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Remove a member from a working group. A coordinator may not remove a coordinator, and the last coordinator of an active group stays
  */
 export const removeMembershipMutation = (options?: Partial<Options<RemoveMembershipData>>): UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> => {
     const mutationOptions: UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await removeMembership({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Make a member coordinator or a plain volunteer (admins of the organization and platform admins). The last coordinator of an active group stays
+ */
+export const updateMembershipMutation = (options?: Partial<Options<UpdateMembershipData>>): UseMutationOptions<UpdateMembershipResponse, UpdateMembershipError, Options<UpdateMembershipData>> => {
+    const mutationOptions: UseMutationOptions<UpdateMembershipResponse, UpdateMembershipError, Options<UpdateMembershipData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateMembership({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listOrganizationsQueryKey = (options?: Options<ListOrganizationsData>) => createQueryKey('listOrganizations', options);
+
+/**
+ * The organizations you administer: all for a platform admin, none for others
+ */
+export const listOrganizationsOptions = (options?: Options<ListOrganizationsData>) => queryOptions<ListOrganizationsResponse, ListOrganizationsError, ListOrganizationsResponse, ReturnType<typeof listOrganizationsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listOrganizations({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listOrganizationsQueryKey(options)
+});
+
+/**
+ * Add an organization with its first admin (platform admins)
+ */
+export const createOrganizationMutation = (options?: Partial<Options<CreateOrganizationData>>): UseMutationOptions<CreateOrganizationResponse, CreateOrganizationError, Options<CreateOrganizationData>> => {
+    const mutationOptions: UseMutationOptions<CreateOrganizationResponse, CreateOrganizationError, Options<CreateOrganizationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createOrganization({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getOrganizationQueryKey = (options: Options<GetOrganizationData>) => createQueryKey('getOrganization', options);
+
+/**
+ * One organization with its admins
+ */
+export const getOrganizationOptions = (options: Options<GetOrganizationData>) => queryOptions<GetOrganizationResponse, GetOrganizationError, GetOrganizationResponse, ReturnType<typeof getOrganizationQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getOrganization({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getOrganizationQueryKey(options)
+});
+
+/**
+ * Change the contact address (its admins) or the name (platform admins). Saving without a change is 200 too
+ */
+export const updateOrganizationMutation = (options?: Partial<Options<UpdateOrganizationData>>): UseMutationOptions<UpdateOrganizationResponse, UpdateOrganizationError, Options<UpdateOrganizationData>> => {
+    const mutationOptions: UseMutationOptions<UpdateOrganizationResponse, UpdateOrganizationError, Options<UpdateOrganizationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateOrganization({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Make someone an admin of the organization (platform admins). Also 200 when they were
+ */
+export const addOrganizationAdminMutation = (options?: Partial<Options<AddOrganizationAdminData>>): UseMutationOptions<AddOrganizationAdminResponse, AddOrganizationAdminError, Options<AddOrganizationAdminData>> => {
+    const mutationOptions: UseMutationOptions<AddOrganizationAdminResponse, AddOrganizationAdminError, Options<AddOrganizationAdminData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await addOrganizationAdmin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Take the admin role away (platform admins). Never the last admin
+ */
+export const removeOrganizationAdminMutation = (options?: Partial<Options<RemoveOrganizationAdminData>>): UseMutationOptions<RemoveOrganizationAdminResponse, RemoveOrganizationAdminError, Options<RemoveOrganizationAdminData>> => {
+    const mutationOptions: UseMutationOptions<RemoveOrganizationAdminResponse, RemoveOrganizationAdminError, Options<RemoveOrganizationAdminData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await removeOrganizationAdmin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Add a working group with its first coordinator (admins of the organization and platform admins)
+ */
+export const createWorkingGroupMutation = (options?: Partial<Options<CreateWorkingGroupData>>): UseMutationOptions<CreateWorkingGroupResponse, CreateWorkingGroupError, Options<CreateWorkingGroupData>> => {
+    const mutationOptions: UseMutationOptions<CreateWorkingGroupResponse, CreateWorkingGroupError, Options<CreateWorkingGroupData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createWorkingGroup({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

@@ -9,6 +9,8 @@ import type { Actor } from "./actor";
 
 export type WorkingGroupTarget = { workingGroupId: string; organizationId: string };
 
+export type OrganizationTarget = { organizationId: string };
+
 export type Relation =
   | "platformAdmin"
   | "organizationAdmin"
@@ -19,6 +21,14 @@ export type Relation =
 export type Permission =
   | { action: "system.viewDatabaseDetails" }
   | { action: "platform.manageSpecies" }
+  | { action: "platform.manageOrganizations" }
+  | { action: "organization.view"; target: OrganizationTarget }
+  | { action: "organization.changeContact"; target: OrganizationTarget }
+  | { action: "organization.rename"; target: OrganizationTarget }
+  | { action: "organization.manageAdmins"; target: OrganizationTarget }
+  | { action: "organization.createWorkingGroup"; target: OrganizationTarget }
+  | { action: "workingGroup.manage"; target: WorkingGroupTarget }
+  | { action: "workingGroup.setCoordinator"; target: WorkingGroupTarget }
   | { action: "workingGroup.listMembers"; target: WorkingGroupTarget }
   | { action: "workingGroup.viewMemberContact"; target: WorkingGroupTarget }
   | { action: "workingGroup.reviewRequests"; target: WorkingGroupTarget }
@@ -42,21 +52,64 @@ export function relationTo(actor: Actor, target: WorkingGroupTarget): Relation {
   return membership.isCoordinator ? "coordinator" : "volunteer";
 }
 
+/** The actor's relation to an organization. Members of its working groups are outsiders to it. */
+export function organizationRelationTo(
+  actor: Actor,
+  target: OrganizationTarget,
+): "platformAdmin" | "organizationAdmin" | "outsider" {
+  if (actor.isPlatformAdmin) return "platformAdmin";
+  if (actor.adminOfOrganizationIds.includes(target.organizationId)) return "organizationAdmin";
+  return "outsider";
+}
+
 const staff: readonly Relation[] = ["platformAdmin", "organizationAdmin", "coordinator"];
 
 export function decide(actor: Actor, permission: Permission): Decision {
   // Platform-wide: no target, and never `hidden` (the species list is not secret).
   if (
     permission.action === "system.viewDatabaseDetails" ||
-    permission.action === "platform.manageSpecies"
+    permission.action === "platform.manageSpecies" ||
+    permission.action === "platform.manageOrganizations"
   ) {
     return actor.isPlatformAdmin ? "allowed" : "forbidden";
+  }
+  switch (permission.action) {
+    case "organization.view":
+    case "organization.changeContact":
+    case "organization.createWorkingGroup":
+    case "organization.rename":
+    case "organization.manageAdmins": {
+      const relation = organizationRelationTo(actor, permission.target);
+      if (relation === "outsider") return "hidden";
+      if (relation === "platformAdmin") return "allowed";
+      switch (permission.action) {
+        case "organization.view":
+        case "organization.changeContact":
+        case "organization.createWorkingGroup":
+          return "allowed";
+        case "organization.rename":
+        case "organization.manageAdmins":
+          return "forbidden";
+        default: {
+          // A new organization action without a rule is a type error here, never a silent "allowed".
+          const unreachable: never = permission;
+          throw new Error(`No rule for ${JSON.stringify(unreachable)}`);
+        }
+      }
+    }
+    default:
+      break;
   }
   const relation = relationTo(actor, permission.target);
   if (relation === "outsider") return "hidden";
   switch (permission.action) {
     case "workingGroup.listMembers":
       return "allowed";
+    case "workingGroup.manage":
+    case "workingGroup.setCoordinator":
+      return relation === "platformAdmin" || relation === "organizationAdmin"
+        ? "allowed"
+        : "forbidden";
     case "workingGroup.viewMemberContact":
     case "workingGroup.reviewRequests":
       return staff.includes(relation) ? "allowed" : "forbidden";

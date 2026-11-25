@@ -1,5 +1,6 @@
-import { describe, expect, test } from "vitest";
-import { createMemoryMailer, smtpTransportOptions, type Mail } from "./mailer";
+import nodemailer from "nodemailer";
+import { describe, expect, test, vi } from "vitest";
+import { createMemoryMailer, createSmtpMailer, smtpTransportOptions, type Mail } from "./mailer";
 
 const mail: Mail = {
   to: "noor@example.test",
@@ -41,4 +42,33 @@ describe("smtpTransportOptions", () => {
     const options = smtpTransportOptions({ ...base, ...credentials, SMTP_PORT: 465 });
     expect(options).toMatchObject({ secure: true, requireTLS: false });
   });
+});
+
+describe("createSmtpMailer subject prefix", () => {
+  const env = {
+    SMTP_HOST: "smtp.example.test",
+    SMTP_PORT: 54325,
+    MAIL_FROM: "PadVinder <a@example.test>",
+  };
+  const subject = "123456 is je inlogcode voor PadVinder";
+
+  async function sentSubject(prefix: string | undefined) {
+    const sendMail = vi.fn<(message: { subject: string }) => Promise<void>>();
+    sendMail.mockResolvedValue(undefined);
+    const spy = vi
+      .spyOn(nodemailer, "createTransport")
+      .mockReturnValue({ sendMail, close() {} } as never);
+    try {
+      const mailer = createSmtpMailer({ ...env, MAIL_SUBJECT_PREFIX: prefix });
+      await mailer.send({ ...mail, subject });
+      return sendMail.mock.calls.at(0)![0].subject;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  test("with MAIL_SUBJECT_PREFIX the subject starts with it and a space", async () =>
+    expect(await sentSubject("[STAGING]")).toBe("[STAGING] 123456 is je inlogcode voor PadVinder"));
+  test("without it the subject is unchanged", async () =>
+    expect(await sentSubject(undefined)).toBe(subject));
 });

@@ -60,6 +60,18 @@ test("renderEnvFile uses the staging port and origin", () => {
   expect(content).toContain("PUBLIC_ORIGIN=https://staging.padvinder.net\n");
 });
 
+test("staging's env file holds MAIL_SUBJECT_PREFIX=[STAGING]; production's has no such line", () => {
+  const staging = renderEnvFile({ account: "acme", env: "staging", databasePassword: "x", login });
+  const production = renderEnvFile({
+    account: "acme",
+    env: "production",
+    databasePassword: "x",
+    login,
+  });
+  expect(staging.split("\n")).toContain("MAIL_SUBJECT_PREFIX=[STAGING]");
+  expect(production).not.toContain("MAIL_SUBJECT_PREFIX");
+});
+
 test("renderEnvFile never sets LOGIN_RATE_LIMITS: the API's default (on) must hold on a server", () => {
   const content = renderEnvFile({ account: "acme", env: "staging", databasePassword: "x", login });
   expect(content).not.toContain("LOGIN_RATE_LIMITS");

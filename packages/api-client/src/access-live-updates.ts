@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { refetchAdministration } from "./administration";
 import { refetchMembershipRequests } from "./membership";
 import { refetchMe } from "./me-query";
 import { subscribeToServerEvents } from "./server-events";
@@ -11,7 +12,9 @@ import { subscribeToServerEvents } from "./server-events";
  * - `access-changed` refetches me, so the waiting screen turns into the tabs without a reload. The
  *   server sends it only to the user it is about (not even to platform admins).
  * - `membership-requests-changed` refetches the requests of that working group.
- * - Every (re)open refetches both, because events sent while the connection was down are lost.
+ * - Both also refetch the administration lists (managed working groups, organizations, member
+ *   counts), which the portal pages show.
+ * - Every (re)open refetches all of them, because events sent while the connection was down are lost.
  * - When the server refuses the stream (a 401 after logging out elsewhere, a proxy's 502 during a
  *   deploy), me is refetched: if it is `null`, the gate shows the login screen and unmounts this
  *   hook, which closes the stream. Otherwise `subscribeToServerEvents` opens it again after a
@@ -26,14 +29,20 @@ export function useAccessLiveUpdates(): void {
     () =>
       subscribeToServerEvents({
         onOpen: () => {
-          refetchMe(queryClient);
+          void refetchMe(queryClient);
           refetchMembershipRequests(queryClient);
+          void refetchAdministration(queryClient);
         },
-        onClosed: () => refetchMe(queryClient),
+        onClosed: () => void refetchMe(queryClient),
         events: {
-          "access-changed": () => refetchMe(queryClient),
-          "membership-requests-changed": (event) =>
-            refetchMembershipRequests(queryClient, event.workingGroupId),
+          "access-changed": () => {
+            void refetchMe(queryClient);
+            void refetchAdministration(queryClient);
+          },
+          "membership-requests-changed": (event) => {
+            refetchMembershipRequests(queryClient, event.workingGroupId);
+            void refetchAdministration(queryClient);
+          },
         },
       }),
     [queryClient],
