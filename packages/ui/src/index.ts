@@ -27,7 +27,10 @@ export {
   connectionMessage,
   loginErrorMessage,
   logOutFailedMessage,
+  organizationNameTakenMessage,
+  personOutsideOrganizationMessage,
   speciesNameTakenMessage,
+  workingGroupNameTakenMessage,
 } from "./lib/messages";
 export { foldText, filterWorkingGroups } from "./lib/filter-working-groups";
 export {

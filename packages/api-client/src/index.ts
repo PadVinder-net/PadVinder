@@ -1,6 +1,7 @@
 export * from "./generated";
 export * from "./generated/@tanstack/react-query.gen";
 export * from "./access-live-updates";
+export * from "./administration";
 export * from "./auth-client";
 export * from "./auth-gate";
 export * from "./error-messages";

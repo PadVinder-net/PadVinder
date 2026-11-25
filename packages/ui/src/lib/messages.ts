@@ -63,6 +63,14 @@ export function speciesNameTakenMessage(field: string): string {
     : apiErrorMessage("name_taken");
 }
 
+/** The text for `person_outside_organization`: the address belongs to someone with a profile in another organization. */
+export function personOutsideOrganizationMessage(organizationName: string): string {
+  return `Deze persoon heeft al een account buiten ${organizationName}. Kies iemand anders of word eerst zelf coördinator.`;
+}
+
+export const organizationNameTakenMessage = "Er is al een organisatie met deze naam.";
+export const workingGroupNameTakenMessage = "Er is al een werkgroep met deze naam.";
+
 /**
  * Why the user cannot delete their account, for one blocker (`accountDeletionBlockers` in
  * `@padvinder/api-client`), and whom to ask: the organization's contact address, otherwise the

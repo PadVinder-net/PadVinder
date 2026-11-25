@@ -6,7 +6,10 @@ import {
   apiErrorMessage,
   connectionMessage,
   loginErrorMessage,
+  organizationNameTakenMessage,
+  personOutsideOrganizationMessage,
   speciesNameTakenMessage,
+  workingGroupNameTakenMessage,
 } from "./messages";
 
 test("every login error has its own Dutch text", () => {
@@ -103,4 +106,12 @@ test.each<[AccountDeletionBlocker, string]>([
   ],
 ])("accountDeletionBlockedMessage(%j) gives %j", (blocker, text) => {
   expect(accountDeletionBlockedMessage(blocker)).toBe(text);
+});
+
+test("the administration texts", () => {
+  expect(personOutsideOrganizationMessage("Paddentrek Voorbeeldstad")).toBe(
+    "Deze persoon heeft al een account buiten Paddentrek Voorbeeldstad. Kies iemand anders of word eerst zelf coördinator.",
+  );
+  expect(organizationNameTakenMessage).toBe("Er is al een organisatie met deze naam.");
+  expect(workingGroupNameTakenMessage).toBe("Er is al een werkgroep met deze naam.");
 });

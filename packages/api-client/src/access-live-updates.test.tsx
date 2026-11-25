@@ -7,6 +7,9 @@ import { useAccessLiveUpdates } from "./access-live-updates";
 import {
   getMeQueryKey,
   getMembershipRequestQueryKey,
+  getOrganizationQueryKey,
+  listManagedWorkingGroupsQueryKey,
+  listOrganizationsQueryKey,
   listMembershipRequestsQueryKey,
 } from "./generated/@tanstack/react-query.gen";
 import { FakeEventSource } from "./testing";
@@ -27,6 +30,9 @@ const organizationId = requestsForReviewFixture[0]!.workingGroup.organization.id
 const southEastId = requestsForReviewFixture[2]!.workingGroup.id;
 const northListKey = listMembershipRequestsQueryKey({ path: { workingGroupId: northId } });
 const southEastListKey = listMembershipRequestsQueryKey({ path: { workingGroupId: southEastId } });
+const managedKey = listManagedWorkingGroupsQueryKey();
+const organizationsKey = listOrganizationsQueryKey();
+const organizationKey = getOrganizationQueryKey({ path: { organizationId } });
 const requestKey = getMembershipRequestQueryKey({ path: { id: requestsForReviewFixture[0]!.id } });
 
 function setup() {
@@ -35,6 +41,9 @@ function setup() {
   queryClient.setQueryData(northListKey, { membershipRequests: [] });
   queryClient.setQueryData(southEastListKey, { membershipRequests: [] });
   queryClient.setQueryData(requestKey, requestsForReviewFixture[0]);
+  queryClient.setQueryData(managedKey, { workingGroups: [] });
+  queryClient.setQueryData(organizationsKey, { organizations: [] });
+  queryClient.setQueryData(organizationKey, null);
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
@@ -70,6 +79,29 @@ test("a reopened stream refetches me and the request lists", () => {
   expect(isInvalidated(queryClient, northListKey)).toBe(true);
   expect(isInvalidated(queryClient, southEastListKey)).toBe(true);
   expect(isInvalidated(queryClient, requestKey)).toBe(true);
+});
+
+test("access-changed refetches the administration lists", () => {
+  const { queryClient } = setup();
+  emit("access-changed", { type: "access-changed", userId: meFixture.user.id });
+  expect(isInvalidated(queryClient, managedKey)).toBe(true);
+  expect(isInvalidated(queryClient, organizationsKey)).toBe(true);
+  expect(isInvalidated(queryClient, organizationKey)).toBe(true);
+});
+
+test("membership-requests-changed and a reopened stream refetch the administration lists", () => {
+  const { queryClient } = setup();
+  emit("membership-requests-changed", {
+    type: "membership-requests-changed",
+    workingGroupId: northId,
+    organizationId,
+  });
+  expect(isInvalidated(queryClient, managedKey)).toBe(true);
+  queryClient.setQueryData(managedKey, { workingGroups: [] });
+  expect(isInvalidated(queryClient, managedKey)).toBe(false);
+  latestSource().onopen?.();
+  expect(isInvalidated(queryClient, managedKey)).toBe(true);
+  expect(isInvalidated(queryClient, organizationsKey)).toBe(true);
 });
 
 test("a stream the server refuses refetches me, and is opened again later", () => {
