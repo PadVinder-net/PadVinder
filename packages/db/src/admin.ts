@@ -453,7 +453,7 @@ export async function createWorkingGroup(
         name: normalizeName(input.name),
         city: normalizeName(input.city),
       })
-      .onConflictDoNothing({ target: [workingGroups.organizationId, workingGroups.name] })
+      .onConflictDoNothing()
       .returning({ id: workingGroups.id });
     if (!row) throw new AdminError("name_taken");
     await recordAudit(tx, {
@@ -563,7 +563,7 @@ export async function updateWorkingGroup(
       return { changed: true };
     });
   } catch (error) {
-    if (isUniqueViolation(error, "working_groups_organization_id_name_key")) {
+    if (isUniqueViolation(error, "working_groups_name_key")) {
       throw new AdminError("name_taken");
     }
     throw error;

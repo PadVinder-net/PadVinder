@@ -36,6 +36,9 @@ export const organizations = pgTable(
   (table) => [uniqueIndex("organizations_name_key").on(sql`lower(${table.name})`)],
 );
 
+// Names are stored normalized (`normalizeName`) and are unique within the organization regardless of
+// capitals. Every active working group has at least one coordinator; `createWorkingGroup` makes the
+// first in the same transaction, and nothing removes the last of an active group.
 export const workingGroups = pgTable(
   "working_groups",
   {
@@ -49,7 +52,7 @@ export const workingGroups = pgTable(
     createdAt: createdAt(),
   },
   (table) => [
-    unique("working_groups_organization_id_name_key").on(table.organizationId, table.name),
+    uniqueIndex("working_groups_name_key").on(table.organizationId, sql`lower(${table.name})`),
   ],
 );
 

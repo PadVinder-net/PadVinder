@@ -92,18 +92,22 @@ test("creates an organization and a working group, each with an audit entry", as
   ]);
 });
 
-// The name check is case-sensitive, like the unique index it relies on.
-test("a second working group with the same name in one organization is name_taken", async () => {
-  const { orgId } = await setup();
-  await expect(
-    createWorkingGroup(
-      db(),
-      { organizationId: orgId, name: "Noord", city: "Hengelo", coordinatorEmail: "b@example.test" },
-      system,
-    ),
-  ).rejects.toMatchObject({ code: "name_taken" });
-  expect(await db().select().from(auditLogEntries)).toHaveLength(4);
-});
+test.each(["Noord", "noord", " NOORD  "])(
+  "a second working group named %j in one organization is name_taken",
+  async (name) => {
+    const { orgId } = await setup();
+    await expect(
+      createWorkingGroup(
+        db(),
+        { organizationId: orgId, name, city: "Hengelo", coordinatorEmail: "b@example.test" },
+        system,
+      ),
+    ).rejects.toMatchObject({ code: "name_taken" });
+    expect(await db().select().from(auditLogEntries)).toHaveLength(4);
+    expect(await db().select().from(workingGroups)).toHaveLength(1);
+    expect(await db().select().from(users).where(eq(users.email, "b@example.test"))).toEqual([]);
+  },
+);
 
 test("the same name in another organization is fine", async () => {
   await setup();
@@ -1208,7 +1212,7 @@ test("two creates of the same name in one organization at the same moment give o
       db(),
       {
         organizationId: org.id,
-        name: " Noord ",
+        name: " noord ",
         city: "Voorbeeldstad",
         coordinatorEmail: "c2@example.test",
       },
@@ -1475,14 +1479,17 @@ test("a rename to the name of another group of the organization is name_taken; t
     system,
   );
   const before = await entries();
-  const attempt = updateWorkingGroup(
-    db(),
-    { workingGroupId: groupId, patch: { name: " Zuid " } },
-    system,
-  );
-  await expect(attempt).rejects.toBeInstanceOf(AdminError);
-  await expect(attempt).rejects.toMatchObject({ code: "name_taken" });
+  for (const name of [" Zuid ", "zuid", "ZUID"]) {
+    const attempt = updateWorkingGroup(db(), { workingGroupId: groupId, patch: { name } }, system);
+    await expect(attempt).rejects.toBeInstanceOf(AdminError);
+    await expect(attempt).rejects.toMatchObject({ code: "name_taken" });
+  }
   expect(await entries()).toEqual(before);
+
+  // Its own name in other capitals is a change, not a conflict with itself.
+  expect(
+    await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { name: "NOORD" } }, system),
+  ).toEqual({ changed: true });
 
   expect(
     await updateWorkingGroup(db(), { workingGroupId: groupId, patch: { name: "West" } }, system),
@@ -1492,7 +1499,7 @@ test("a rename to the name of another group of the organization is name_taken; t
     organizationId: orgId,
     subjectType: "working_group",
     subjectId: groupId,
-    details: { workingGroupNameFrom: "Noord", workingGroupNameTo: "West" },
+    details: { workingGroupNameFrom: "NOORD", workingGroupNameTo: "West" },
   });
 });
 

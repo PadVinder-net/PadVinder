@@ -345,6 +345,69 @@ test("the organization contact migration fails when two names differ only in cap
   }
 });
 
+/** Inserts organizations and their working groups; returns the organization IDs by name. */
+async function insertGroups(
+  pool: { query: (text: string, values?: unknown[]) => Promise<{ rows: { id: string }[] }> },
+  groups: Record<string, string[]>,
+) {
+  const ids: Record<string, string> = {};
+  for (const [organization, names] of Object.entries(groups)) {
+    const { rows } = await pool.query("insert into organizations (name) values ($1) returning id", [
+      organization,
+    ]);
+    ids[organization] = rows[0]!.id;
+    for (const name of names) {
+      await pool.query(
+        "insert into working_groups (organization_id, name, city) values ($1, $2, 'Voorbeeldstad')",
+        [ids[organization], name],
+      );
+    }
+  }
+  return ids;
+}
+
+test("the working group name migration applies to a database that holds working groups", async () => {
+  const { old, cleanUp } = await migratedBefore("_working_group_unique_name");
+  try {
+    // The same name in two organizations is fine, before and after.
+    const ids = await insertGroups(old.pool, {
+      "Paddentrek Voorbeeldstad": ["Noord", "Zuid"],
+      "Paddenwerkgroep Fictiefdorp": ["Noord"],
+    });
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query("select name from working_groups order by name");
+    expect(rows.rows).toEqual([{ name: "Noord" }, { name: "Noord" }, { name: "Zuid" }]);
+    await expect(
+      old.pool.query(
+        "insert into working_groups (organization_id, name, city) values ($1, 'NOORD', 'X')",
+        [ids["Paddentrek Voorbeeldstad"]],
+      ),
+    ).rejects.toMatchObject({ code: "23505", constraint: "working_groups_name_key" });
+  } finally {
+    await cleanUp();
+  }
+});
+
+test("the working group name migration fails when two names in one organization differ only in capitals", async () => {
+  const { old, cleanUp } = await migratedBefore("_working_group_unique_name");
+  try {
+    await insertGroups(old.pool, { "Paddentrek Voorbeeldstad": ["Noord", "noord"] });
+    await expect(runMigrations(old.url)).rejects.toThrow();
+    // One transaction: the old constraint is still there, the new index is not.
+    const indexes = await old.pool.query(
+      "select indexname from pg_indexes where tablename = 'working_groups' order by indexname",
+    );
+    expect(indexes.rows.map((row: { indexname: string }) => row.indexname)).toEqual([
+      "working_groups_organization_id_name_key",
+      "working_groups_pkey",
+    ]);
+  } finally {
+    await cleanUp();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.
