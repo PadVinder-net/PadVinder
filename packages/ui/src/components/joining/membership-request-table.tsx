@@ -29,10 +29,10 @@ export function MembershipRequestTable({
               ? `${workingGroup.name} (${workingGroup.organization.name})`
               : workingGroup.name}
           </h2>
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Naam</TableHead>
+                <TableHead className="w-1/2">Naam</TableHead>
                 <TableHead>Aangemeld op</TableHead>
               </TableRow>
             </TableHeader>
