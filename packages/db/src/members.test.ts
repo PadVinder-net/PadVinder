@@ -63,6 +63,18 @@ test("with contact, the email address and phone come along", async () => {
   expect(members.find((m) => m.name === "Anna")!.phone).toBe("06 11112222");
 });
 
+test("with contact, a member carries hasLoggedIn; without, the key is absent", async () => {
+  const never = await addMember("Nooit");
+  const been = await addMember("Geweest");
+  await t!.db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, been.userId));
+  const withContact = await listMembers(t!.db, groupId, { contact: true });
+  expect(withContact.find((m) => m.userId === never.userId)!.hasLoggedIn).toBe(false);
+  expect(withContact.find((m) => m.userId === been.userId)!.hasLoggedIn).toBe(true);
+  for (const member of await listMembers(t!.db, groupId, { contact: false })) {
+    expect(Object.keys(member)).not.toContain("hasLoggedIn");
+  }
+});
+
 test("a deleted account is never listed, also when a membership was left", async () => {
   const gone = await addMember("Weggegaan");
   await t!.db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, gone.userId));

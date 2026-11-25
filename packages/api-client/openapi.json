@@ -442,6 +442,9 @@
           "phone": {
             "nullable": true,
             "type": "string"
+          },
+          "hasLoggedIn": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1021,6 +1024,9 @@
           "phone": {
             "nullable": true,
             "type": "string"
+          },
+          "hasLoggedIn": {
+            "type": "boolean"
           }
         },
         "required": [

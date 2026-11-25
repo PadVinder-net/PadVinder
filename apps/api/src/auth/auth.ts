@@ -11,6 +11,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
+import { eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail } from "../mail/login-code-mail";
@@ -92,6 +93,7 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         phone: { type: "string", required: false, input: false },
         isPlatformAdmin: { type: "boolean", required: false, input: false, defaultValue: false },
         deletedAt: { type: "date", required: false, input: false },
+        lastLoginAt: { type: "date", required: false, input: false },
       },
     },
     session: {
@@ -180,6 +182,14 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
           before: async (session) => ({
             data: { ...session, ipAddress: null, userAgent: null },
           }),
+          // A session is made only by a login; a renewal updates the row (it does not come
+          // through here). So this is the moment of a login.
+          after: async (session) => {
+            await db
+              .update(users)
+              .set({ lastLoginAt: new Date() })
+              .where(eq(users.id, session.userId));
+          },
         },
       },
     },

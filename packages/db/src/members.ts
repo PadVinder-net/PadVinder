@@ -3,6 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { recordAudit } from "./audit-log";
 import type { Db } from "./client";
 import { notifyAccessChanged } from "./notifications";
+import { userHasLoggedIn } from "./users";
 import { users, workingGroupMemberships, workingGroups } from "./schema";
 
 /**
@@ -44,6 +45,7 @@ export async function listMembers(
       isCoordinator: workingGroupMemberships.isCoordinator,
       email: users.email,
       phone: users.phone,
+      hasLoggedIn: userHasLoggedIn,
     })
     .from(workingGroupMemberships)
     .innerJoin(users, eq(users.id, workingGroupMemberships.userId))

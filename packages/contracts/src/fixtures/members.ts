@@ -20,11 +20,18 @@ export const membersFixture: Member[] = [
     name: "Çiğdem Yıldız",
     isCoordinator: false,
   },
+  {
+    membershipId: "0192f3c0-0000-7000-8000-0000000000e4",
+    userId: "0192f3c0-0000-7000-8000-0000000000f4",
+    name: "",
+    isCoordinator: false,
+  },
 ];
 
-/** What a coordinator sees: the same people with email address and phone. */
+/** What a coordinator sees: the same people with email address, phone and whether they logged in. */
 export const membersWithContactFixture: Member[] = [
-  { ...membersFixture[0]!, email: "anna@example.test", phone: "06 12345678" },
-  { ...membersFixture[1]!, email: "bram@example.test", phone: null },
-  { ...membersFixture[2]!, email: "cigdem@example.test", phone: "06 87654321" },
+  { ...membersFixture[0]!, email: "anna@example.test", phone: "06 12345678", hasLoggedIn: true },
+  { ...membersFixture[1]!, email: "bram@example.test", phone: null, hasLoggedIn: true },
+  { ...membersFixture[2]!, email: "cigdem@example.test", phone: "06 87654321", hasLoggedIn: true },
+  { ...membersFixture[3]!, email: "nieuw@example.test", phone: null, hasLoggedIn: false },
 ];

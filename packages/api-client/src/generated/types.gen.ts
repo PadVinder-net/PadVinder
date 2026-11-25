@@ -114,6 +114,7 @@ export type MemberInput = {
     isCoordinator: boolean;
     email?: string;
     phone?: string | null;
+    hasLoggedIn?: boolean;
 };
 
 export type MemberListResponseInput = {
@@ -260,6 +261,7 @@ export type Member = {
     isCoordinator: boolean;
     email?: string;
     phone?: string | null;
+    hasLoggedIn?: boolean;
 };
 
 export type MemberListResponse = {

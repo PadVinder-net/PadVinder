@@ -99,6 +99,11 @@ test("a volunteer gets names and the coordinator flag and no contact keys at all
   expect(res.body).not.toContain('"phone"');
 });
 
+test("a volunteer's raw response has no hasLoggedIn key", async () => {
+  const res = await list(cast.members.volunteer);
+  expect(res.body).not.toContain("hasLoggedIn");
+});
+
 test("a coordinator, an organization admin and a platform admin get email and phone", async () => {
   await ctx.t.db
     .update(users)
@@ -118,6 +123,7 @@ test("a coordinator, an organization admin and a platform admin get email and ph
       isCoordinator: false,
       email: cast.members.volunteer.email,
       phone: "06 12345678",
+      hasLoggedIn: true,
     });
   }
 });

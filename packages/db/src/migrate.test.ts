@@ -225,6 +225,57 @@ test("the species migrations apply to a database that already holds users, organ
   }
 });
 
+test("the last_login_at migration gives each user the newest session's start, or null", async () => {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  try {
+    const all = join(import.meta.dirname, "..", "drizzle");
+    const names = (await readdir(all, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    const column = names.findIndex((n) => n.endsWith("_last_login_at"));
+    expect(column).toBeGreaterThan(0);
+    expect(names[column + 1]).toMatch(/_backfill_last_login_at$/);
+    for (const name of names.slice(0, column))
+      await cp(join(all, name), join(folder, name), { recursive: true });
+    await old.db.execute(sql`drop schema if exists drizzle cascade`);
+    await old.db.execute(sql`drop schema public cascade`);
+    await old.db.execute(sql`create schema public`);
+    await runMigrations(old.url, folder);
+    const user = async (email: string) =>
+      (
+        await old.pool.query(
+          "insert into users (name, email, email_verified) values ('Oud', $1, true) returning id",
+          [email],
+        )
+      ).rows[0].id as string;
+    const withSessions = await user("sessies@example.test");
+    const without = await user("zonder@example.test");
+    for (const [token, createdAt] of [
+      ["oud", "2026-10-01T10:00:00Z"],
+      ["nieuw", "2026-11-01T10:00:00Z"],
+    ] as const) {
+      await old.pool.query(
+        "insert into sessions (token, expires_at, created_at, user_id) values ($1, '2027-06-01T00:00:00Z', $2, $3)",
+        [token, createdAt, withSessions],
+      );
+    }
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query("select id, last_login_at from users where id = any($1)", [
+      [withSessions, without],
+    ]);
+    const byId = new Map(rows.rows.map((r) => [r.id, r.last_login_at as Date | null]));
+    expect(byId.get(withSessions)?.toISOString()).toBe("2026-11-01T10:00:00.000Z");
+    expect(byId.get(without)).toBeNull();
+  } finally {
+    await rm(folder, { recursive: true });
+    await old.drop();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.
