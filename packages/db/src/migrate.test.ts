@@ -225,7 +225,7 @@ test("the species migrations apply to a database that already holds users, organ
   }
 });
 
-test("the last_login_at migration gives each user the newest session's start, or null", async () => {
+test("the last_login_at migration gives each user who logged in the newest session's start, or else updated_at", async () => {
   const old = await createTestDatabase();
   const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
   try {
@@ -243,15 +243,25 @@ test("the last_login_at migration gives each user the newest session's start, or
     await old.db.execute(sql`drop schema public cascade`);
     await old.db.execute(sql`create schema public`);
     await runMigrations(old.url, folder);
-    const user = async (email: string) =>
+    const user = async (
+      email: string,
+      { verified = true, deleted = false }: { verified?: boolean; deleted?: boolean } = {},
+    ) =>
       (
         await old.pool.query(
-          "insert into users (name, email, email_verified) values ('Oud', $1, true) returning id",
-          [email],
+          `insert into users (name, email, email_verified, updated_at, deleted_at)
+           values ('Oud', $1, $2, '2026-09-15T08:00:00Z', $3) returning id`,
+          [email, verified, deleted ? "2026-09-15T08:00:00Z" : null],
         )
       ).rows[0].id as string;
     const withSessions = await user("sessies@example.test");
-    const without = await user("zonder@example.test");
+    // Logged in once and logged out again: Better Auth deleted the session, but a code login
+    // set email_verified.
+    const loggedOut = await user("uitgelogd@example.test");
+    // Made by the admin tool and never used.
+    const neverUsed = await user("nooit@example.test", { verified: false });
+    // deleteAccount clears email_verified; the migration skips a deleted account even without that.
+    const deleted = await user("verwijderd@example.test", { deleted: true });
     for (const [token, createdAt] of [
       ["oud", "2026-10-01T10:00:00Z"],
       ["nieuw", "2026-11-01T10:00:00Z"],
@@ -265,11 +275,13 @@ test("the last_login_at migration gives each user the newest session's start, or
     await runMigrations(old.url);
 
     const rows = await old.pool.query("select id, last_login_at from users where id = any($1)", [
-      [withSessions, without],
+      [withSessions, loggedOut, neverUsed, deleted],
     ]);
     const byId = new Map(rows.rows.map((r) => [r.id, r.last_login_at as Date | null]));
     expect(byId.get(withSessions)?.toISOString()).toBe("2026-11-01T10:00:00.000Z");
-    expect(byId.get(without)).toBeNull();
+    expect(byId.get(loggedOut)?.toISOString()).toBe("2026-09-15T08:00:00.000Z");
+    expect(byId.get(neverUsed)).toBeNull();
+    expect(byId.get(deleted)).toBeNull();
   } finally {
     await rm(folder, { recursive: true });
     await old.drop();

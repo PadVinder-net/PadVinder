@@ -127,12 +127,12 @@ The permission module gets these actions, and a second kind of target next to th
 
 ### Data model
 
-| Change                              | Detail                                                                                                                                                                  |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| New table `species`                 | `id`, `dutch_name`, `scientific_name`, `needs_verification` (default false), `active` (default true), `created_at`, `updated_at`. Not scoped by organization, by design |
-| `organizations.contact_email`       | Nullable. The address people are told to write to when something is wrong                                                                                               |
-| `organizations.name` becomes unique | Ignoring capital letters, so a double submit cannot make the same organization twice                                                                                    |
-| `users.last_login_at`               | Nullable. Set at every successful login. For accounts that exist when the migration runs, filled from their newest session                                              |
+| Change                              | Detail                                                                                                                                                                                              |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New table `species`                 | `id`, `dutch_name`, `scientific_name`, `needs_verification` (default false), `active` (default true), `created_at`, `updated_at`. Not scoped by organization, by design                             |
+| `organizations.contact_email`       | Nullable. The address people are told to write to when something is wrong                                                                                                                           |
+| `organizations.name` becomes unique | Ignoring capital letters, so a double submit cannot make the same organization twice                                                                                                                |
+| `users.last_login_at`               | Nullable. Set at every successful login. For accounts that exist when the migration runs, filled from their newest session, or from `updated_at` for a verified account without one (it logged out) |
 
 No table for the mail queue: pg-boss holds the jobs (see "The mail queue").
 
