@@ -22,6 +22,20 @@ class MailJobError extends Error {
   }
 }
 
+/**
+ * Waits until at least `ms` milliseconds have passed since `since` by `now()`. Sleeps again for
+ * what is left, because a timer can fire a millisecond early by `Date.now()`.
+ */
+export async function waitUntilElapsed(
+  since: number,
+  ms: number,
+  clock: { now(): number; sleep(ms: number): Promise<unknown> } = { now: Date.now, sleep },
+): Promise<void> {
+  for (let left = since + ms - clock.now(); left > 0; left = since + ms - clock.now()) {
+    await clock.sleep(left);
+  }
+}
+
 export type MailJobDeps = {
   db: Db;
   mailer: Mailer;
@@ -50,9 +64,7 @@ export async function registerMailJob(boss: PgBoss, deps: MailJobDeps): Promise<
   // soon as its mail is out: a worker killed during the pause never sends that mail twice.
   let lastSendAt: number | undefined;
   const waitForPause = async () => {
-    if (lastSendAt === undefined) return;
-    const wait = lastSendAt + pauseMs - Date.now();
-    if (wait > 0) await sleep(wait);
+    if (lastSendAt !== undefined) await waitUntilElapsed(lastSendAt, pauseMs);
   };
 
   const handle = async (job: JobWithMetadata<unknown>) => {
