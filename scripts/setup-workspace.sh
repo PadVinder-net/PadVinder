@@ -9,13 +9,9 @@ cd "$REPO_ROOT"
 
 PNPM_VERSION="12.21.0"
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  echo "pnpm not found; installing pnpm@$PNPM_VERSION"
-  npm install --global "pnpm@$PNPM_VERSION"
-fi
-
-pnpm install --frozen-lockfile
-
+# Write .env before the slow install. Outside Conductor, workspace-env.sh chose the ports
+# from the .env files of the other worktrees; the sooner this one is written, the smaller
+# the chance that a worktree set up at the same moment picks the same ports.
 # Keep the secret of an existing .env, so sessions survive a second run.
 AUTH_SECRET="$(sed -n 's/^AUTH_SECRET=//p' .env 2>/dev/null | head -n 1 || true)"
 if [ -z "$AUTH_SECRET" ]; then
@@ -41,6 +37,13 @@ MAIL_FROM=PadVinder <noreply@padvinder.test>
 LOGIN_RATE_LIMITS=off
 MAILPIT_URL=http://localhost:54326
 ENV
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm not found; installing pnpm@$PNPM_VERSION"
+  npm install --global "pnpm@$PNPM_VERSION"
+fi
+
+pnpm install --frozen-lockfile
 
 docker compose up -d --wait db mail
 

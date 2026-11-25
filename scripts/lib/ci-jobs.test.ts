@@ -50,6 +50,10 @@ describe("jobsFor", () => {
     ).toEqual([]);
   });
 
+  test("runs only check and scan for the Orca worktree hooks", () => {
+    expect(running(["orca.yaml"])).toEqual([]);
+  });
+
   test("skips the visual tests when packages/ui is untouched", () => {
     // The files of pull request 14.
     expect(

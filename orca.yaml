@@ -1,0 +1,13 @@
+# Orca (https://onorca.dev) runs these for each worktree; Conductor runs the same scripts from
+# its repository settings. Both scripts get the workspace name and ports from
+# scripts/lib/workspace-env.sh. Orca asks before it runs them the first time.
+scripts:
+  # Runs in the new worktree. Orca takes setup from the new worktree's branch.
+  setup: |
+    ./scripts/setup-workspace.sh
+  # Runs in the worktree before Orca removes it, from the primary checkout's orca.yaml (main),
+  # with a 120-second limit. Needs Docker; if it fails, Orca does not remove the worktree.
+  archive: |
+    ./scripts/teardown-workspace.sh
+# The agent waits for setup, so it never runs pnpm before dependencies and databases exist.
+setupAgentStartupPolicy: wait-for-setup
