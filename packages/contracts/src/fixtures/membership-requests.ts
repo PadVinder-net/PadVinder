@@ -70,3 +70,46 @@ export const requestsForReviewFixture: MembershipRequestForReview[] = [
     },
   },
 ];
+
+/** The open requests of every group a reviewer reviews: three in two groups, grouped by group. */
+export const reviewableRequestsFixture: MembershipRequestForReview[] = [
+  {
+    id: "0192f3c0-0000-7000-8000-0000000000e1",
+    status: "pending",
+    requestedAt: "2027-01-08T18:20:00.000+01:00",
+    decidedAt: null,
+    workingGroup: northGroup,
+    applicant: {
+      id: "0192f3c0-0000-7000-8000-000000000005",
+      name: "Lotte Visser",
+      email: "lotte@example.test",
+      phone: "06 11223344",
+    },
+  },
+  {
+    id: "0192f3c0-0000-7000-8000-0000000000e2",
+    status: "pending",
+    requestedAt: "2027-01-10T21:00:00.000+01:00",
+    decidedAt: null,
+    workingGroup: northGroup,
+    applicant: {
+      id: "0192f3c0-0000-7000-8000-000000000006",
+      name: "Daan Smit",
+      email: "daan@example.test",
+      phone: null,
+    },
+  },
+  {
+    id: "0192f3c0-0000-7000-8000-0000000000e3",
+    status: "pending",
+    requestedAt: "2027-01-09T12:10:00.000+01:00",
+    decidedAt: null,
+    workingGroup: southEastGroup,
+    applicant: {
+      id: "0192f3c0-0000-7000-8000-000000000007",
+      name: "Mila Peters",
+      email: "mila@example.test",
+      phone: "06 55667788",
+    },
+  },
+];

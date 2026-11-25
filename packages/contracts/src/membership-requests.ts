@@ -54,7 +54,7 @@ export const membershipRequestForReviewSchema = membershipRequestSchema
   .meta({ id: "MembershipRequestForReview" });
 export type MembershipRequestForReview = z.infer<typeof membershipRequestForReviewSchema>;
 
-/** The pending requests of one working group, oldest first. */
+/** Pending requests with their applicants, for their reviewers: of one working group, or of every group the user reviews. */
 export const membershipRequestListResponseSchema = z
   .object({ membershipRequests: z.array(membershipRequestForReviewSchema) })
   .meta({ id: "MembershipRequestListResponse" });

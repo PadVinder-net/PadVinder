@@ -8,6 +8,7 @@ import {
   grantCoordinator,
   grantOrganizationAdmin,
 } from "./admin";
+import type { Access } from "./access";
 import { getMeRoles } from "./me";
 import {
   createMembershipRequest,
@@ -15,6 +16,7 @@ import {
   getCurrentMembershipRequest,
   getMembershipRequestForReview,
   listPendingMembershipRequests,
+  listReviewablePendingRequests,
   listRequestNotificationRecipients,
   MEMBERSHIP_REQUESTS_PER_DAY,
   withdrawMembershipRequest,
@@ -975,5 +977,137 @@ describe("listRequestNotificationRecipients", () => {
 
   test("an unknown group has no recipients", async () => {
     expect(await listRequestNotificationRecipients(db(), uuidv7())).toEqual([]);
+  });
+});
+
+describe("listReviewablePendingRequests", () => {
+  const none: Access = { isPlatformAdmin: false, memberships: [], adminOfOrganizationIds: [] };
+  const coordinates = (workingGroupId: string, orgId = organizationId): Access["memberships"] => [
+    { membershipId: uuidv7(), workingGroupId, organizationId: orgId, isCoordinator: true },
+  ];
+
+  /** Two fresh organizations and groups named so that Dutch order differs from insertion order. */
+  async function scene() {
+    const tag = uuidv7().slice(-6);
+    const makeOrg = async (name: string) =>
+      (
+        await createOrganization(
+          db(),
+          { name: `${name} ${tag}`, adminEmail: `beheer-${tag}-${name}@example.test` },
+          system,
+        )
+      ).id;
+    const makeGroup = async (orgId: string, name: string) => {
+      const id = (
+        await createWorkingGroup(
+          db(),
+          {
+            organizationId: orgId,
+            name,
+            city: "Voorbeeldstad",
+            coordinatorEmail: `coord-${tag}@example.test`,
+          },
+          system,
+        )
+      ).id;
+      return id;
+    };
+    const orgB = await makeOrg("Beta");
+    const orgA = await makeOrg("Alfa");
+    const zuid = await makeGroup(orgA, "Zuid");
+    const oost = await makeGroup(orgA, "Éast");
+    const off = await makeGroup(orgA, "Uit");
+    const other = await makeGroup(orgB, "Noord");
+    return { orgA, orgB, zuid, oost, off, other };
+  }
+  const request = async (groupId: string, at: number) => {
+    const applicant = await newApplicant();
+    const id = uuidv7();
+    await create(applicant.id, groupId, { id, now: new Date(now.getTime() + at * 1000) });
+    return id;
+  };
+
+  test("a platform admin gets every pending request, a reviewer of nothing none", async () => {
+    const s = await scene();
+    const a = await request(s.zuid, 1);
+    const b = await request(s.other, 2);
+    const all = (await listReviewablePendingRequests(db(), { ...none, isPlatformAdmin: true })).map(
+      (r) => r.id,
+    );
+    expect(all).toContain(a);
+    expect(all).toContain(b);
+    expect(await listReviewablePendingRequests(db(), none)).toEqual([]);
+    // A volunteer (no coordinator flag) reviews nothing.
+    const volunteer: Access = {
+      ...none,
+      memberships: [{ ...coordinates(s.zuid)[0]!, isCoordinator: false }],
+    };
+    expect(await listReviewablePendingRequests(db(), volunteer)).toEqual([]);
+  });
+
+  test("an organization admin gets its groups, also an inactive one; a coordinator only theirs", async () => {
+    const s = await scene();
+    const zuid = await request(s.zuid, 1);
+    const off = await request(s.off, 2);
+    await db().update(workingGroups).set({ active: false }).where(eq(workingGroups.id, s.off));
+    const other = await request(s.other, 3);
+    const admin = await listReviewablePendingRequests(db(), {
+      ...none,
+      adminOfOrganizationIds: [s.orgA],
+    });
+    expect(admin.map((r) => r.id).sort()).toEqual([zuid, off].sort());
+    const coordinator = await listReviewablePendingRequests(db(), {
+      ...none,
+      memberships: coordinates(s.other, s.orgB),
+    });
+    expect(coordinator.map((r) => r.id)).toEqual([other]);
+    expect(coordinator[0]).toMatchObject({
+      organizationId: s.orgB,
+      applicant: { email: expect.any(String) },
+    });
+  });
+
+  test("an admin who also coordinates a group gets its requests once", async () => {
+    const s = await scene();
+    const id = await request(s.zuid, 1);
+    const list = await listReviewablePendingRequests(db(), {
+      ...none,
+      adminOfOrganizationIds: [s.orgA],
+      memberships: coordinates(s.zuid, s.orgA),
+    });
+    expect(list.map((r) => r.id)).toEqual([id]);
+  });
+
+  test("decided and withdrawn requests are left out", async () => {
+    const s = await scene();
+    const open = await request(s.zuid, 1);
+    const approved = await request(s.zuid, 2);
+    const rejected = await request(s.zuid, 3);
+    const withdrawn = uuidv7();
+    const applicant = await newApplicant();
+    await create(applicant.id, s.zuid, { id: withdrawn });
+    await withdrawMembershipRequest(db(), { id: withdrawn, userId: applicant.id, now });
+    await decide(approved, "approved", applicant.id);
+    await decide(rejected, "rejected", applicant.id);
+    const list = await listReviewablePendingRequests(db(), {
+      ...none,
+      adminOfOrganizationIds: [s.orgA],
+    });
+    expect(list.map((r) => r.id)).toEqual([open]);
+  });
+
+  test("grouped by organization and working group in Dutch order, oldest first", async () => {
+    const s = await scene();
+    const zuidLate = await request(s.zuid, 5);
+    const noord = await request(s.other, 1);
+    const eastLate = await request(s.oost, 4);
+    const zuidEarly = await request(s.zuid, 2);
+    const eastEarly = await request(s.oost, 3);
+    const list = await listReviewablePendingRequests(db(), {
+      ...none,
+      adminOfOrganizationIds: [s.orgA, s.orgB],
+    });
+    // Alfa before Beta; in Alfa "Éast" before "Zuid" (collation, not byte order).
+    expect(list.map((r) => r.id)).toEqual([eastEarly, eastLate, zuidEarly, zuidLate, noord]);
   });
 });

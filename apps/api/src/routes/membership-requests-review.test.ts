@@ -3,6 +3,7 @@ import {
   createMembershipRequest,
   liveEventsChannel,
   membershipRequests,
+  grantOrganizationAdmin,
   users,
   workingGroupMemberships,
 } from "@padvinder/db";
@@ -62,6 +63,17 @@ const reviewers = {
   organizationAdminOtherOrganization: 404,
   applicant: 404,
   anonymous: 401,
+};
+
+const everyone = {
+  platformAdmin: 200,
+  organizationAdmin: 200,
+  coordinator: 200,
+  volunteer: 200,
+  volunteerOtherGroup: 200,
+  coordinatorOtherOrganization: 200,
+  organizationAdminOtherOrganization: 200,
+  applicant: 200,
 };
 
 let applicants = 0;
@@ -460,4 +472,114 @@ test("a decision from a foreign Origin is refused", async () => {
   );
   expect(res.statusCode).toBe(403);
   expect((await requestRow(id)).status).toBe("pending");
+});
+
+const listAll = (who: Who) =>
+  ctx.app.inject({ url: "/api/membership-requests", headers: who.headers });
+const idsOf = (res: { json: () => unknown }) =>
+  (res.json() as { membershipRequests: { id: string }[] }).membershipRequests.map((r) => r.id);
+
+test("everyone logged in gets their own list", async () => {
+  await expectStatuses(cast, { ...everyone, anonymous: 401 }, (headers) => listAll({ headers }));
+});
+
+test("the list: every request for the platform admin, the organization's for its admin, the group's for its coordinator, none for a volunteer and for the applicant", async () => {
+  const mine = await freshRequest(cast.workingGroup.workingGroupId);
+  const sibling = await freshRequest(cast.otherGroup.workingGroupId);
+  const foreign = await freshRequest(cast.foreignGroup.workingGroupId);
+
+  const platform = idsOf(await listAll(cast.members.platformAdmin));
+  expect(platform).toEqual(expect.arrayContaining([mine, sibling, foreign]));
+  const admin = idsOf(await listAll(cast.members.organizationAdmin));
+  expect(admin).toEqual(expect.arrayContaining([mine, sibling]));
+  expect(admin).not.toContain(foreign);
+  const coordinator = idsOf(await listAll(cast.members.coordinator));
+  expect(coordinator).toContain(mine);
+  expect(coordinator).not.toContain(sibling);
+  expect(coordinator).not.toContain(foreign);
+  for (const who of ["volunteer", "volunteerOtherGroup", "applicant"] as const) {
+    expect(idsOf(await listAll(cast.members[who]))).toEqual([]);
+  }
+  // The applicants' contact details are in it, as in the list per group.
+  const raw = (await listAll(cast.members.coordinator)).json() as {
+    membershipRequests: { applicant: { email?: string } }[];
+  };
+  expect(raw.membershipRequests[0]!.applicant.email).toMatch(/@example\.test$/);
+  expect((await listAll(cast.members.coordinator)).body).not.toMatch(
+    /receivedAt|userId|organizationId|decidedBy/,
+  );
+});
+
+test("an admin of another organization does not get this organization's requests", async () => {
+  const mine = await freshRequest(cast.workingGroup.workingGroupId);
+  const foreign = await freshRequest(cast.foreignGroup.workingGroupId);
+  const other = idsOf(await listAll(cast.members.organizationAdminOtherOrganization));
+  expect(other).toContain(foreign);
+  expect(other).not.toContain(mine);
+  const coordinatorOther = idsOf(await listAll(cast.members.coordinatorOtherOrganization));
+  expect(coordinatorOther).toContain(foreign);
+  expect(coordinatorOther).not.toContain(mine);
+});
+
+test("a decided or withdrawn request is not in the list", async () => {
+  const approved = await freshRequest();
+  const rejected = await freshRequest();
+  const withdrawn = await freshRequest();
+  const open = await freshRequest();
+  expect((await approve(cast.members.coordinator, approved)).statusCode).toBe(200);
+  expect((await reject(cast.members.coordinator, rejected)).statusCode).toBe(200);
+  await ctx.t.db
+    .update(membershipRequests)
+    .set({ status: "withdrawn", decidedAt: new Date() })
+    .where(eq(membershipRequests.id, withdrawn));
+  const ids = idsOf(await listAll(cast.members.coordinator));
+  expect(ids).toContain(open);
+  for (const gone of [approved, rejected, withdrawn]) expect(ids).not.toContain(gone);
+});
+
+test("an admin who also coordinates a group gets its requests once", async () => {
+  const email = `beheerder-coordinator-${uuidv7()}@example.test`;
+  const login = await loginAs(ctx, email, { name: "Dubbele Rol" });
+  await grantOrganizationAdmin(
+    ctx.t.db,
+    { email, organizationId: cast.organization.id },
+    { kind: "system" },
+  );
+  await ctx.t.db.insert(workingGroupMemberships).values({
+    userId: (await ctx.t.db.select({ id: users.id }).from(users).where(eq(users.email, email)))[0]!
+      .id,
+    workingGroupId: cast.workingGroup.workingGroupId,
+    isCoordinator: true,
+  });
+  const id = await freshRequest();
+  const ids = idsOf(await listAll(login));
+  expect(ids.filter((x) => x === id)).toHaveLength(1);
+  expect(new Set(ids).size).toBe(ids.length);
+});
+
+test("the requests are grouped by working group in Dutch order, oldest first", async () => {
+  const at = (seconds: number) => new Date(Date.UTC(2027, 2, 1, 12, 0, seconds));
+  const west = await freshRequest(cast.workingGroup.workingGroupId, undefined, at(2));
+  const eastLate = await freshRequest(cast.otherGroup.workingGroupId, undefined, at(4));
+  const westFirst = await freshRequest(cast.workingGroup.workingGroupId, undefined, at(1));
+  const eastEarly = await freshRequest(cast.otherGroup.workingGroupId, undefined, at(3));
+  const mine = new Set([west, eastLate, westFirst, eastEarly]);
+  const ids = idsOf(await listAll(cast.members.organizationAdmin)).filter((id) => mine.has(id));
+  // "Cast Andere werkgroep" sorts before "Cast Werkgroep"; within a group, the oldest first.
+  expect(ids).toEqual([eastEarly, eastLate, westFirst, west]);
+});
+
+test("every request in the list opens for the same person", async () => {
+  await freshRequest(cast.otherGroup.workingGroupId);
+  await freshRequest(cast.foreignGroup.workingGroupId);
+  for (const who of [
+    "platformAdmin",
+    "organizationAdmin",
+    "coordinator",
+    "coordinatorOtherOrganization",
+  ] as const) {
+    const ids = idsOf(await listAll(cast.members[who]));
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) expect((await getOne(cast.members[who], id)).statusCode).toBe(200);
+  }
 });
