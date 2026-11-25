@@ -10,4 +10,5 @@ export * from "./health-query";
 export * from "./me-query";
 export * from "./membership";
 export * from "./query-client";
+export * from "./species";
 export * from "./server-events";

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { recordAudit, type AuditDetails } from "./audit-log";
+import { recordAudit, THING_NAME_AUDIT_KEYS, type AuditDetails } from "./audit-log";
 import { auditLogEntries, organizations, users } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
@@ -113,6 +113,67 @@ test.each<[AuditDetails]>([
   [{ role: "volunteer", status: "approved" }],
   [{ source: "cli", count: 3, active: true, previous: null }],
 ])("accepts IDs and non-personal values: %j", async (details) => {
+  await t!.db.transaction((tx) => recordAudit(tx, { ...entry, details }));
+  const rows = await t!.db.select().from(auditLogEntries);
+  expect(rows.map((row) => row.details)).toContainEqual(details);
+});
+
+test.each(THING_NAME_AUDIT_KEYS.map((key) => [key]))(
+  "accepts the name of a thing under the listed key %s, on any subject",
+  async (key) => {
+    const details = { [key]: "gewone pad" };
+    for (const subject of [
+      { type: "species", id },
+      { type: "organization", id },
+    ] as const) {
+      await t!.db.transaction((tx) => recordAudit(tx, { ...entry, subject, details }));
+    }
+    const rows = await t!.db.select().from(auditLogEntries);
+    expect(rows.filter((row) => row.details[key] === "gewone pad")).toHaveLength(2);
+  },
+);
+
+test("lists exactly the keys for names of things", () => {
+  expect([...THING_NAME_AUDIT_KEYS].sort()).toEqual(
+    [
+      "dutchName",
+      "dutchNameFrom",
+      "dutchNameTo",
+      "scientificName",
+      "scientificNameFrom",
+      "scientificNameTo",
+    ].sort(),
+  );
+});
+
+test.each<[AuditDetails]>([
+  [{ name: "Noor" }],
+  [{ fullName: "Noor" }],
+  [{ dutchNameOfPerson: "Noor" }],
+  [{ DutchName: "gewone pad" }],
+  [{ dutchName: "noor@example.test" }],
+  [{ scientificNameTo: "Bufo @bufo" }],
+])("still refuses on a species entry: %j", async (details) => {
+  const before = await count();
+  await expect(
+    t!.db.transaction((tx) =>
+      recordAudit(tx, {
+        ...entry,
+        action: "species.updated",
+        subject: { type: "species", id },
+        details,
+      }),
+    ),
+  ).rejects.toThrow(/personal data/);
+  expect(await count()).toBe(before);
+});
+
+test("accepts needsVerification keys, which hold no name", async () => {
+  const details = {
+    needsVerification: true,
+    needsVerificationFrom: false,
+    needsVerificationTo: true,
+  };
   await t!.db.transaction((tx) => recordAudit(tx, { ...entry, details }));
   const rows = await t!.db.select().from(auditLogEntries);
   expect(rows.map((row) => row.details)).toContainEqual(details);

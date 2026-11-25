@@ -120,6 +120,31 @@ export type MemberListResponseInput = {
     members: Array<MemberInput>;
 };
 
+export type SpeciesInput = {
+    id: string;
+    dutchName: string;
+    scientificName: string;
+    needsVerification: boolean;
+    active: boolean;
+};
+
+export type SpeciesListResponseInput = {
+    species: Array<SpeciesInput>;
+};
+
+export type CreateSpeciesRequestInput = {
+    dutchName: string;
+    scientificName: string;
+    needsVerification: boolean;
+};
+
+export type UpdateSpeciesRequestInput = {
+    dutchName?: string;
+    scientificName?: string;
+    needsVerification?: boolean;
+    active?: boolean;
+};
+
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
@@ -239,6 +264,31 @@ export type Member = {
 
 export type MemberListResponse = {
     members: Array<Member>;
+};
+
+export type Species = {
+    id: string;
+    dutchName: string;
+    scientificName: string;
+    needsVerification: boolean;
+    active: boolean;
+};
+
+export type SpeciesListResponse = {
+    species: Array<Species>;
+};
+
+export type CreateSpeciesRequest = {
+    dutchName: string;
+    scientificName: string;
+    needsVerification: boolean;
+};
+
+export type UpdateSpeciesRequest = {
+    dutchName?: string;
+    scientificName?: string;
+    needsVerification?: boolean;
+    active?: boolean;
 };
 
 export type VersionResponse = {
@@ -511,6 +561,111 @@ export type RemoveMembershipResponses = {
 };
 
 export type RemoveMembershipResponse = RemoveMembershipResponses[keyof RemoveMembershipResponses];
+
+export type ListSpeciesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/species';
+};
+
+export type ListSpeciesErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+};
+
+export type ListSpeciesError = ListSpeciesErrors[keyof ListSpeciesErrors];
+
+export type ListSpeciesResponses = {
+    /**
+     * Default Response
+     */
+    200: SpeciesListResponse;
+};
+
+export type ListSpeciesResponse = ListSpeciesResponses[keyof ListSpeciesResponses];
+
+export type CreateSpeciesData = {
+    body: CreateSpeciesRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/species';
+};
+
+export type CreateSpeciesErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type CreateSpeciesError = CreateSpeciesErrors[keyof CreateSpeciesErrors];
+
+export type CreateSpeciesResponses = {
+    /**
+     * Default Response
+     */
+    201: Species;
+};
+
+export type CreateSpeciesResponse = CreateSpeciesResponses[keyof CreateSpeciesResponses];
+
+export type UpdateSpeciesData = {
+    body: UpdateSpeciesRequestInput;
+    path: {
+        speciesId: string;
+    };
+    query?: never;
+    url: '/api/species/{speciesId}';
+};
+
+export type UpdateSpeciesErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type UpdateSpeciesError = UpdateSpeciesErrors[keyof UpdateSpeciesErrors];
+
+export type UpdateSpeciesResponses = {
+    /**
+     * Default Response
+     */
+    200: Species;
+};
+
+export type UpdateSpeciesResponse = UpdateSpeciesResponses[keyof UpdateSpeciesResponses];
 
 export type CreateMembershipRequestData = {
     body: CreateMembershipRequestInput;

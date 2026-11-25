@@ -1,28 +1,26 @@
-import { useLogOut, useMe } from "@padvinder/api-client";
-import { Button, logOutFailedMessage } from "@padvinder/ui";
-import { Link } from "react-router";
+import { useMe } from "@padvinder/api-client";
+import { Navigate } from "react-router";
+import { managesSomething, navigationFor } from "../layout/navigation";
 
+/** Sends someone with navigation items to the first one; tells everyone else what the portal is. */
 export function HomePage() {
-  const me = useMe();
-  const { logOut, failed } = useLogOut();
+  const me = useMe().data;
+  if (!me) return null;
+  const [first] = navigationFor(me);
+  if (first) return <Navigate replace to={first.to} />;
   return (
     <main className="mx-auto max-w-2xl p-4">
-      <h1 className="mb-4 text-2xl font-bold">PadVinder</h1>
-      {me.data?.user.isPlatformAdmin ? (
-        <Link to="/system" className="underline">
-          Systeemstatus
-        </Link>
-      ) : (
+      {managesSomething(me) ? (
         <p>Hier is nog niets te doen. Het beheer komt binnenkort.</p>
+      ) : (
+        <>
+          <p>Het portaal is voor coördinatoren en beheerders. Tellen doe je in de app.</p>
+          {/* A plain link: the app is another page load, outside this router. */}
+          <a href="/app/" className="mt-4 inline-block underline">
+            Open de app
+          </a>
+        </>
       )}
-      {failed ? (
-        <p role="alert" className="mt-6 text-base text-destructive">
-          {logOutFailedMessage}
-        </p>
-      ) : null}
-      <Button variant="outline" className="mt-6 block" onClick={() => void logOut()}>
-        Log uit
-      </Button>
     </main>
   );
 }

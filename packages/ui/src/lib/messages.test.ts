@@ -1,6 +1,11 @@
 import { loginErrors } from "@padvinder/contracts";
 import { expect, test } from "vitest";
-import { apiErrorMessage, connectionMessage, loginErrorMessage } from "./messages";
+import {
+  apiErrorMessage,
+  connectionMessage,
+  loginErrorMessage,
+  speciesNameTakenMessage,
+} from "./messages";
 
 test("every login error has its own Dutch text", () => {
   const texts = loginErrors.map(loginErrorMessage);
@@ -34,4 +39,16 @@ test.each([
   [null, connectionMessage],
 ])("apiErrorMessage(%s)", (code, text) => {
   expect(apiErrorMessage(code)).toBe(text);
+});
+
+test("name_taken has a general text, and each species field its own", () => {
+  expect(apiErrorMessage("name_taken")).toBe("Deze naam bestaat al.");
+  expect(speciesNameTakenMessage("dutchName")).toBe(
+    "Er is al een soort met deze Nederlandse naam.",
+  );
+  expect(speciesNameTakenMessage("scientificName")).toBe(
+    "Er is al een soort met deze wetenschappelijke naam.",
+  );
+  expect(speciesNameTakenMessage("somethingElse")).toBe("Deze naam bestaat al.");
+  expect(speciesNameTakenMessage("toString")).toBe("Deze naam bestaat al.");
 });

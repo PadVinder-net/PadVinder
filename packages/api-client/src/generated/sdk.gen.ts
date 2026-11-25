@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetVersionData, GetVersionResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
+import type { ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, CreateSpeciesData, CreateSpeciesErrors, CreateSpeciesResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetVersionData, GetVersionResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListSpeciesData, ListSpeciesErrors, ListSpeciesResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateSpeciesData, UpdateSpeciesErrors, UpdateSpeciesResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -69,6 +69,35 @@ export const listMembers = <ThrowOnError extends boolean = false>(options: Optio
  * Remove a member from a working group. A coordinator may not remove a coordinator
  */
 export const removeMembership = <ThrowOnError extends boolean = false>(options: Options<RemoveMembershipData, ThrowOnError>): RequestResult<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError> => (options.client ?? client).delete<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError>({ url: '/api/memberships/{membershipId}', ...options });
+
+/**
+ * All species, switched off or not, in Dutch order of the Dutch name
+ */
+export const listSpecies = <ThrowOnError extends boolean = false>(options?: Options<ListSpeciesData, ThrowOnError>): RequestResult<ListSpeciesResponses, ListSpeciesErrors, ThrowOnError> => (options?.client ?? client).get<ListSpeciesResponses, ListSpeciesErrors, ThrowOnError>({ url: '/api/species', ...options });
+
+/**
+ * Add a species (platform admins)
+ */
+export const createSpecies = <ThrowOnError extends boolean = false>(options: Options<CreateSpeciesData, ThrowOnError>): RequestResult<CreateSpeciesResponses, CreateSpeciesErrors, ThrowOnError> => (options.client ?? client).post<CreateSpeciesResponses, CreateSpeciesErrors, ThrowOnError>({
+    url: '/api/species',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Change a species's names, its check, or switch it off or on (platform admins). Saving without a change is 200 too
+ */
+export const updateSpecies = <ThrowOnError extends boolean = false>(options: Options<UpdateSpeciesData, ThrowOnError>): RequestResult<UpdateSpeciesResponses, UpdateSpeciesErrors, ThrowOnError> => (options.client ?? client).patch<UpdateSpeciesResponses, UpdateSpeciesErrors, ThrowOnError>({
+    url: '/api/species/{speciesId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Ask to join a working group. Sending the same id again returns the stored request

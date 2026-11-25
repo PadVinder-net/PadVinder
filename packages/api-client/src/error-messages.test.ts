@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { apiErrorCode } from "./index";
+import { apiErrorCode, apiErrorIssues } from "./index";
 
 const body = (code: string) => ({ statusCode: 409, error: "Conflict", message: "x", code });
 
@@ -15,4 +15,15 @@ test("apiErrorCode is null for a network failure or anything that is not an API 
   expect(apiErrorCode({})).toBeNull();
   expect(apiErrorCode(null)).toBeNull();
   expect(apiErrorCode(undefined)).toBeNull();
+});
+
+test("apiErrorIssues reads the issues of an API error body", () => {
+  const issues = [{ path: "dutchName", message: "x" }];
+  expect(apiErrorIssues({ ...body("name_taken"), issues })).toEqual(issues);
+});
+
+test("apiErrorIssues is empty without issues, for a network failure and for anything else", () => {
+  expect(apiErrorIssues(body("name_taken"))).toEqual([]);
+  expect(apiErrorIssues(new TypeError("Failed to fetch"))).toEqual([]);
+  expect(apiErrorIssues(null)).toEqual([]);
 });

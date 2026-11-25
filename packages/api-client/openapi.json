@@ -465,6 +465,93 @@
           "members"
         ]
       },
+      "SpeciesInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "dutchName": {
+            "type": "string"
+          },
+          "scientificName": {
+            "type": "string"
+          },
+          "needsVerification": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "dutchName",
+          "scientificName",
+          "needsVerification",
+          "active"
+        ]
+      },
+      "SpeciesListResponseInput": {
+        "type": "object",
+        "properties": {
+          "species": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpeciesInput"
+            }
+          }
+        },
+        "required": [
+          "species"
+        ]
+      },
+      "CreateSpeciesRequestInput": {
+        "type": "object",
+        "properties": {
+          "dutchName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "scientificName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "needsVerification": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dutchName",
+          "scientificName",
+          "needsVerification"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateSpeciesRequestInput": {
+        "type": "object",
+        "properties": {
+          "dutchName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "scientificName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "needsVerification": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "VersionResponseInput": {
         "type": "object",
         "properties": {
@@ -959,6 +1046,95 @@
         ],
         "additionalProperties": false
       },
+      "Species": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "dutchName": {
+            "type": "string"
+          },
+          "scientificName": {
+            "type": "string"
+          },
+          "needsVerification": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "dutchName",
+          "scientificName",
+          "needsVerification",
+          "active"
+        ],
+        "additionalProperties": false
+      },
+      "SpeciesListResponse": {
+        "type": "object",
+        "properties": {
+          "species": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Species"
+            }
+          }
+        },
+        "required": [
+          "species"
+        ],
+        "additionalProperties": false
+      },
+      "CreateSpeciesRequest": {
+        "type": "object",
+        "properties": {
+          "dutchName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "scientificName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "needsVerification": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dutchName",
+          "scientificName",
+          "needsVerification"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateSpeciesRequest": {
+        "type": "object",
+        "properties": {
+          "dutchName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "scientificName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "needsVerification": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "VersionResponse": {
         "type": "object",
         "properties": {
@@ -1324,6 +1500,190 @@
                   "enum": [
                     null
                   ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/species": {
+      "get": {
+        "operationId": "listSpecies",
+        "summary": "All species, switched off or not, in Dutch order of the Dutch name",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeciesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSpecies",
+        "summary": "Add a species (platform admins)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSpeciesRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Species"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/species/{speciesId}": {
+      "patch": {
+        "operationId": "updateSpecies",
+        "summary": "Change a species's names, its check, or switch it off or on (platform admins). Saving without a change is 200 too",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSpeciesRequestInput"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "speciesId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Species"
                 }
               }
             }

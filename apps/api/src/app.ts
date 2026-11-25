@@ -21,6 +21,7 @@ import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { membershipRequestRoutes } from "./routes/membership-requests";
 import { membershipRoutes } from "./routes/memberships";
+import { speciesRoutes } from "./routes/species";
 import { workingGroupRoutes } from "./routes/working-groups";
 import { versionRoutes } from "./routes/version";
 
@@ -84,6 +85,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(meRoutes, { db: deps.db });
       await api.register(workingGroupRoutes, { db: deps.db });
       await api.register(membershipRoutes, { db: deps.db });
+      await api.register(speciesRoutes, { db: deps.db });
       await api.register(membershipRequestRoutes, {
         db: deps.db,
         mailer: deps.mailer,

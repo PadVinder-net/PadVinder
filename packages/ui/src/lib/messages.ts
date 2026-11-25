@@ -31,6 +31,7 @@ const apiErrorMessages: Record<string, string> = {
   not_allowed: "Dit mag je niet doen.",
   not_found: "Dit bestaat niet meer.",
   membership_changed: "Deze persoon heeft intussen een andere rol. Kijk opnieuw.",
+  name_taken: "Deze naam bestaat al.",
 };
 
 /**
@@ -43,4 +44,16 @@ export function apiErrorMessage(code: string | null): string {
     (code !== null && Object.hasOwn(apiErrorMessages, code) && apiErrorMessages[code]) ||
     connectionMessage
   );
+}
+
+const speciesNameTakenMessages: Record<string, string> = {
+  dutchName: "Er is al een soort met deze Nederlandse naam.",
+  scientificName: "Er is al een soort met deze wetenschappelijke naam.",
+};
+
+/** The text for a `name_taken` error about one species field (`issues[0].path`); the general text for any other field. */
+export function speciesNameTakenMessage(field: string): string {
+  return Object.hasOwn(speciesNameTakenMessages, field)
+    ? speciesNameTakenMessages[field]!
+    : apiErrorMessage("name_taken");
 }

@@ -15,3 +15,4 @@ export * from "./me";
 export * from "./members";
 export * from "./membership-requests";
 export * from "./working-groups";
+export * from "./species";

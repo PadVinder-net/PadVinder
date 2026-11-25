@@ -18,6 +18,7 @@ export type Relation =
 
 export type Permission =
   | { action: "system.viewDatabaseDetails" }
+  | { action: "platform.manageSpecies" }
   | { action: "workingGroup.listMembers"; target: WorkingGroupTarget }
   | { action: "workingGroup.viewMemberContact"; target: WorkingGroupTarget }
   | { action: "workingGroup.reviewRequests"; target: WorkingGroupTarget }
@@ -44,7 +45,11 @@ export function relationTo(actor: Actor, target: WorkingGroupTarget): Relation {
 const staff: readonly Relation[] = ["platformAdmin", "organizationAdmin", "coordinator"];
 
 export function decide(actor: Actor, permission: Permission): Decision {
-  if (permission.action === "system.viewDatabaseDetails") {
+  // Platform-wide: no target, and never `hidden` (the species list is not secret).
+  if (
+    permission.action === "system.viewDatabaseDetails" ||
+    permission.action === "platform.manageSpecies"
+  ) {
     return actor.isPlatformAdmin ? "allowed" : "forbidden";
   }
   const relation = relationTo(actor, permission.target);

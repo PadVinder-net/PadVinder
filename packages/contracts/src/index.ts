@@ -5,5 +5,6 @@ export * from "./login";
 export * from "./me";
 export * from "./members";
 export * from "./membership-requests";
+export * from "./species";
 export * from "./version";
 export * from "./working-groups";

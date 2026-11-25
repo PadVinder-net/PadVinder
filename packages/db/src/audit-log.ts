@@ -15,10 +15,14 @@ export type AuditAction =
   | "membership_request.approved"
   | "membership_request.rejected"
   | "membership.removed"
-  | "account.deleted";
+  | "account.deleted"
+  | "species.created"
+  | "species.updated"
+  | "species.deactivated"
+  | "species.activated";
 
 export type AuditSubject = {
-  type: "user" | "organization" | "working_group" | "membership" | "membership_request";
+  type: "user" | "organization" | "working_group" | "membership" | "membership_request" | "species";
   id: string;
 };
 
@@ -35,15 +39,32 @@ export type AuditEntry = {
 
 /**
  * A details key that contains one of these, in any case, is refused: `fullName`, `emailAddress`
- * and `phoneNumber` as much as `name`. Choose keys without them (`workingGroupId`, `role`).
+ * and `phoneNumber` as much as `name`. Choose keys without them (`workingGroupId`, `role`). The
+ * only exceptions are the exact keys in `THING_NAME_AUDIT_KEYS`.
  */
 const PERSONAL_KEY_PARTS = ["name", "mail", "phone"];
+
+/**
+ * Exact keys that are allowed although they contain "name": they hold the name of a thing, never of
+ * a person (`species.created` and `species.updated`). Add a key here only for the name of a thing
+ * (a species, an organization, a working group), never for a person. Their values still get the
+ * "@" check.
+ */
+export const THING_NAME_AUDIT_KEYS: readonly string[] = [
+  "dutchName",
+  "scientificName",
+  "dutchNameFrom",
+  "dutchNameTo",
+  "scientificNameFrom",
+  "scientificNameTo",
+];
 
 function assertNoPersonalData(details: AuditDetails): void {
   for (const [key, value] of Object.entries(details)) {
     const lowerKey = key.toLowerCase();
     if (
-      PERSONAL_KEY_PARTS.some((part) => lowerKey.includes(part)) ||
+      (!THING_NAME_AUDIT_KEYS.includes(key) &&
+        PERSONAL_KEY_PARTS.some((part) => lowerKey.includes(part))) ||
       (typeof value === "string" && value.includes("@"))
     ) {
       throw new Error(
