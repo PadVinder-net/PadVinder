@@ -1,7 +1,12 @@
-import { useAccessLiveUpdates, useLogOut, useMe } from "@padvinder/api-client";
+import {
+  useAccessLiveUpdates,
+  useLogOut,
+  useManagedWorkingGroups,
+  useMe,
+} from "@padvinder/api-client";
 import { Button, logOutFailedMessage, Toaster } from "@padvinder/ui";
 import { NavLink, Outlet } from "react-router";
-import { navigationFor } from "./navigation";
+import { navigationFor, type NavItem } from "./navigation";
 
 /**
  * The frame around every portal page, inside the auth gate: a header with the navigation for this
@@ -24,16 +29,11 @@ export function PortalLayout() {
               <ul className="flex flex-wrap gap-x-4 gap-y-1">
                 {items.map((item) => (
                   <li key={item.to}>
-                    <NavLink
-                      to={item.to}
-                      className={({ isActive }) =>
-                        isActive
-                          ? "font-bold underline decoration-2 underline-offset-4"
-                          : "hover:underline"
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
+                    {item.to === requestsPath ? (
+                      <RequestsLink item={item} />
+                    ) : (
+                      <NavItemLink item={item} />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -56,4 +56,35 @@ export function PortalLayout() {
       <Toaster />
     </>
   );
+}
+
+const requestsPath = "/membership-requests";
+
+function NavItemLink({ item, openCount = 0 }: { item: NavItem; openCount?: number }) {
+  return (
+    <NavLink
+      to={item.to}
+      aria-label={openCount > 0 ? `${item.label}, ${openCount} open` : undefined}
+      className={({ isActive }) =>
+        isActive ? "font-bold underline decoration-2 underline-offset-4" : "hover:underline"
+      }
+    >
+      {item.label}
+      {openCount > 0 ? (
+        <span className="ml-1.5 inline-block min-w-6 rounded-full bg-primary px-1.5 text-center text-sm font-bold text-primary-foreground no-underline">
+          {openCount}
+        </span>
+      ) : null}
+    </NavLink>
+  );
+}
+
+/**
+ * "Aanmeldingen" with the number of open requests: the sum over the working groups the user
+ * manages. Only rendered for someone who manages something, so a volunteer never asks for the list.
+ */
+function RequestsLink({ item }: { item: NavItem }) {
+  const workingGroups = useManagedWorkingGroups().data?.workingGroups ?? [];
+  const openCount = workingGroups.reduce((sum, group) => sum + group.pendingRequestCount, 0);
+  return <NavItemLink item={item} openCount={openCount} />;
 }

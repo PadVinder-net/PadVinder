@@ -32,6 +32,7 @@ test("the portal has working group, species, system and not-found pages", () => 
     expect.arrayContaining([
       "/working-groups",
       "/working-groups/:workingGroupId",
+      "/membership-requests",
       "/species",
       "/system",
       "/*",

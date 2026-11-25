@@ -24,29 +24,40 @@ const twoOrganizationAdminMe: MeResponse = {
   ],
 };
 
+test("navigationFor puts Aanmeldingen after Werkgroepen for a coordinator", () => {
+  expect(navigationFor(coordinatorMeFixture)).toEqual([
+    { label: "Werkgroepen", to: "/working-groups" },
+    { label: "Aanmeldingen", to: "/membership-requests" },
+  ]);
+});
+
 test("navigationFor", () => {
-  expect(navigationFor(coordinatorMeFixture).map((item) => item.to)).toEqual(["/working-groups"]);
   // An admin of exactly one organization goes straight to it.
   expect(navigationFor(twoOrganizationsMeFixture).map((item) => [item.label, item.to])).toEqual([
     ["Werkgroepen", "/working-groups"],
+    ["Aanmeldingen", "/membership-requests"],
     ["Organisatie", "/organizations/0192f3c0-0000-7000-8000-0000000000a2"],
   ]);
   expect(navigationFor(organizationAdminMe)).toEqual([
     { label: "Werkgroepen", to: "/working-groups" },
+    { label: "Aanmeldingen", to: "/membership-requests" },
     { label: "Organisatie", to: "/organizations/0192f3c0-0000-7000-8000-0000000000a2" },
   ]);
   expect(navigationFor(twoOrganizationAdminMe).map((item) => [item.label, item.to])).toEqual([
     ["Werkgroepen", "/working-groups"],
+    ["Aanmeldingen", "/membership-requests"],
     ["Organisaties", "/organizations"],
   ]);
   expect(navigationFor(platformAdminMeFixture).map((item) => item.to)).toEqual([
     "/working-groups",
+    "/membership-requests",
     "/organizations",
     "/species",
     "/system",
   ]);
   expect(navigationFor(platformAdminMeFixture).map((item) => item.label)).toEqual([
     "Werkgroepen",
+    "Aanmeldingen",
     "Organisaties",
     "Soorten",
     "Systeemstatus",
@@ -57,7 +68,7 @@ test("navigationFor", () => {
       ...platformAdminMeFixture,
       organizationAdminOf: twoOrganizationsMeFixture.organizationAdminOf,
     }).map((item) => item.to),
-  ).toEqual(["/working-groups", "/organizations", "/species", "/system"]);
+  ).toEqual(["/working-groups", "/membership-requests", "/organizations", "/species", "/system"]);
   expect(navigationFor(meFixture)).toEqual([]);
   expect(navigationFor(applicantMeFixture)).toEqual([]);
 });
