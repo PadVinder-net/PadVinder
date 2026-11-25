@@ -1,7 +1,14 @@
 import "@testing-library/jest-dom/vitest";
-import { installFetchProxy } from "@padvinder/api-client/testing";
+import { FakeEventSource, installFetchProxy } from "@padvinder/api-client/testing";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
 installFetchProxy();
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  FakeEventSource.instances = [];
+});
+
+// jsdom has no EventSource; the layout opens the live stream. Tests reach the streams through
+// `FakeEventSource.instances`.
+globalThis.EventSource ??= FakeEventSource as unknown as typeof EventSource;
