@@ -183,6 +183,48 @@ test("the membership request migration applies to a database that already holds 
   }
 });
 
+test("the species migrations apply to a database that already holds users, organizations and audit entries", async () => {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  try {
+    const all = join(import.meta.dirname, "..", "drizzle");
+    const names = (await readdir(all, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    // The table migration (`_species`) comes before the one with the rows (`_official_species`).
+    const first = names.findIndex((n) => n.endsWith("_species"));
+    expect(first).toBeGreaterThan(0);
+    expect(names[first + 1]).toMatch(/_official_species$/);
+    for (const name of names.slice(0, first))
+      await cp(join(all, name), join(folder, name), { recursive: true });
+    await old.db.execute(sql`drop schema if exists drizzle cascade`);
+    await old.db.execute(sql`drop schema public cascade`);
+    await old.db.execute(sql`create schema public`);
+    await runMigrations(old.url, folder);
+    const user = await old.pool.query(
+      "insert into users (name, email, email_verified) values ('Oud', 'species@example.test', true) returning id",
+    );
+    const org = await old.pool.query(
+      "insert into organizations (name) values ('Oude organisatie') returning id",
+    );
+    await old.pool.query(
+      "insert into audit_log_entries (actor_kind, actor_user_id, organization_id, action, subject_type, subject_id) values ('user', $1, $2, 'organization.created', 'organization', $2)",
+      [user.rows[0].id, org.rows[0].id],
+    );
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query(
+      "select (select count(*)::int from users) as users, (select count(*)::int from organizations) as organizations, (select count(*)::int from audit_log_entries) as entries, (select count(*)::int from species) as species",
+    );
+    expect(rows.rows).toEqual([{ users: 1, organizations: 1, entries: 1, species: 5 }]);
+  } finally {
+    await rm(folder, { recursive: true });
+    await old.drop();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.
