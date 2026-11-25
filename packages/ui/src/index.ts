@@ -51,3 +51,9 @@ export {
 export { MemberList, type MemberListProps } from "./components/members/member-list";
 export { MemberDetail, type MemberDetailProps } from "./components/members/member-detail";
 export { ProfileForm, type ProfileFormProps } from "./components/profile/profile-form";
+export { SpeciesTable, type SpeciesTableProps } from "./components/species/species-table";
+export {
+  SpeciesForm,
+  type SpeciesFormProps,
+  type SpeciesFormValues,
+} from "./components/species/species-form";
