@@ -384,9 +384,9 @@ There are no CAA records.
 
 **To do for mail** (see "Mail"; the values come from the Alwaysdata panel, Domains, `padvinder.net`, DNS records, and are not written here):
 
-- [x] SPF (25 November 2026): add Alwaysdata's `include:` mechanism to the existing SPF `TXT` record of `padvinder.net`. Keep one SPF record; a second one makes SPF fail.
+- [x] SPF: the SPF `TXT` record of `padvinder.net` has Alwaysdata's `include:` mechanism (25 November 2026). It is the only SPF record; keep it that way, because a second one makes SPF fail.
 - [ ] DKIM: the `TXT` record Alwaysdata shows for `padvinder.net` (a name under `_domainkey.padvinder.net`).
-- [x] DMARC (25 November 2026): a `TXT` record at `_dmarc.padvinder.net`. Start with policy `none`, and tighten it once "Verification" shows SPF and DKIM passing.
+- [x] DMARC: `_dmarc.padvinder.net` has a `TXT` record (25 November 2026). "Verification" shows SPF, DKIM and DMARC passing, so a stricter policy is possible when the maintainer decides to.
 - [x] MX: `padvinder.net` has MX records (25 November 2026). Without them, bounces and replies to `noreply@padvinder.net` reach nobody; sending works either way.
 
 Record each one in the table above (name and type only) once it exists. `www.padvinder.net` resolves, but no PadVinder site serves it, so it has no certificate. Either add it to the production site (with a redirect) or remove the records; that is a decision for the maintainer.
