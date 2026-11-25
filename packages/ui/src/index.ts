@@ -76,3 +76,16 @@ export {
   PersonEmailForm,
   type PersonEmailFormProps,
 } from "./components/administration/person-email-form";
+export {
+  WorkingGroupTable,
+  type WorkingGroupTableProps,
+} from "./components/administration/working-group-table";
+export { MembersTable, type MembersTableProps } from "./components/administration/members-table";
+export {
+  OrganizationTable,
+  type OrganizationTableProps,
+} from "./components/administration/organization-table";
+export {
+  OrganizationAdminsTable,
+  type OrganizationAdminsTableProps,
+} from "./components/administration/organization-admins-table";
