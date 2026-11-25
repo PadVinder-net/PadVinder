@@ -48,6 +48,7 @@ const NOT_APP_CODE: readonly string[] = [
   ".env.example",
   "docker-compose.yml",
   "vitest.config.ts",
+  "orca.yaml",
 ];
 
 export const JOB_RULES: Record<CiJob, JobRule> = {
