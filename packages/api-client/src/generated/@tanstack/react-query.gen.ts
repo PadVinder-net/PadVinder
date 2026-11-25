@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { approveMembershipRequest, createMembershipRequest, createSpecies, deleteMe, getHealth, getMe, getMembershipRequest, getVersion, listMembers, listMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, updateMe, updateSpecies, withdrawMembershipRequest } from '../sdk.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { addOrganizationAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, deleteMe, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listMembers, listMembershipRequests, listOrganizations, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, updateMe, updateOrganization, updateSpecies, withdrawMembershipRequest } from '../sdk.gen';
+import type { AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, UpdateMeData, UpdateMeError, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -188,6 +188,110 @@ export const removeMembershipMutation = (options?: Partial<Options<RemoveMembers
     const mutationOptions: UseMutationOptions<RemoveMembershipResponse, RemoveMembershipError, Options<RemoveMembershipData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await removeMembership({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listOrganizationsQueryKey = (options?: Options<ListOrganizationsData>) => createQueryKey('listOrganizations', options);
+
+/**
+ * The organizations you administer: all for a platform admin, none for others
+ */
+export const listOrganizationsOptions = (options?: Options<ListOrganizationsData>) => queryOptions<ListOrganizationsResponse, ListOrganizationsError, ListOrganizationsResponse, ReturnType<typeof listOrganizationsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listOrganizations({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listOrganizationsQueryKey(options)
+});
+
+/**
+ * Add an organization with its first admin (platform admins)
+ */
+export const createOrganizationMutation = (options?: Partial<Options<CreateOrganizationData>>): UseMutationOptions<CreateOrganizationResponse, CreateOrganizationError, Options<CreateOrganizationData>> => {
+    const mutationOptions: UseMutationOptions<CreateOrganizationResponse, CreateOrganizationError, Options<CreateOrganizationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createOrganization({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getOrganizationQueryKey = (options: Options<GetOrganizationData>) => createQueryKey('getOrganization', options);
+
+/**
+ * One organization with its admins
+ */
+export const getOrganizationOptions = (options: Options<GetOrganizationData>) => queryOptions<GetOrganizationResponse, GetOrganizationError, GetOrganizationResponse, ReturnType<typeof getOrganizationQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getOrganization({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getOrganizationQueryKey(options)
+});
+
+/**
+ * Change the contact address (its admins) or the name (platform admins). Saving without a change is 200 too
+ */
+export const updateOrganizationMutation = (options?: Partial<Options<UpdateOrganizationData>>): UseMutationOptions<UpdateOrganizationResponse, UpdateOrganizationError, Options<UpdateOrganizationData>> => {
+    const mutationOptions: UseMutationOptions<UpdateOrganizationResponse, UpdateOrganizationError, Options<UpdateOrganizationData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateOrganization({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Make someone an admin of the organization (platform admins). Also 200 when they were
+ */
+export const addOrganizationAdminMutation = (options?: Partial<Options<AddOrganizationAdminData>>): UseMutationOptions<AddOrganizationAdminResponse, AddOrganizationAdminError, Options<AddOrganizationAdminData>> => {
+    const mutationOptions: UseMutationOptions<AddOrganizationAdminResponse, AddOrganizationAdminError, Options<AddOrganizationAdminData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await addOrganizationAdmin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Take the admin role away (platform admins). Never the last admin
+ */
+export const removeOrganizationAdminMutation = (options?: Partial<Options<RemoveOrganizationAdminData>>): UseMutationOptions<RemoveOrganizationAdminResponse, RemoveOrganizationAdminError, Options<RemoveOrganizationAdminData>> => {
+    const mutationOptions: UseMutationOptions<RemoveOrganizationAdminResponse, RemoveOrganizationAdminError, Options<RemoveOrganizationAdminData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await removeOrganizationAdmin({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

@@ -1,21 +1,13 @@
+import type { Organization, OrganizationAdmin, OrganizationDetail } from "@padvinder/contracts";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Access } from "./access";
 import type { Db } from "./client";
 import { organizationAdmins, organizations, users } from "./schema";
 import { userHasLoggedIn } from "./users";
 
-// Local types of the shape of the organization contracts; the endpoints' contracts replace them.
-
-export type OrganizationRecord = { id: string; name: string; contactEmail: string | null };
-
-export type OrganizationAdminRecord = {
-  userId: string;
-  name: string;
-  email: string;
-  hasLoggedIn: boolean;
-};
-
-export type OrganizationDetailRecord = OrganizationRecord & { admins: OrganizationAdminRecord[] };
+export type OrganizationRecord = Organization;
+export type OrganizationAdminRecord = OrganizationAdmin;
+export type OrganizationDetailRecord = OrganizationDetail;
 
 const columns = {
   id: organizations.id,

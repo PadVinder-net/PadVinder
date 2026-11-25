@@ -140,6 +140,45 @@ export type MemberListResponseInput = {
     members: Array<MemberInput>;
 };
 
+export type OrganizationInput = {
+    id: string;
+    name: string;
+    contactEmail: string | null;
+};
+
+export type OrganizationAdminInput = {
+    userId: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+};
+
+export type OrganizationDetailInput = {
+    id: string;
+    name: string;
+    contactEmail: string | null;
+    admins: Array<OrganizationAdminInput>;
+};
+
+export type OrganizationListResponseInput = {
+    organizations: Array<OrganizationInput>;
+};
+
+export type CreateOrganizationRequestInput = {
+    name: string;
+    adminEmail: string;
+    contactEmail?: string | null;
+};
+
+export type UpdateOrganizationRequestInput = {
+    name?: string;
+    contactEmail?: string | null;
+};
+
+export type AddOrganizationAdminRequestInput = {
+    email: string;
+};
+
 export type SpeciesInput = {
     id: string;
     dutchName: string;
@@ -304,6 +343,45 @@ export type Member = {
 
 export type MemberListResponse = {
     members: Array<Member>;
+};
+
+export type Organization = {
+    id: string;
+    name: string;
+    contactEmail: string | null;
+};
+
+export type OrganizationAdmin = {
+    userId: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+};
+
+export type OrganizationDetail = {
+    id: string;
+    name: string;
+    contactEmail: string | null;
+    admins: Array<OrganizationAdmin>;
+};
+
+export type OrganizationListResponse = {
+    organizations: Array<Organization>;
+};
+
+export type CreateOrganizationRequest = {
+    name: string;
+    adminEmail: string;
+    contactEmail?: string | null;
+};
+
+export type UpdateOrganizationRequest = {
+    name?: string;
+    contactEmail?: string | null;
+};
+
+export type AddOrganizationAdminRequest = {
+    email: string;
 };
 
 export type Species = {
@@ -601,6 +679,229 @@ export type RemoveMembershipResponses = {
 };
 
 export type RemoveMembershipResponse = RemoveMembershipResponses[keyof RemoveMembershipResponses];
+
+export type ListOrganizationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/organizations';
+};
+
+export type ListOrganizationsErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+};
+
+export type ListOrganizationsError = ListOrganizationsErrors[keyof ListOrganizationsErrors];
+
+export type ListOrganizationsResponses = {
+    /**
+     * Default Response
+     */
+    200: OrganizationListResponse;
+};
+
+export type ListOrganizationsResponse = ListOrganizationsResponses[keyof ListOrganizationsResponses];
+
+export type CreateOrganizationData = {
+    body: CreateOrganizationRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/organizations';
+};
+
+export type CreateOrganizationErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type CreateOrganizationError = CreateOrganizationErrors[keyof CreateOrganizationErrors];
+
+export type CreateOrganizationResponses = {
+    /**
+     * Default Response
+     */
+    201: OrganizationDetail;
+};
+
+export type CreateOrganizationResponse = CreateOrganizationResponses[keyof CreateOrganizationResponses];
+
+export type GetOrganizationData = {
+    body?: never;
+    path: {
+        organizationId: string;
+    };
+    query?: never;
+    url: '/api/organizations/{organizationId}';
+};
+
+export type GetOrganizationErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type GetOrganizationError = GetOrganizationErrors[keyof GetOrganizationErrors];
+
+export type GetOrganizationResponses = {
+    /**
+     * Default Response
+     */
+    200: OrganizationDetail;
+};
+
+export type GetOrganizationResponse = GetOrganizationResponses[keyof GetOrganizationResponses];
+
+export type UpdateOrganizationData = {
+    body: UpdateOrganizationRequestInput;
+    path: {
+        organizationId: string;
+    };
+    query?: never;
+    url: '/api/organizations/{organizationId}';
+};
+
+export type UpdateOrganizationErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type UpdateOrganizationError = UpdateOrganizationErrors[keyof UpdateOrganizationErrors];
+
+export type UpdateOrganizationResponses = {
+    /**
+     * Default Response
+     */
+    200: OrganizationDetail;
+};
+
+export type UpdateOrganizationResponse = UpdateOrganizationResponses[keyof UpdateOrganizationResponses];
+
+export type AddOrganizationAdminData = {
+    body: AddOrganizationAdminRequestInput;
+    path: {
+        organizationId: string;
+    };
+    query?: never;
+    url: '/api/organizations/{organizationId}/admins';
+};
+
+export type AddOrganizationAdminErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type AddOrganizationAdminError = AddOrganizationAdminErrors[keyof AddOrganizationAdminErrors];
+
+export type AddOrganizationAdminResponses = {
+    /**
+     * Default Response
+     */
+    200: OrganizationDetail;
+};
+
+export type AddOrganizationAdminResponse = AddOrganizationAdminResponses[keyof AddOrganizationAdminResponses];
+
+export type RemoveOrganizationAdminData = {
+    body?: never;
+    path: {
+        organizationId: string;
+        userId: string;
+    };
+    query?: never;
+    url: '/api/organizations/{organizationId}/admins/{userId}';
+};
+
+export type RemoveOrganizationAdminErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type RemoveOrganizationAdminError = RemoveOrganizationAdminErrors[keyof RemoveOrganizationAdminErrors];
+
+export type RemoveOrganizationAdminResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type RemoveOrganizationAdminResponse = RemoveOrganizationAdminResponses[keyof RemoveOrganizationAdminResponses];
 
 export type ListSpeciesData = {
     body?: never;

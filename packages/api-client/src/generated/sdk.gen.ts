@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, CreateSpeciesData, CreateSpeciesErrors, CreateSpeciesResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetVersionData, GetVersionResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListSpeciesData, ListSpeciesErrors, ListSpeciesResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateSpeciesData, UpdateSpeciesErrors, UpdateSpeciesResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
+import type { AddOrganizationAdminData, AddOrganizationAdminErrors, AddOrganizationAdminResponses, ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, CreateOrganizationData, CreateOrganizationErrors, CreateOrganizationResponses, CreateSpeciesData, CreateSpeciesErrors, CreateSpeciesResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetOrganizationData, GetOrganizationErrors, GetOrganizationResponses, GetVersionData, GetVersionResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListOrganizationsData, ListOrganizationsErrors, ListOrganizationsResponses, ListSpeciesData, ListSpeciesErrors, ListSpeciesResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, RemoveOrganizationAdminData, RemoveOrganizationAdminErrors, RemoveOrganizationAdminResponses, UpdateMeData, UpdateMeErrors, UpdateMeResponses, UpdateOrganizationData, UpdateOrganizationErrors, UpdateOrganizationResponses, UpdateSpeciesData, UpdateSpeciesErrors, UpdateSpeciesResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -69,6 +69,57 @@ export const listMembers = <ThrowOnError extends boolean = false>(options: Optio
  * Remove a member from a working group. A coordinator may not remove a coordinator, and the last coordinator of an active group stays
  */
 export const removeMembership = <ThrowOnError extends boolean = false>(options: Options<RemoveMembershipData, ThrowOnError>): RequestResult<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError> => (options.client ?? client).delete<RemoveMembershipResponses, RemoveMembershipErrors, ThrowOnError>({ url: '/api/memberships/{membershipId}', ...options });
+
+/**
+ * The organizations you administer: all for a platform admin, none for others
+ */
+export const listOrganizations = <ThrowOnError extends boolean = false>(options?: Options<ListOrganizationsData, ThrowOnError>): RequestResult<ListOrganizationsResponses, ListOrganizationsErrors, ThrowOnError> => (options?.client ?? client).get<ListOrganizationsResponses, ListOrganizationsErrors, ThrowOnError>({ url: '/api/organizations', ...options });
+
+/**
+ * Add an organization with its first admin (platform admins)
+ */
+export const createOrganization = <ThrowOnError extends boolean = false>(options: Options<CreateOrganizationData, ThrowOnError>): RequestResult<CreateOrganizationResponses, CreateOrganizationErrors, ThrowOnError> => (options.client ?? client).post<CreateOrganizationResponses, CreateOrganizationErrors, ThrowOnError>({
+    url: '/api/organizations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * One organization with its admins
+ */
+export const getOrganization = <ThrowOnError extends boolean = false>(options: Options<GetOrganizationData, ThrowOnError>): RequestResult<GetOrganizationResponses, GetOrganizationErrors, ThrowOnError> => (options.client ?? client).get<GetOrganizationResponses, GetOrganizationErrors, ThrowOnError>({ url: '/api/organizations/{organizationId}', ...options });
+
+/**
+ * Change the contact address (its admins) or the name (platform admins). Saving without a change is 200 too
+ */
+export const updateOrganization = <ThrowOnError extends boolean = false>(options: Options<UpdateOrganizationData, ThrowOnError>): RequestResult<UpdateOrganizationResponses, UpdateOrganizationErrors, ThrowOnError> => (options.client ?? client).patch<UpdateOrganizationResponses, UpdateOrganizationErrors, ThrowOnError>({
+    url: '/api/organizations/{organizationId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Make someone an admin of the organization (platform admins). Also 200 when they were
+ */
+export const addOrganizationAdmin = <ThrowOnError extends boolean = false>(options: Options<AddOrganizationAdminData, ThrowOnError>): RequestResult<AddOrganizationAdminResponses, AddOrganizationAdminErrors, ThrowOnError> => (options.client ?? client).post<AddOrganizationAdminResponses, AddOrganizationAdminErrors, ThrowOnError>({
+    url: '/api/organizations/{organizationId}/admins',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Take the admin role away (platform admins). Never the last admin
+ */
+export const removeOrganizationAdmin = <ThrowOnError extends boolean = false>(options: Options<RemoveOrganizationAdminData, ThrowOnError>): RequestResult<RemoveOrganizationAdminResponses, RemoveOrganizationAdminErrors, ThrowOnError> => (options.client ?? client).delete<RemoveOrganizationAdminResponses, RemoveOrganizationAdminErrors, ThrowOnError>({ url: '/api/organizations/{organizationId}/admins/{userId}', ...options });
 
 /**
  * All species, switched off or not, in Dutch order of the Dutch name
