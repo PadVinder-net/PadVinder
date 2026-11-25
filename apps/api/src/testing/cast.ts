@@ -2,7 +2,6 @@ import {
   createOrganization,
   createWorkingGroup,
   grantCoordinator,
-  grantOrganizationAdmin,
   grantPlatformAdmin,
   workingGroupMemberships,
 } from "@padvinder/db";
@@ -16,12 +15,15 @@ export type CastMember =
   | "volunteer"
   | "volunteerOtherGroup"
   | "coordinatorOtherOrganization"
+  | "organizationAdminOtherOrganization"
   | "applicant";
 
 export type CastLogin = { userId: string; email: string; headers: { cookie: string } };
 
 export type Cast = {
+  /** `organizationAdmin` is its only admin. */
   organization: { id: string };
+  /** `organizationAdminOtherOrganization` is its only admin. */
   otherOrganization: { id: string };
   /** In `organization`; `coordinator` and `volunteer` belong to it. */
   workingGroup: WorkingGroupTarget;
@@ -35,25 +37,11 @@ export type Cast = {
 const system = { kind: "system" } as const;
 
 /**
- * The standard cast for permission tests: two organizations, three working groups and seven
+ * The standard cast for permission tests: two organizations, three working groups and eight
  * logged-in people, made through the real login flow and the administration functions.
  */
 export async function createCast(ctx: TestApp): Promise<Cast> {
   const db = ctx.t.db;
-  const organization = await createOrganization(db, { name: "Cast Organisatie" }, system);
-  const otherOrganization = await createOrganization(db, { name: "Cast Andere" }, system);
-  const group = async (organizationId: string, name: string): Promise<WorkingGroupTarget> => {
-    const created = await createWorkingGroup(
-      db,
-      { organizationId, name, city: "Enschede" },
-      system,
-    );
-    return { workingGroupId: created.id, organizationId };
-  };
-  const workingGroup = await group(organization.id, "Cast Werkgroep");
-  const otherGroup = await group(organization.id, "Cast Andere werkgroep");
-  const foreignGroup = await group(otherOrganization.id, "Cast Vreemde werkgroep");
-
   const login = async (member: CastMember): Promise<CastLogin> => {
     const email = `cast-${member}@example.test`;
     const session = await loginAs(ctx, email, { name: `Cast ${member}` });
@@ -66,15 +54,32 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
     volunteer: await login("volunteer"),
     volunteerOtherGroup: await login("volunteerOtherGroup"),
     coordinatorOtherOrganization: await login("coordinatorOtherOrganization"),
+    organizationAdminOtherOrganization: await login("organizationAdminOtherOrganization"),
     applicant: await login("applicant"),
   } satisfies Record<CastMember, CastLogin>;
 
-  await grantPlatformAdmin(db, { email: members.platformAdmin.email }, system);
-  await grantOrganizationAdmin(
-    db,
-    { email: members.organizationAdmin.email, organizationId: organization.id },
-    system,
+  const newOrganization = async (name: string, admin: CastLogin) => {
+    const created = await createOrganization(db, { name, adminEmail: admin.email }, system);
+    return { id: created.id };
+  };
+  const organization = await newOrganization("Cast Organisatie", members.organizationAdmin);
+  const otherOrganization = await newOrganization(
+    "Cast Andere",
+    members.organizationAdminOtherOrganization,
   );
+  const group = async (organizationId: string, name: string): Promise<WorkingGroupTarget> => {
+    const created = await createWorkingGroup(
+      db,
+      { organizationId, name, city: "Enschede" },
+      system,
+    );
+    return { workingGroupId: created.id, organizationId };
+  };
+  const workingGroup = await group(organization.id, "Cast Werkgroep");
+  const otherGroup = await group(organization.id, "Cast Andere werkgroep");
+  const foreignGroup = await group(otherOrganization.id, "Cast Vreemde werkgroep");
+
+  await grantPlatformAdmin(db, { email: members.platformAdmin.email }, system);
   await grantCoordinator(
     db,
     { email: members.coordinator.email, workingGroupId: workingGroup.workingGroupId },

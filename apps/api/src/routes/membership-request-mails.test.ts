@@ -1,4 +1,10 @@
-import { createOrganization, createWorkingGroup, workingGroupMemberships } from "@padvinder/db";
+import { eq } from "drizzle-orm";
+import {
+  createOrganization,
+  createWorkingGroup,
+  organizationAdmins,
+  workingGroupMemberships,
+} from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance } from "fastify";
 import { Writable } from "node:stream";
@@ -105,7 +111,15 @@ test("without a coordinator it mails the organization's admins", async () => {
 
 test("without a coordinator and without an admin it mails nobody and logs the group's ID", async () => {
   const system = { kind: "system" } as const;
-  const organization = await createOrganization(t!.db, { name: "Zonder beheer" }, system);
+  const organization = await createOrganization(
+    t!.db,
+    { name: "Zonder beheer", adminEmail: "zonder-beheer@example.test" },
+    system,
+  );
+  // Data from before every organization had an admin: the row is removed by hand.
+  await t!.db
+    .delete(organizationAdmins)
+    .where(eq(organizationAdmins.organizationId, organization.id));
   const group = await createWorkingGroup(
     t!.db,
     { organizationId: organization.id, name: "Verlaten", city: "Nergensdorp" },

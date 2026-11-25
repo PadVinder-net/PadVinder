@@ -276,6 +276,75 @@ test("the last_login_at migration gives each user the newest session's start, or
   }
 });
 
+/**
+ * A fresh database migrated up to, not including, the migration whose folder ends in `suffix`,
+ * and the folder of the migrations it got. The caller drops the database and removes the folder.
+ */
+async function migratedBefore(suffix: string) {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  const all = join(import.meta.dirname, "..", "drizzle");
+  const names = (await readdir(all, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  const index = names.findIndex((n) => n.endsWith(suffix));
+  expect(index).toBeGreaterThan(0);
+  for (const name of names.slice(0, index))
+    await cp(join(all, name), join(folder, name), { recursive: true });
+  await old.db.execute(sql`drop schema if exists drizzle cascade`);
+  await old.db.execute(sql`drop schema public cascade`);
+  await old.db.execute(sql`create schema public`);
+  await runMigrations(old.url, folder);
+  return {
+    old,
+    async cleanUp() {
+      await rm(folder, { recursive: true });
+      await old.drop();
+    },
+  };
+}
+
+test("the organization contact migration applies to a database that holds organizations", async () => {
+  const { old, cleanUp } = await migratedBefore("_organization_contact_and_unique_name");
+  try {
+    await old.pool.query(
+      "insert into organizations (name) values ('Paddentrek Voorbeeldstad'), ('Paddenwerkgroep Fictiefdorp')",
+    );
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query(
+      "select name, contact_email from organizations order by name",
+    );
+    expect(rows.rows).toEqual([
+      { name: "Paddentrek Voorbeeldstad", contact_email: null },
+      { name: "Paddenwerkgroep Fictiefdorp", contact_email: null },
+    ]);
+    await expect(
+      old.pool.query("insert into organizations (name) values ('PADDENTREK voorbeeldstad')"),
+    ).rejects.toMatchObject({ code: "23505", constraint: "organizations_name_key" });
+  } finally {
+    await cleanUp();
+  }
+});
+
+test("the organization contact migration fails when two names differ only in capitals", async () => {
+  const { old, cleanUp } = await migratedBefore("_organization_contact_and_unique_name");
+  try {
+    await old.pool.query(
+      "insert into organizations (name) values ('Paddentrek Voorbeeldstad'), ('paddentrek voorbeeldstad')",
+    );
+    await expect(runMigrations(old.url)).rejects.toThrow();
+    const column = await old.pool.query(
+      "select 1 from information_schema.columns where table_name = 'organizations' and column_name = 'contact_email'",
+    );
+    expect(column.rows).toEqual([]);
+  } finally {
+    await cleanUp();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.

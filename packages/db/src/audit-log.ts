@@ -5,6 +5,7 @@ export type AuditActor = { kind: "user"; userId: string } | { kind: "system" };
 
 export type AuditAction =
   | "organization.created"
+  | "organization.updated"
   | "working_group.created"
   | "role.platform_admin_granted"
   | "role.platform_admin_revoked"
@@ -46,9 +47,9 @@ const PERSONAL_KEY_PARTS = ["name", "mail", "phone"];
 
 /**
  * Exact keys that are allowed although they contain "name": they hold the name of a thing, never of
- * a person (`species.created` and `species.updated`). Add a key here only for the name of a thing
- * (a species, an organization, a working group), never for a person. Their values still get the
- * "@" check.
+ * a person (`species.created`, `species.updated`, `organization.updated` and
+ * `working_group.updated`). Add a key here only for the name of a thing (a species, an
+ * organization, a working group), never for a person. Their values still get the "@" check.
  */
 export const THING_NAME_AUDIT_KEYS: readonly string[] = [
   "dutchName",
@@ -57,6 +58,10 @@ export const THING_NAME_AUDIT_KEYS: readonly string[] = [
   "dutchNameTo",
   "scientificNameFrom",
   "scientificNameTo",
+  "organizationNameFrom",
+  "organizationNameTo",
+  "workingGroupNameFrom",
+  "workingGroupNameTo",
 ];
 
 function assertNoPersonalData(details: AuditDetails): void {

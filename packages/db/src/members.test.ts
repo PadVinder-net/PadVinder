@@ -12,7 +12,13 @@ let organizationId = "";
 beforeAll(async () => {
   t = await createTestDatabase();
   const system = { kind: "system" } as const;
-  organizationId = (await createOrganization(t.db, { name: "Leden Org" }, system)).id;
+  organizationId = (
+    await createOrganization(
+      t.db,
+      { name: "Leden Org", adminEmail: "org-admin@example.test" },
+      system,
+    )
+  ).id;
   groupId = (
     await createWorkingGroup(t.db, { organizationId, name: "Leden", city: "Enschede" }, system)
   ).id;

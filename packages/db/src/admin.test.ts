@@ -10,15 +10,26 @@ import {
   grantOrganizationAdmin,
   grantPlatformAdmin,
   listOrganizations,
+  lockOrganization,
   normalizeEmail,
+  normalizeName,
+  removeOrganizationAdmin,
   revokeCoordinator,
   revokeOrganizationAdmin,
   revokePlatformAdmin,
+  updateOrganization,
 } from "./admin";
 import { getAccess } from "./access";
 import { liveEventsChannel, notify } from "./notifications";
 import type { AuditActor } from "./audit-log";
-import { auditLogEntries, users, workingGroupMemberships, workingGroups } from "./schema";
+import {
+  auditLogEntries,
+  organizationAdmins,
+  organizations,
+  users,
+  workingGroupMemberships,
+  workingGroups,
+} from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 const system: AuditActor = { kind: "system" };
@@ -34,7 +45,11 @@ afterEach(async () => {
 const db = () => t!.db;
 
 async function setup() {
-  const org = await createOrganization(db(), { name: "Paddentrek Enschede" }, system);
+  const org = await createOrganization(
+    db(),
+    { name: "Paddentrek Enschede", adminEmail: "beheer@example.test" },
+    system,
+  );
   const group = await createWorkingGroup(
     db(),
     { organizationId: org.id, name: "Noord", city: "Enschede" },
@@ -52,6 +67,7 @@ test("creates an organization and a working group, each with an audit entry", as
   const entries = await db().select().from(auditLogEntries);
   expect(entries.map((e) => e.action).sort()).toEqual([
     "organization.created",
+    "role.organization_admin_granted",
     "working_group.created",
   ]);
   expect(entries.every((e) => e.organizationId === orgId)).toBe(true);
@@ -59,6 +75,7 @@ test("creates an organization and a working group, each with an audit entry", as
     {
       id: orgId,
       name: "Paddentrek Enschede",
+      hasAdmin: true,
       workingGroups: [{ id: groupId, name: "Noord", city: "Enschede", active: true }],
     },
   ]);
@@ -70,12 +87,16 @@ test("a second working group with the same name in one organization is name_take
   await expect(
     createWorkingGroup(db(), { organizationId: orgId, name: "Noord", city: "Hengelo" }, system),
   ).rejects.toMatchObject({ code: "name_taken" });
-  expect(await db().select().from(auditLogEntries)).toHaveLength(2);
+  expect(await db().select().from(auditLogEntries)).toHaveLength(3);
 });
 
 test("the same name in another organization is fine", async () => {
   await setup();
-  const other = await createOrganization(db(), { name: "Andere" }, system);
+  const other = await createOrganization(
+    db(),
+    { name: "Andere", adminEmail: "andere@example.test" },
+    system,
+  );
   await expect(
     createWorkingGroup(db(), { organizationId: other.id, name: "Noord", city: "Hengelo" }, system),
   ).resolves.toHaveProperty("id");
@@ -236,12 +257,12 @@ test("grantCoordinator creates the membership, with one entry, and a repeat adds
     subjectId: first.userId,
     details: { workingGroupId: groupId },
   };
-  expect((await entries()).slice(2)).toEqual([granted]);
+  expect((await entries()).slice(3)).toEqual([granted]);
   expect(
     (await grantCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system))
       .changed,
   ).toBe(false);
-  expect(await entries()).toHaveLength(3);
+  expect(await entries()).toHaveLength(4);
 });
 
 test("grantCoordinator raises a volunteer, with one entry", async () => {
@@ -265,7 +286,7 @@ test("grantCoordinator raises a volunteer, with one entry", async () => {
       .from(workingGroupMemberships)
       .where(eq(workingGroupMemberships.userId, v!.id)),
   ).toMatchObject([{ isCoordinator: true }]);
-  expect((await entries()).slice(2)).toEqual([
+  expect((await entries()).slice(3)).toEqual([
     {
       action: "role.coordinator_granted",
       organizationId: orgId,
@@ -288,7 +309,7 @@ test("revokeCoordinator leaves a volunteer membership, with one entry, and a rep
       .changed,
   ).toBe(true);
   expect((await getAccess(db(), userId))?.memberships).toMatchObject([{ isCoordinator: false }]);
-  expect((await entries()).slice(3)).toEqual([
+  expect((await entries()).slice(4)).toEqual([
     {
       action: "role.coordinator_revoked",
       organizationId: orgId,
@@ -301,7 +322,7 @@ test("revokeCoordinator leaves a volunteer membership, with one entry, and a rep
     (await revokeCoordinator(db(), { email: "c@example.test", workingGroupId: groupId }, system))
       .changed,
   ).toBe(false);
-  expect(await entries()).toHaveLength(4);
+  expect(await entries()).toHaveLength(5);
 });
 
 test("organization admin can be granted and revoked, each with one entry", async () => {
@@ -310,7 +331,7 @@ test("organization admin can be granted and revoked, each with one entry", async
   const granted = await grantOrganizationAdmin(db(), input, system);
   expect(granted.changed).toBe(true);
   expect((await getAccess(db(), granted.userId))?.adminOfOrganizationIds).toEqual([orgId]);
-  expect((await entries()).slice(2)).toEqual([
+  expect((await entries()).slice(3)).toEqual([
     {
       action: "role.organization_admin_granted",
       organizationId: orgId,
@@ -320,11 +341,11 @@ test("organization admin can be granted and revoked, each with one entry", async
     },
   ]);
   expect((await grantOrganizationAdmin(db(), input, system)).changed).toBe(false);
-  expect(await entries()).toHaveLength(3);
+  expect(await entries()).toHaveLength(4);
 
   expect((await revokeOrganizationAdmin(db(), input, system)).changed).toBe(true);
   expect((await getAccess(db(), granted.userId))?.adminOfOrganizationIds).toEqual([]);
-  expect((await entries()).slice(3)).toEqual([
+  expect((await entries()).slice(4)).toEqual([
     {
       action: "role.organization_admin_revoked",
       organizationId: orgId,
@@ -334,7 +355,7 @@ test("organization admin can be granted and revoked, each with one entry", async
     },
   ]);
   expect((await revokeOrganizationAdmin(db(), input, system)).changed).toBe(false);
-  expect(await entries()).toHaveLength(4);
+  expect(await entries()).toHaveLength(5);
 });
 
 test("an unknown organization or working group is reported by code", async () => {
@@ -509,4 +530,388 @@ test("a grant or revoke that changes nothing, or fails, sends no event", async (
   } finally {
     await events.close();
   }
+});
+
+test("normalizeName trims and turns every run of whitespace into one space", () => {
+  expect(normalizeName("  Paddentrek \t Voorbeeldstad\n")).toBe("Paddentrek Voorbeeldstad");
+});
+
+async function adminRows(organizationId: string) {
+  return db()
+    .select({ userId: organizationAdmins.userId })
+    .from(organizationAdmins)
+    .where(eq(organizationAdmins.organizationId, organizationId));
+}
+
+async function newOrganization(name = "Paddentrek Voorbeeldstad", adminEmail = "a@example.test") {
+  return createOrganization(db(), { name, adminEmail }, system);
+}
+
+test("creating an organization makes its admin in the same transaction", async () => {
+  const result = await createOrganization(
+    db(),
+    { name: " Paddentrek  Voorbeeldstad ", adminEmail: " Bram@Example.test " },
+    system,
+  );
+  expect(result.adminCreated).toBe(true);
+  expect(await db().select().from(organizations)).toMatchObject([
+    { id: result.id, name: "Paddentrek Voorbeeldstad", contactEmail: null },
+  ]);
+  expect(await db().select().from(users)).toMatchObject([
+    { id: result.adminUserId, email: "bram@example.test" },
+  ]);
+  expect(await adminRows(result.id)).toEqual([{ userId: result.adminUserId }]);
+  expect(await entries()).toEqual([
+    {
+      action: "organization.created",
+      organizationId: result.id,
+      subjectType: "organization",
+      subjectId: result.id,
+      details: {},
+    },
+    {
+      action: "role.organization_admin_granted",
+      organizationId: result.id,
+      subjectType: "user",
+      subjectId: result.adminUserId,
+      details: {},
+    },
+  ]);
+});
+
+test("creating an organization with an existing account makes no new account", async () => {
+  const [existing] = await db()
+    .insert(users)
+    .values({ name: "Bram", email: "bram@example.test", emailVerified: true })
+    .returning({ id: users.id });
+  const result = await createOrganization(
+    db(),
+    { name: "Org", adminEmail: "BRAM@example.test", contactEmail: " Info@Example.test " },
+    system,
+  );
+  expect(result).toEqual({ id: result.id, adminUserId: existing!.id, adminCreated: false });
+  expect(await db().select().from(users)).toHaveLength(1);
+  const [org] = await db().select().from(organizations);
+  expect(org?.contactEmail).toBe("info@example.test");
+});
+
+test("creating an organization sends access-changed to its admin", async () => {
+  const events = await listenForLiveEvents();
+  try {
+    const result = await newOrganization();
+    expect(await events.drain()).toEqual([{ type: "access-changed", userId: result.adminUserId }]);
+  } finally {
+    await events.close();
+  }
+});
+
+test.each([
+  ["jan@", "invalid_email"],
+  ["deleted-0192f3c0-0000-7000-8000-000000000001@deleted.invalid", "user_not_found"],
+])("an organization is not created with the admin address %j (%s)", async (adminEmail, code) => {
+  await db().insert(users).values({
+    name: "Verwijderd account",
+    email: "deleted-0192f3c0-0000-7000-8000-000000000001@deleted.invalid",
+    deletedAt: new Date(),
+  });
+  const attempt = createOrganization(db(), { name: "Org", adminEmail }, system);
+  await expect(attempt).rejects.toBeInstanceOf(AdminError);
+  await expect(attempt).rejects.toMatchObject({ code });
+  expect(await db().select().from(organizations)).toEqual([]);
+  expect(await db().select().from(organizationAdmins)).toEqual([]);
+  expect(await entries()).toEqual([]);
+});
+
+test("an organization is not created with an invalid contact address", async () => {
+  await expect(
+    createOrganization(
+      db(),
+      { name: "Org", adminEmail: "a@example.test", contactEmail: "info@" },
+      system,
+    ),
+  ).rejects.toMatchObject({ code: "invalid_email" });
+  expect(await db().select().from(organizations)).toEqual([]);
+  expect(await db().select().from(users)).toEqual([]);
+});
+
+test.each(["Paddentrek Voorbeeldstad", "paddentrek  voorbeeldstad "])(
+  "the name %j is taken",
+  async (name) => {
+    await newOrganization("Paddentrek Voorbeeldstad", "a@example.test");
+    const before = await entries();
+    await expect(
+      createOrganization(db(), { name, adminEmail: "b@example.test" }, system),
+    ).rejects.toMatchObject({ code: "name_taken" });
+    expect(await db().select().from(organizations)).toHaveLength(1);
+    expect(await db().select().from(users)).toHaveLength(1);
+    expect(await entries()).toEqual(before);
+  },
+);
+
+test("two creates of the same name at the same moment give one organization and one admin row", async () => {
+  const results = await Promise.allSettled([
+    createOrganization(
+      db(),
+      { name: "Paddentrek Voorbeeldstad", adminEmail: "a@example.test" },
+      system,
+    ),
+    createOrganization(
+      db(),
+      { name: "paddentrek voorbeeldstad", adminEmail: "b@example.test" },
+      system,
+    ),
+  ]);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  const rejected = results.filter((r) => r.status === "rejected");
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: "name_taken" });
+  expect(await db().select().from(organizations)).toHaveLength(1);
+  expect(await db().select().from(organizationAdmins)).toHaveLength(1);
+  expect(await db().select().from(users)).toHaveLength(1);
+});
+
+test("lockOrganization is false for an organization that does not exist", async () => {
+  const { id } = await newOrganization();
+  await db().transaction(async (tx) => {
+    expect(await lockOrganization(tx, id)).toBe(true);
+    expect(await lockOrganization(tx, "01900000-0000-7000-8000-000000000000")).toBe(false);
+  });
+});
+
+test("the last admin cannot be removed; with a second one it works", async () => {
+  const { id: organizationId, adminUserId: a } = await newOrganization();
+  const before = await entries();
+  await expect(
+    removeOrganizationAdmin(db(), { organizationId, userId: a }, system),
+  ).rejects.toMatchObject({ code: "last_organization_admin" });
+  const attempt = revokeOrganizationAdmin(
+    db(),
+    { email: "a@example.test", organizationId },
+    system,
+  );
+  await expect(attempt).rejects.toBeInstanceOf(AdminError);
+  await expect(attempt).rejects.toMatchObject({ code: "last_organization_admin" });
+  expect(await adminRows(organizationId)).toEqual([{ userId: a }]);
+  expect(await entries()).toEqual(before);
+
+  const b = await grantOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system);
+  expect(await removeOrganizationAdmin(db(), { organizationId, userId: a }, system)).toEqual({
+    changed: true,
+  });
+  expect(await adminRows(organizationId)).toEqual([{ userId: b.userId }]);
+  expect((await entries()).at(-1)).toEqual({
+    action: "role.organization_admin_revoked",
+    organizationId,
+    subjectType: "user",
+    subjectId: a,
+    details: {},
+  });
+  await expect(
+    revokeOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system),
+  ).rejects.toMatchObject({ code: "last_organization_admin" });
+});
+
+test("removing someone who is no admin there changes nothing", async () => {
+  const { id: organizationId } = await newOrganization();
+  const other = await newOrganization("Andere", "b@example.test");
+  const before = await entries();
+  expect(
+    await removeOrganizationAdmin(db(), { organizationId, userId: other.adminUserId }, system),
+  ).toEqual({ changed: false });
+  expect(await entries()).toEqual(before);
+});
+
+test("removing an admin of an organization that does not exist is organization_not_found", async () => {
+  const { adminUserId } = await newOrganization();
+  await expect(
+    removeOrganizationAdmin(
+      db(),
+      { organizationId: "01900000-0000-7000-8000-000000000000", userId: adminUserId },
+      system,
+    ),
+  ).rejects.toMatchObject({ code: "organization_not_found" });
+});
+
+test("removing an admin sends access-changed to them", async () => {
+  const { id: organizationId, adminUserId } = await newOrganization();
+  await grantOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system);
+  const events = await listenForLiveEvents();
+  try {
+    await removeOrganizationAdmin(db(), { organizationId, userId: adminUserId }, system);
+    expect(await events.drain()).toEqual([{ type: "access-changed", userId: adminUserId }]);
+  } finally {
+    await events.close();
+  }
+});
+
+test("two admins removing each other at the same moment leave one", async () => {
+  const { id: organizationId, adminUserId: a } = await newOrganization();
+  const { userId: b } = await grantOrganizationAdmin(
+    db(),
+    { email: "b@example.test", organizationId },
+    system,
+  );
+  const results = await Promise.allSettled([
+    removeOrganizationAdmin(db(), { organizationId, userId: a }, system),
+    removeOrganizationAdmin(db(), { organizationId, userId: b }, system),
+  ]);
+  const fulfilled = results.filter((r) => r.status === "fulfilled");
+  const rejected = results.filter((r) => r.status === "rejected");
+  expect(fulfilled).toHaveLength(1);
+  expect((fulfilled[0] as PromiseFulfilledResult<{ changed: boolean }>).value).toEqual({
+    changed: true,
+  });
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+    code: "last_organization_admin",
+  });
+  expect(await adminRows(organizationId)).toHaveLength(1);
+});
+
+test("a removal by ID and a revoke by address at the same moment leave one", async () => {
+  const { id: organizationId, adminUserId: a } = await newOrganization();
+  await grantOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system);
+  const results = await Promise.allSettled([
+    removeOrganizationAdmin(db(), { organizationId, userId: a }, system),
+    revokeOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system),
+  ]);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+  expect(await adminRows(organizationId)).toHaveLength(1);
+});
+
+test("an admin who never logged in counts as an admin", async () => {
+  // The first admin's account was made by createOrganization and never logged in.
+  const { id: organizationId, adminUserId: never } = await newOrganization();
+  const [row] = await db().select().from(users).where(eq(users.id, never));
+  expect(row?.lastLoginAt).toBeNull();
+  const b = await grantOrganizationAdmin(db(), { email: "b@example.test", organizationId }, system);
+  await db()
+    .update(users)
+    .set({ emailVerified: true, lastLoginAt: new Date() })
+    .where(eq(users.id, b.userId));
+  expect(await removeOrganizationAdmin(db(), { organizationId, userId: b.userId }, system)).toEqual(
+    { changed: true },
+  );
+  expect(await adminRows(organizationId)).toEqual([{ userId: never }]);
+});
+
+test("a rename writes the old and new name; a contact change writes contactChanged and no address", async () => {
+  const { id: organizationId } = await newOrganization("Paddentrek Voorbeeldstad");
+  expect(
+    await updateOrganization(
+      db(),
+      { organizationId, patch: { name: "  Paddentrek  Voorbeeldstad-Noord " } },
+      system,
+    ),
+  ).toEqual({ changed: true });
+  expect(
+    await updateOrganization(
+      db(),
+      { organizationId, patch: { contactEmail: " Info@Example.test " } },
+      system,
+    ),
+  ).toEqual({ changed: true });
+  expect(
+    await updateOrganization(
+      db(),
+      { organizationId, patch: { name: "Paddentrek Voorbeeldstad", contactEmail: null } },
+      system,
+    ),
+  ).toEqual({ changed: true });
+  const updates = (await entries()).filter((e) => e.action === "organization.updated");
+  expect(updates).toEqual([
+    {
+      action: "organization.updated",
+      organizationId,
+      subjectType: "organization",
+      subjectId: organizationId,
+      details: {
+        organizationNameFrom: "Paddentrek Voorbeeldstad",
+        organizationNameTo: "Paddentrek Voorbeeldstad-Noord",
+      },
+    },
+    {
+      action: "organization.updated",
+      organizationId,
+      subjectType: "organization",
+      subjectId: organizationId,
+      details: { contactChanged: true },
+    },
+    {
+      action: "organization.updated",
+      organizationId,
+      subjectType: "organization",
+      subjectId: organizationId,
+      details: {
+        organizationNameFrom: "Paddentrek Voorbeeldstad-Noord",
+        organizationNameTo: "Paddentrek Voorbeeldstad",
+        contactChanged: true,
+      },
+    },
+  ]);
+  for (const entry of updates) expect(JSON.stringify(entry.details)).not.toContain("@");
+  const [org] = await db().select().from(organizations);
+  expect(org).toMatchObject({ name: "Paddentrek Voorbeeldstad", contactEmail: null });
+});
+
+test("a patch that changes nothing writes no entry", async () => {
+  const { id: organizationId } = await createOrganization(
+    db(),
+    {
+      name: "Paddentrek Voorbeeldstad",
+      adminEmail: "a@example.test",
+      contactEmail: "info@example.test",
+    },
+    system,
+  );
+  const before = await entries();
+  for (const patch of [
+    {},
+    { name: " Paddentrek  Voorbeeldstad " },
+    { contactEmail: "INFO@example.test" },
+    { name: "Paddentrek Voorbeeldstad", contactEmail: "info@example.test" },
+  ]) {
+    expect(await updateOrganization(db(), { organizationId, patch }, system)).toEqual({
+      changed: false,
+    });
+  }
+  expect(await entries()).toEqual(before);
+});
+
+test("a rename in other capitals is a change; to the name of another organization is name_taken", async () => {
+  const { id: organizationId } = await newOrganization("Paddentrek Voorbeeldstad");
+  await newOrganization("Paddenwerkgroep Fictiefdorp", "b@example.test");
+  expect(
+    await updateOrganization(
+      db(),
+      { organizationId, patch: { name: "Paddentrek voorbeeldstad" } },
+      system,
+    ),
+  ).toEqual({ changed: true });
+  const before = await entries();
+  await expect(
+    updateOrganization(
+      db(),
+      { organizationId, patch: { name: "paddenwerkgroep  fictiefdorp" } },
+      system,
+    ),
+  ).rejects.toMatchObject({ code: "name_taken" });
+  expect(await entries()).toEqual(before);
+});
+
+test("updating an organization that does not exist is organization_not_found", async () => {
+  await expect(
+    updateOrganization(
+      db(),
+      { organizationId: "01900000-0000-7000-8000-000000000000", patch: { name: "X" } },
+      system,
+    ),
+  ).rejects.toMatchObject({ code: "organization_not_found" });
+});
+
+test("listOrganizations says whether an organization has an admin", async () => {
+  const { id, adminUserId } = await newOrganization();
+  await db().delete(organizationAdmins).where(eq(organizationAdmins.userId, adminUserId));
+  expect(await listOrganizations(db())).toMatchObject([{ id, hasAdmin: false }]);
 });

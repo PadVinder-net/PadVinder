@@ -7,6 +7,7 @@ export * from "./heartbeats";
 export * from "./login-code-requests";
 export * from "./migrate";
 export * from "./notifications";
+export * from "./organizations";
 export * from "./schema";
 export * from "./seed";
 export * from "./users";

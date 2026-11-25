@@ -517,7 +517,11 @@ test("a login sets last_login_at; a second login moves it", async () => {
 
 test("an account made by the admin tool has no last_login_at until its first login", async () => {
   const system = { kind: "system" } as const;
-  const org = await createOrganization(ctx.t.db, { name: "Login Org" }, system);
+  const org = await createOrganization(
+    ctx.t.db,
+    { name: "Login Org", adminEmail: "org-admin@example.test" },
+    system,
+  );
   const wg = await createWorkingGroup(
     ctx.t.db,
     { organizationId: org.id, name: "Login Groep", city: "Enschede" },

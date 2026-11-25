@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { boolean, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { users } from "./auth";
 
 // The tenant structure: PadVinder -> organization -> working group, and who belongs where.
@@ -12,11 +21,20 @@ const id = () =>
     .default(sql`uuidv7()`)
     .primaryKey();
 
-export const organizations = pgTable("organizations", {
-  id: id(),
-  name: text("name").notNull(),
-  createdAt: createdAt(),
-});
+// Names are stored normalized (`normalizeName`) and are unique regardless of capitals. Every
+// organization has at least one admin (`organization_admins`); `createOrganization` makes the
+// first in the same transaction, and nothing removes the last.
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    // The address people are told to write to when something is wrong. Never in the audit log.
+    contactEmail: text("contact_email"),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex("organizations_name_key").on(sql`lower(${table.name})`)],
+);
 
 export const workingGroups = pgTable(
   "working_groups",

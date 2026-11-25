@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   createOrganization,
   createWorkingGroup,
@@ -7,11 +7,12 @@ import {
   grantOrganizationAdmin,
   grantPlatformAdmin,
   listOrganizations,
+  updateOrganization,
 } from "./admin";
 import type { AuditActor } from "./audit-log";
 import type { Db } from "./client";
 import { createMembershipRequest } from "./membership-requests";
-import { users, workingGroupMemberships } from "./schema";
+import { organizations, users, workingGroupMemberships } from "./schema";
 import { updateUserProfile } from "./users";
 
 const system: AuditActor = { kind: "system" };
@@ -28,9 +29,43 @@ export function assertLocalSeed(publicOrigin: string | undefined): void {
   }
 }
 
-async function ensureOrganization(db: Db, name: string): Promise<string> {
-  const existing = (await listOrganizations(db)).find((org) => org.name === name);
-  return existing?.id ?? (await createOrganization(db, { name }, system)).id;
+/**
+ * The organization with its admin and contact address. One that exists already (seeded before
+ * every organization had an admin) gets them too; a second run changes nothing.
+ */
+async function ensureOrganization(
+  db: Db,
+  input: { name: string; adminEmail: string; adminName: string; contactEmail: string | null },
+): Promise<string> {
+  const existing = (await listOrganizations(db)).find((org) => org.name === input.name);
+  const organizationId =
+    existing?.id ??
+    (
+      await createOrganization(
+        db,
+        { name: input.name, adminEmail: input.adminEmail, contactEmail: input.contactEmail },
+        system,
+      )
+    ).id;
+  const admin = await grantOrganizationAdmin(
+    db,
+    { email: input.adminEmail, organizationId },
+    system,
+  );
+  await setName(db, admin.userId, input.adminName);
+  // Fills in a missing contact address; one a developer changed locally stays.
+  const [stored] = await db
+    .select({ contactEmail: organizations.contactEmail })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId));
+  if (input.contactEmail !== null && stored?.contactEmail === null) {
+    await updateOrganization(
+      db,
+      { organizationId, patch: { contactEmail: input.contactEmail } },
+      system,
+    );
+  }
+  return organizationId;
 }
 
 async function ensureWorkingGroup(
@@ -44,10 +79,17 @@ async function ensureWorkingGroup(
   return existing?.id ?? (await createWorkingGroup(db, { organizationId, name, city }, system)).id;
 }
 
-/** Sets the name only when it differs, so a second run changes nothing. */
+/**
+ * Sets the name only when it differs, so a second run changes nothing. A person with a name has
+ * logged in, so local lists look like real use: `last_login_at` is set when it is empty.
+ */
 async function setName(db: Db, userId: string, name: string): Promise<void> {
   const [row] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId));
   if (row?.name !== name) await updateUserProfile(db, userId, { name });
+  await db
+    .update(users)
+    .set({ lastLoginAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.lastLoginAt)));
 }
 
 async function ensureAccount(db: Db, email: string, name: string): Promise<string> {
@@ -68,20 +110,24 @@ async function ensureVolunteer(
 
 /** Made-up organizations, groups and people for local development. Idempotent. */
 export async function seed(db: Db): Promise<void> {
-  const voorbeeldstad = await ensureOrganization(db, "Paddentrek Voorbeeldstad");
-  const fictiefdorp = await ensureOrganization(db, "Paddenwerkgroep Fictiefdorp");
+  const voorbeeldstad = await ensureOrganization(db, {
+    name: "Paddentrek Voorbeeldstad",
+    adminEmail: "beheerder@example.test",
+    adminName: "Bram Beheer",
+    contactEmail: "contact-voorbeeldstad@example.test",
+  });
+  const fictiefdorp = await ensureOrganization(db, {
+    name: "Paddenwerkgroep Fictiefdorp",
+    adminEmail: "beheerder-fictiefdorp@example.test",
+    adminName: "Fenna Fictief",
+    contactEmail: null,
+  });
   const noord = await ensureWorkingGroup(db, voorbeeldstad, "Noord", "Voorbeeldstad");
   const zuid = await ensureWorkingGroup(db, voorbeeldstad, "Zuid", "Voorbeeldstad");
   const dorp = await ensureWorkingGroup(db, fictiefdorp, "Dorp", "Fictiefdorp");
 
   const admin = await grantPlatformAdmin(db, { email: "hoofdbeheerder@example.test" }, system);
   await setName(db, admin.userId, "Hanna Hoofd");
-  const orgAdmin = await grantOrganizationAdmin(
-    db,
-    { email: "beheerder@example.test", organizationId: voorbeeldstad },
-    system,
-  );
-  await setName(db, orgAdmin.userId, "Bram Beheer");
   const coordinator = await grantCoordinator(
     db,
     { email: "coordinator@example.test", workingGroupId: noord },

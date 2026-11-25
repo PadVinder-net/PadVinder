@@ -44,7 +44,13 @@ let groups: string[];
 beforeAll(async () => {
   t = await createTestDatabase();
   organizationName = "Paddentrek Voorbeeldstad";
-  organizationId = (await createOrganization(db(), { name: organizationName }, system)).id;
+  organizationId = (
+    await createOrganization(
+      db(),
+      { name: organizationName, adminEmail: "org-admin@example.test" },
+      system,
+    )
+  ).id;
   groups = [];
   for (const name of ["Noord", "Zuid", "Oost", "West", "Centrum", "Dorp", "Haven"]) {
     groups.push(

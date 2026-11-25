@@ -83,6 +83,7 @@ test("who may delete their account", async () => {
       volunteer: 204,
       volunteerOtherGroup: 204,
       coordinatorOtherOrganization: 204,
+      organizationAdminOtherOrganization: 204,
       applicant: 204,
       anonymous: 401,
     },

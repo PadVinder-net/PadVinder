@@ -46,9 +46,21 @@ test("a new user has no memberships and no admin rights", async () => {
 
 test("sorts in Dutch order and leaves out inactive groups", async () => {
   const id = await insertUser("sorted-me@example.test");
-  const zeta = await createOrganization(t!.db, { name: "Zeta" }, system);
-  const eend = await createOrganization(t!.db, { name: "Éend" }, system);
-  const alfa = await createOrganization(t!.db, { name: "Alfa" }, system);
+  const zeta = await createOrganization(
+    t!.db,
+    { name: "Zeta", adminEmail: "org-admin@example.test" },
+    system,
+  );
+  const eend = await createOrganization(
+    t!.db,
+    { name: "Éend", adminEmail: "org-admin@example.test" },
+    system,
+  );
+  const alfa = await createOrganization(
+    t!.db,
+    { name: "Alfa", adminEmail: "org-admin@example.test" },
+    system,
+  );
   const mk = async (organizationId: string, name: string) =>
     createWorkingGroup(t!.db, { organizationId, name, city: "Enschede" }, system);
   const groups = [

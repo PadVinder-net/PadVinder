@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { users } from "@padvinder/db";
+import { organizationAdmins, organizations, users } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import { runAdminCommand } from "./run-admin-command";
 
@@ -28,14 +28,86 @@ async function addUser(email: string) {
   await t!.db.insert(users).values({ email, name: "", emailVerified: true });
 }
 
-test("create-organization prints only the new id", async () => {
-  expect(await run("create-organization", "--name", "Paddentrek Voorbeeldstad")).toBe(0);
+test("create-organization needs --admin-email and prints the id first", async () => {
+  expect(await run("create-organization", "--name", "Paddentrek Voorbeeldstad")).toBe(1);
+  expect(err).toEqual([expect.stringContaining("--admin-email")]);
+  expect(await t!.db.select().from(organizations)).toEqual([]);
+  err.length = 0;
+  await addUser("bram@example.test");
+  expect(
+    await run(
+      "create-organization",
+      "--name",
+      "Paddentrek Voorbeeldstad",
+      "--admin-email",
+      "Bram@Example.test",
+    ),
+  ).toBe(0);
   expect(out).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/)]);
   expect(err).toEqual([]);
+  const [admin] = await t!.db.select().from(organizationAdmins);
+  expect(admin?.organizationId).toBe(out[0]);
+});
+
+test("create-organization says when it made an account", async () => {
+  expect(
+    await run(
+      "create-organization",
+      "--name",
+      "Paddentrek Voorbeeldstad",
+      "--admin-email",
+      " Bram@Example.test ",
+      "--contact-email",
+      "Info@Example.test",
+    ),
+  ).toBe(0);
+  expect(out).toEqual([
+    expect.stringMatching(/^[0-9a-f-]{36}$/),
+    "new account for bram@example.test",
+  ]);
+  const [organization] = await t!.db.select().from(organizations);
+  expect(organization).toMatchObject({ id: out[0], contactEmail: "info@example.test" });
+});
+
+test("create-organization refuses a taken name with one line", async () => {
+  await run("create-organization", "--name", "Org", "--admin-email", "a@example.test");
+  expect(
+    await run("create-organization", "--name", " org ", "--admin-email", "b@example.test"),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/name is already taken/)]);
+});
+
+test("revoke-organization-admin refuses the last admin", async () => {
+  await run("create-organization", "--name", "Org", "--admin-email", "a@example.test");
+  const orgId = out[0]!;
+  out.length = 0;
+  expect(
+    await run("revoke-organization-admin", "--email", "a@example.test", "--organization", orgId),
+  ).toBe(1);
+  expect(err).toEqual([expect.stringMatching(/last admin/i)]);
+  expect(out).toEqual([]);
+  expect(await t!.db.select().from(organizationAdmins)).toHaveLength(1);
+});
+
+test("list marks an organization without an admin", async () => {
+  await run("create-organization", "--name", "Met beheer", "--admin-email", "a@example.test");
+  await run("create-organization", "--name", "Zonder beheer", "--admin-email", "b@example.test");
+  const withoutId = out[2]!;
+  await t!.db.delete(organizationAdmins).where(eq(organizationAdmins.organizationId, withoutId));
+  out.length = 0;
+  expect(await run("list")).toBe(0);
+  expect(out).toContain(`organization ${withoutId} Zonder beheer [no admin]`);
+  expect(out.find((line) => line.includes("Met beheer"))).not.toContain("[no admin]");
 });
 
 test("create-working-group, grant-coordinator and list work together", async () => {
-  await run("create-organization", "--name", "Paddentrek Voorbeeldstad");
+  await run(
+    "create-organization",
+    "--name",
+    "Paddentrek Voorbeeldstad",
+    "--admin-email",
+    "beheer@example.test",
+  );
   const orgId = out[0]!;
   out.length = 0;
   expect(
@@ -77,7 +149,7 @@ test("grant twice prints changed, then unchanged", async () => {
 });
 
 test("organization admin grant and revoke", async () => {
-  await run("create-organization", "--name", "Org");
+  await run("create-organization", "--name", "Org", "--admin-email", "beheer@example.test");
   const orgId = out[0]!;
   await addUser("a@example.test");
   out.length = 0;

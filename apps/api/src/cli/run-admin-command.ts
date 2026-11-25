@@ -35,13 +35,16 @@ const adminErrorText: Record<AdminErrorCode, string> = {
   name_taken: "That name is already taken.",
   last_platform_admin:
     "That is the last platform admin who has logged in. Make another one, and let them log in first.",
+  last_organization_admin:
+    "That is the last admin of the organization. Make someone else admin first.",
 };
 
 const helpLines = [
   "Usage: admin <command> [options]",
   "",
   "  list                                              Organizations with their working groups",
-  "  create-organization --name <name>                 Prints the new ID",
+  "  create-organization --name <name> --admin-email <address> [--contact-email <address>]",
+  "                                                    Prints the new ID",
   "  create-working-group --organization <id> --name <name> --city <city>",
   "                                                    Prints the new ID",
   "  grant-platform-admin --email <address>            Prints changed or unchanged",
@@ -57,7 +60,9 @@ const helpLines = [
 
 type Handler = {
   options: readonly string[];
-  run(values: Record<string, string>, deps: AdminDeps): Promise<void>;
+  /** Options that may be left out. */
+  optional?: readonly string[];
+  run(values: Record<string, string | undefined>, deps: AdminDeps): Promise<void>;
 };
 
 const printChange = (deps: AdminDeps, result: RoleChange, email: string) => {
@@ -73,7 +78,9 @@ const commands: Record<string, Handler> = {
     options: [],
     async run(_values, { db, out }) {
       for (const organization of await listOrganizations(db)) {
-        out(`organization ${organization.id} ${organization.name}`);
+        out(
+          `organization ${organization.id} ${organization.name}${organization.hasAdmin ? "" : " [no admin]"}`,
+        );
         for (const group of organization.workingGroups) {
           out(
             `  working group ${group.id} ${group.name} (${group.city})${group.active ? "" : " [inactive]"}`,
@@ -83,9 +90,17 @@ const commands: Record<string, Handler> = {
     },
   },
   "create-organization": {
-    options: ["name"],
+    options: ["name", "admin-email"],
+    optional: ["contact-email"],
     async run(v, { db, out }) {
-      out((await createOrganization(db, { name: v.name! }, system)).id);
+      const input = {
+        name: v.name!,
+        adminEmail: v["admin-email"]!,
+        contactEmail: v["contact-email"] ?? null,
+      };
+      const result = await createOrganization(db, input, system);
+      out(result.id);
+      if (result.adminCreated) out(`new account for ${normalizeEmail(input.adminEmail)}`);
     },
   },
   "create-working-group": {
@@ -152,7 +167,12 @@ export async function runAdminCommand(argv: string[], deps: AdminDeps): Promise<
   try {
     const { values } = parseArgs({
       args: rest,
-      options: Object.fromEntries(handler.options.map((o) => [o, { type: "string" as const }])),
+      options: Object.fromEntries(
+        [...handler.options, ...(handler.optional ?? [])].map((o) => [
+          o,
+          { type: "string" as const },
+        ]),
+      ),
       allowPositionals: false,
       strict: true,
     });
@@ -169,7 +189,7 @@ export async function runAdminCommand(argv: string[], deps: AdminDeps): Promise<
         return 1;
       }
     }
-    await handler.run(given as Record<string, string>, deps);
+    await handler.run(given, deps);
     return 0;
   } catch (error) {
     if (error instanceof AdminError) {

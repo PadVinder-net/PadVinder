@@ -1,3 +1,4 @@
+import { DELETED_ACCOUNT_EMAIL_DOMAIN } from "@padvinder/contracts";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { hasOtherPlatformAdmin, lockPlatformAdmins } from "./admin";
 import { recordAudit } from "./audit-log";
@@ -24,7 +25,7 @@ export const DELETED_ACCOUNT_NAME = "Verwijderd account";
  * undeliverable (`.invalid` is reserved, RFC 2606). The old address is free for a new account.
  */
 export function deletedAccountEmail(userId: string): string {
-  return `deleted-${userId}@deleted.invalid`;
+  return `deleted-${userId}@${DELETED_ACCOUNT_EMAIL_DOMAIN}`;
 }
 
 /**

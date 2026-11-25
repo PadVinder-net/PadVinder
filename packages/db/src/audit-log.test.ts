@@ -142,6 +142,10 @@ test("lists exactly the keys for names of things", () => {
       "scientificName",
       "scientificNameFrom",
       "scientificNameTo",
+      "organizationNameFrom",
+      "organizationNameTo",
+      "workingGroupNameFrom",
+      "workingGroupNameTo",
     ].sort(),
   );
 });
@@ -153,6 +157,8 @@ test.each<[AuditDetails]>([
   [{ DutchName: "gewone pad" }],
   [{ dutchName: "noor@example.test" }],
   [{ scientificNameTo: "Bufo @bufo" }],
+  [{ organizationNameTo: "info@example.test" }],
+  [{ OrganizationNameFrom: "Paddentrek" }],
 ])("still refuses on a species entry: %j", async (details) => {
   const before = await count();
   await expect(

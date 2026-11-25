@@ -1,4 +1,4 @@
-import { getAccess } from "@padvinder/db";
+import { getAccess, getOrganization } from "@padvinder/db";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { type Cast, type CastMember, createCast, expectStatuses } from "./cast";
 import { createTestApp, type TestApp } from "./login";
@@ -32,10 +32,24 @@ test("the cast has the roles it says", async () => {
   expect((await access("coordinatorOtherOrganization"))?.memberships).toMatchObject([
     { organizationId: cast.otherOrganization.id, isCoordinator: true },
   ]);
+  expect((await access("organizationAdminOtherOrganization"))?.adminOfOrganizationIds).toEqual([
+    cast.otherOrganization.id,
+  ]);
+  expect((await access("organizationAdminOtherOrganization"))?.memberships).toEqual([]);
   expect((await access("applicant"))?.memberships).toEqual([]);
   expect(cast.workingGroup.organizationId).toBe(cast.organization.id);
   expect(cast.otherGroup.organizationId).toBe(cast.organization.id);
   expect(cast.foreignGroup.organizationId).toBe(cast.otherOrganization.id);
+});
+
+test("the cast has eight members, and each organization exactly its own admin", async () => {
+  expect(Object.keys(cast.members)).toHaveLength(8);
+  const admins = async (organizationId: string) =>
+    (await getOrganization(ctx.t.db, organizationId))?.admins.map((admin) => admin.userId);
+  expect(await admins(cast.organization.id)).toEqual([cast.members.organizationAdmin.userId]);
+  expect(await admins(cast.otherOrganization.id)).toEqual([
+    cast.members.organizationAdminOtherOrganization.userId,
+  ]);
 });
 
 test("every member's cookie is a working session", async () => {
@@ -48,6 +62,7 @@ test("every member's cookie is a working session", async () => {
       volunteer: 200,
       volunteerOtherGroup: 200,
       coordinatorOtherOrganization: 200,
+      organizationAdminOtherOrganization: 200,
       applicant: 200,
       anonymous: 401,
     },
@@ -63,6 +78,7 @@ test("expectStatuses names the members whose status differs", async () => {
     volunteer: 200,
     volunteerOtherGroup: 200,
     coordinatorOtherOrganization: 200,
+    organizationAdminOtherOrganization: 200,
     applicant: 200,
     anonymous: 401,
   };

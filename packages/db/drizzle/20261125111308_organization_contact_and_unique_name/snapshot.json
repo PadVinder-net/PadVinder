@@ -1,0 +1,89 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "212400c7-9798-4d20-907d-e13dcc991e67",
+  "prevIds": [
+    "d25d9f6e-22ce-4967-a658-89a34f41d7f9"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "organizations",
+        "contact_email"
+      ],
+      "writes": [
+        "s|col|public.organizations.contact_email",
+        "n|col|public.organizations.contact_email",
+        "e|col|public.organizations.contact_email"
+      ],
+      "reads": [
+        "n|tbl|public.organizations",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "organizations",
+        "organizations_name_key"
+      ],
+      "writes": [
+        "s|idx|public.organizations_name_key",
+        "n|idx|public.organizations_name_key",
+        "e|idx|public.organizations_name_key",
+        "n|rel|public.organizations_name_key"
+      ],
+      "reads": [
+        "n|tbl|public.organizations",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "contact_email",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "organizations",
+        "name": "organizations_name_key",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "lower(\"name\")",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

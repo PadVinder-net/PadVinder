@@ -1,6 +1,6 @@
-import { z } from "zod";
+import { DELETED_ACCOUNT_EMAIL_DOMAIN, emailAddressSchema } from "@padvinder/contracts";
 import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
-import { recordAudit, type AuditAction, type AuditActor } from "./audit-log";
+import { recordAudit, type AuditAction, type AuditActor, type AuditDetails } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
 import { notifyAccessChanged } from "./notifications";
 import {
@@ -18,7 +18,8 @@ export type AdminErrorCode =
   | "user_not_found"
   | "invalid_email"
   | "name_taken"
-  | "last_platform_admin";
+  | "last_platform_admin"
+  | "last_organization_admin";
 
 export class AdminError extends Error {
   constructor(
@@ -35,13 +36,38 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-const emailSchema = z.email().max(254);
-
-/** Normalizes and checks the address; throws `invalid_email` before anything is written. */
+/**
+ * Normalizes and checks the address by `emailAddressSchema`, the rule of every administration form,
+ * before anything is written. The replaced address of a deleted account is `user_not_found`: that
+ * account never gets a role again. Any other address the rule refuses is `invalid_email`.
+ */
 function parseEmail(email: string): string {
-  const address = normalizeEmail(email);
-  if (!emailSchema.safeParse(address).success) throw new AdminError("invalid_email");
-  return address;
+  const parsed = emailAddressSchema.safeParse(email);
+  if (parsed.success) return parsed.data;
+  if (normalizeEmail(email).endsWith(`@${DELETED_ACCOUNT_EMAIL_DOMAIN}`)) {
+    throw new AdminError("user_not_found");
+  }
+  throw new AdminError("invalid_email");
+}
+
+/**
+ * Trims and turns every run of whitespace into one space. Names of organizations and working
+ * groups, and cities, are normalized with it before they are compared or stored.
+ */
+export function normalizeName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Whether the error is a unique_violation (23505) of the named index or constraint, also when
+ * Drizzle wrapped the PostgreSQL error in a cause.
+ */
+function isUniqueViolation(error: unknown, constraintName: string): boolean {
+  for (let e = error, depth = 0; e instanceof Error && depth < 5; e = e.cause, depth++) {
+    const { code, constraint } = e as { code?: unknown; constraint?: unknown };
+    if (code === "23505" && constraint === constraintName) return true;
+  }
+  return false;
 }
 
 /** `created` is true when the grant made a new, empty account for the address. */
@@ -80,6 +106,53 @@ async function requireOrganization(tx: DbTransaction, organizationId: string): P
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   if (!row) throw new AdminError("organization_not_found");
+}
+
+/**
+ * A row lock on the organization, held until the transaction ends; `false` when there is none.
+ * `for no key update`, so inserts that reference the organization (a working group, an admin row)
+ * do not wait for it. Every function that removes an admin row takes it before it counts the
+ * admins, so two removals at the same moment cannot both see "another admin remains".
+ */
+export async function lockOrganization(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .for("no key update");
+  return row !== undefined;
+}
+
+/**
+ * Removes the admin row of the user, under the organization's lock; `last_organization_admin`
+ * when no other admin of the organization would remain. An admin who never logged in counts.
+ * The organization must be locked by the caller.
+ */
+async function removeAdminRow(
+  tx: DbTransaction,
+  organizationId: string,
+  userId: string,
+  actor: AuditActor,
+): Promise<boolean> {
+  const admins = await tx
+    .select({ userId: organizationAdmins.userId })
+    .from(organizationAdmins)
+    .where(eq(organizationAdmins.organizationId, organizationId));
+  if (!admins.some((admin) => admin.userId === userId)) return false;
+  if (admins.length < 2) throw new AdminError("last_organization_admin");
+  await tx
+    .delete(organizationAdmins)
+    .where(
+      and(
+        eq(organizationAdmins.userId, userId),
+        eq(organizationAdmins.organizationId, organizationId),
+      ),
+    );
+  await recordRoleChange(tx, actor, organizationId, "role.organization_admin_revoked", userId);
+  return true;
 }
 
 /** The working group's organization. With `active`, an inactive group is `working_group_inactive`. */
@@ -144,24 +217,96 @@ async function requireUser(tx: DbTransaction, email: string): Promise<string> {
   return row.id;
 }
 
+/**
+ * Creates the organization with its first admin, in one transaction: the organization, the
+ * admin's account when there is none, the admin row, the entries `organization.created` and
+ * `role.organization_admin_granted`, and `access-changed` for the admin. A name another
+ * organization has, in any capitals or spacing, is `name_taken`; that includes one created at the
+ * same moment. Throws `invalid_email` for an address that is not valid, and `user_not_found` for
+ * the replaced address of a deleted account; then nothing is written.
+ */
 export async function createOrganization(
   db: Db,
-  input: { name: string },
+  input: { name: string; adminEmail: string; contactEmail?: string | null },
   actor: AuditActor,
-): Promise<{ id: string }> {
+): Promise<{ id: string; adminUserId: string; adminCreated: boolean }> {
+  const adminEmail = parseEmail(input.adminEmail);
+  const contactEmail = input.contactEmail == null ? null : parseEmail(input.contactEmail);
   return db.transaction(async (tx) => {
+    // A second create of the same name waits here for the first to commit, then inserts nothing.
     const [row] = await tx
       .insert(organizations)
-      .values({ name: input.name })
+      .values({ name: normalizeName(input.name), contactEmail })
+      .onConflictDoNothing()
       .returning({ id: organizations.id });
+    if (!row) throw new AdminError("name_taken");
     await recordAudit(tx, {
       actor,
-      organizationId: row!.id,
+      organizationId: row.id,
       action: "organization.created",
-      subject: { type: "organization", id: row!.id },
+      subject: { type: "organization", id: row.id },
     });
-    return { id: row!.id };
+    const admin = await findOrCreateUser(tx, adminEmail);
+    await tx.insert(organizationAdmins).values({ userId: admin.id, organizationId: row.id });
+    await recordRoleChange(tx, actor, row.id, "role.organization_admin_granted", admin.id);
+    return { id: row.id, adminUserId: admin.id, adminCreated: admin.created };
   });
+}
+
+/**
+ * Changes the name or the contact address, the keys present in `patch` (`null` empties the
+ * contact address). The name is normalized, the address lowered; only a value that differs from
+ * the stored one counts. A change writes one `organization.updated`, with `organizationNameFrom`
+ * and `organizationNameTo` when the name changed and `contactChanged: true` when the contact
+ * address changed (the address itself is never in the log). A patch that changes nothing writes
+ * nothing. Throws `organization_not_found`, `name_taken` and `invalid_email`.
+ */
+export async function updateOrganization(
+  db: Db,
+  input: { organizationId: string; patch: { name?: string; contactEmail?: string | null } },
+  actor: AuditActor,
+): Promise<{ changed: boolean }> {
+  const { patch } = input;
+  const contactEmail =
+    patch.contactEmail === undefined || patch.contactEmail === null
+      ? patch.contactEmail
+      : parseEmail(patch.contactEmail);
+  try {
+    return await db.transaction(async (tx) => {
+      const [stored] = await tx
+        .select({ name: organizations.name, contactEmail: organizations.contactEmail })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
+        .for("no key update");
+      if (!stored) throw new AdminError("organization_not_found");
+      const name = patch.name === undefined ? stored.name : normalizeName(patch.name);
+      const contact = contactEmail === undefined ? stored.contactEmail : contactEmail;
+
+      const details: AuditDetails = {};
+      if (name !== stored.name) {
+        details.organizationNameFrom = stored.name;
+        details.organizationNameTo = name;
+      }
+      if (contact !== stored.contactEmail) details.contactChanged = true;
+      if (Object.keys(details).length === 0) return { changed: false };
+
+      await tx
+        .update(organizations)
+        .set({ name, contactEmail: contact })
+        .where(eq(organizations.id, input.organizationId));
+      await recordAudit(tx, {
+        actor,
+        organizationId: input.organizationId,
+        action: "organization.updated",
+        subject: { type: "organization", id: input.organizationId },
+        details,
+      });
+      return { changed: true };
+    });
+  } catch (error) {
+    if (isUniqueViolation(error, "organizations_name_key")) throw new AdminError("name_taken");
+    throw error;
+  }
 }
 
 export async function createWorkingGroup(
@@ -187,15 +332,21 @@ export async function createWorkingGroup(
   });
 }
 
+/** Every organization, for the tool. `hasAdmin` is false only for data from before the rule. */
 export async function listOrganizations(db: Db): Promise<
   {
     id: string;
     name: string;
+    hasAdmin: boolean;
     workingGroups: { id: string; name: string; city: string; active: boolean }[];
   }[]
 > {
   const orgs = await db
-    .select({ id: organizations.id, name: organizations.name })
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      hasAdmin: sql<boolean>`exists (select 1 from ${organizationAdmins} where ${organizationAdmins.organizationId} = ${organizations.id})`,
+    })
     .from(organizations)
     .orderBy(sql`${organizations.name} COLLATE "nl-NL-x-icu"`, asc(organizations.id));
   const groups = await db
@@ -303,32 +454,40 @@ export async function grantOrganizationAdmin(
   });
 }
 
+/**
+ * Takes the admin role away, by address (the tool). Throws `last_organization_admin` when no
+ * other admin of the organization would remain.
+ */
 export async function revokeOrganizationAdmin(
   db: Db,
   input: { email: string; organizationId: string },
   actor: AuditActor,
 ): Promise<RoleChange> {
   return db.transaction(async (tx) => {
-    await requireOrganization(tx, input.organizationId);
+    if (!(await lockOrganization(tx, input.organizationId))) {
+      throw new AdminError("organization_not_found");
+    }
     const userId = await requireUser(tx, input.email);
-    const deleted = await tx
-      .delete(organizationAdmins)
-      .where(
-        and(
-          eq(organizationAdmins.userId, userId),
-          eq(organizationAdmins.organizationId, input.organizationId),
-        ),
-      )
-      .returning({ userId: organizationAdmins.userId });
-    if (deleted.length === 0) return { userId, changed: false };
-    await recordRoleChange(
-      tx,
-      actor,
-      input.organizationId,
-      "role.organization_admin_revoked",
-      userId,
-    );
-    return { userId, changed: true };
+    const changed = await removeAdminRow(tx, input.organizationId, userId, actor);
+    return { userId, changed };
+  });
+}
+
+/**
+ * Takes the admin role away, by user ID (the portal). `changed: false` when that user is no admin
+ * there. Throws `organization_not_found`, and `last_organization_admin` when no other admin of
+ * the organization would remain.
+ */
+export async function removeOrganizationAdmin(
+  db: Db,
+  input: { organizationId: string; userId: string },
+  actor: AuditActor,
+): Promise<{ changed: boolean }> {
+  return db.transaction(async (tx) => {
+    if (!(await lockOrganization(tx, input.organizationId))) {
+      throw new AdminError("organization_not_found");
+    }
+    return { changed: await removeAdminRow(tx, input.organizationId, input.userId, actor) };
   });
 }
 
