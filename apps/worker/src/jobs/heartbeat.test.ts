@@ -43,3 +43,12 @@ test("registering twice leaves exactly one schedule", async () => {
   const schedules = await boss.getSchedules();
   expect(schedules.filter((schedule) => schedule.name === HEARTBEAT_QUEUE)).toHaveLength(1);
 });
+
+test("completed heartbeat jobs are deleted after an hour, also on a queue an earlier release made", async () => {
+  await boss.deleteQueue(HEARTBEAT_QUEUE);
+  await boss.createQueue(HEARTBEAT_QUEUE); // as the first release did, with pg-boss's 7 days
+  expect((await boss.getQueue(HEARTBEAT_QUEUE))?.deleteAfterSeconds).toBe(604_800);
+
+  await registerHeartbeatJob(boss, t!.db, logger);
+  expect((await boss.getQueue(HEARTBEAT_QUEUE))?.deleteAfterSeconds).toBe(3_600);
+});
