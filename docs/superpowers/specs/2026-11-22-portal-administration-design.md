@@ -229,7 +229,9 @@ Why the app's address and not the portal's: on Android an installed app opens st
 
 **Every mail starts with a greeting:** "Hallo {naam}," when the receiver's name is known, otherwise "Hallo,", then an empty line. This holds for the mails below and for the four of part 1 (login code, new request, approved, rejected). It is built once, in `packages/mail`, in pull request 3 of this part, where all mail texts move anyway. In the login code mail the rule "no digit besides the code" stays: a name that contains a digit gets "Hallo,". Whether the greeting above the code line disturbs a phone's code detection is added to the checks on real phones.
 
-The examples below leave the greeting out.
+On staging the subject of every mail, also of the queued ones the worker sends, starts with `[STAGING] ` (part 1's design, "The mails"; added 25 November 2026). The mailer in `packages/mail` adds it, in the API and in the worker.
+
+The examples below leave the greeting and that prefix out.
 
 **New request** (changes part 1's mail). One button, "Bekijk aanmelding", to the app's address for the request (see "One link, two places"):
 
