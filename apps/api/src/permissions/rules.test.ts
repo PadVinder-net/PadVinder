@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Actor } from "./actor";
-import { authorize, decide, relationTo } from "./rules";
+import { authorize, decide, organizationRelationTo, relationTo } from "./rules";
 
 function m(workingGroupId: string, organizationId: string, as: "volunteer" | "coordinator") {
   const isCoordinator = as === "coordinator";
@@ -140,4 +140,67 @@ test("only a platform admin manages species; for others it is forbidden, not hid
     expect.objectContaining({ statusCode: 403, code: "not_allowed" }),
   );
   expect(() => authorize(actors.platformAdmin, permission)).not.toThrow();
+});
+
+const organizationTarget = { organizationId: "o-a" };
+const hiddenForOthers = {
+  coordinator: "hidden",
+  volunteer: "hidden",
+  volunteerOtherGroup: "hidden",
+  coordinatorOtherOrganization: "hidden",
+  adminOtherOrganization: "hidden",
+  applicant: "hidden",
+} as const;
+
+test.each([
+  ["organization.view", "allowed"],
+  ["organization.changeContact", "allowed"],
+  ["organization.createWorkingGroup", "allowed"],
+  ["organization.rename", "forbidden"],
+  ["organization.manageAdmins", "forbidden"],
+] as const)("%s", (action, adminDecision) => {
+  const expected = {
+    platformAdmin: "allowed",
+    organizationAdmin: adminDecision,
+    ...hiddenForOthers,
+  };
+  for (const [who, decision] of Object.entries(expected)) {
+    expect(decide(actors[who as Who], { action, target: organizationTarget }), who).toBe(decision);
+  }
+});
+
+test("only a platform admin manages organizations", () => {
+  for (const [who, a] of Object.entries(actors)) {
+    expect(decide(a, { action: "platform.manageOrganizations" }), who).toBe(
+      who === "platformAdmin" ? "allowed" : "forbidden",
+    );
+  }
+});
+
+test.each(["workingGroup.manage", "workingGroup.setCoordinator"] as const)("%s", (action) => {
+  const expected = {
+    platformAdmin: "allowed",
+    organizationAdmin: "allowed",
+    coordinator: "forbidden",
+    volunteer: "forbidden",
+    volunteerOtherGroup: "hidden",
+    coordinatorOtherOrganization: "hidden",
+    adminOtherOrganization: "hidden",
+    applicant: "hidden",
+  };
+  for (const [who, decision] of Object.entries(expected)) {
+    expect(decide(actors[who as Who], { action, target }), who).toBe(decision);
+  }
+});
+
+test("a member of a working group is an outsider to its organization", () => {
+  expect(organizationRelationTo(actors.platformAdmin, organizationTarget)).toBe("platformAdmin");
+  expect(organizationRelationTo(actors.organizationAdmin, organizationTarget)).toBe(
+    "organizationAdmin",
+  );
+  expect(organizationRelationTo(actors.coordinator, organizationTarget)).toBe("outsider");
+  expect(organizationRelationTo(actors.volunteer, organizationTarget)).toBe("outsider");
+  expect(organizationRelationTo(actors.adminOtherOrganization, organizationTarget)).toBe(
+    "outsider",
+  );
 });
