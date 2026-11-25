@@ -1,3 +1,4 @@
+import type { ManagedWorkingGroup } from "@padvinder/contracts";
 import { and, asc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { Access } from "./access";
 import type { Db } from "./client";
@@ -9,19 +10,7 @@ import {
   workingGroups,
 } from "./schema";
 
-/** A working group as the portal's administration shows it. */
-// The contract of the working group endpoints (a later task) will infer this type from its schema.
-export type ManagedWorkingGroup = {
-  id: string;
-  name: string;
-  city: string;
-  active: boolean;
-  organization: { id: string; name: string };
-  /** Members, coordinators included, without deleted accounts. */
-  memberCount: number;
-  /** Requests that wait for a decision. */
-  pendingRequestCount: number;
-};
+export type { ManagedWorkingGroup };
 
 function selectManagedWorkingGroups(db: Db) {
   return db

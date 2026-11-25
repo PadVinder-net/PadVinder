@@ -241,3 +241,79 @@ test("removing the last coordinator answers 409 last_coordinator", async () => {
   expect(res.json()).toMatchObject({ statusCode: 409, code: "last_coordinator" });
   expect(await membershipRows(membership!.id)).toHaveLength(1);
 });
+
+test("a member's event stream gets access-changed when the group is switched off", async () => {
+  const created = await createWorkingGroup(
+    ctx.t.db,
+    {
+      organizationId: cast.organization.id,
+      name: `Uitgezet ${uuidv7().slice(-8)}`,
+      city: "Enschede",
+      coordinatorEmail: `uit-${uuidv7().slice(-8)}@example.test`,
+    },
+    { kind: "system" },
+  );
+  const session = await loginAs(ctx, `uit-lid-${uuidv7().slice(-8)}@example.test`, {
+    name: "Uit lid",
+  });
+  await ctx.t.db
+    .insert(workingGroupMemberships)
+    .values({ userId: session.userId, workingGroupId: created.id, isCoordinator: false });
+  const stream = await openEvents(baseUrl, session.headers);
+  try {
+    expect(stream.status).toBe(200);
+    const res = await ctx.app.inject({
+      method: "PATCH",
+      url: `/api/working-groups/${created.id}`,
+      headers: cast.members.organizationAdmin.headers,
+      payload: { active: false },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await stream.nextEvent()).toEqual({
+      event: "access-changed",
+      data: { type: "access-changed", userId: session.userId },
+    });
+  } finally {
+    stream.close();
+  }
+});
+
+test("an admin still lists the members of a group that is off, and makes one coordinator", async () => {
+  const created = await createWorkingGroup(
+    ctx.t.db,
+    {
+      organizationId: cast.organization.id,
+      name: `Uit ${uuidv7().slice(-8)}`,
+      city: "Enschede",
+      coordinatorEmail: `uit2-${uuidv7().slice(-8)}@example.test`,
+    },
+    { kind: "system" },
+  );
+  const session = await loginAs(ctx, `uit2-lid-${uuidv7().slice(-8)}@example.test`, {
+    name: "Uit lid",
+  });
+  const [row] = await ctx.t.db
+    .insert(workingGroupMemberships)
+    .values({ userId: session.userId, workingGroupId: created.id, isCoordinator: false })
+    .returning({ id: workingGroupMemberships.id });
+  const off = await ctx.app.inject({
+    method: "PATCH",
+    url: `/api/working-groups/${created.id}`,
+    headers: cast.members.platformAdmin.headers,
+    payload: { active: false },
+  });
+  expect(off.statusCode).toBe(200);
+  for (const who of [cast.members.organizationAdmin, cast.members.platformAdmin]) {
+    const res = await list(who, created.id);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().members).toHaveLength(2);
+  }
+  const made = await ctx.app.inject({
+    method: "PATCH",
+    url: `/api/memberships/${row!.id}`,
+    headers: cast.members.organizationAdmin.headers,
+    payload: { isCoordinator: true },
+  });
+  expect(made.statusCode).toBe(200);
+  expect(made.json()).toMatchObject({ userId: session.userId, isCoordinator: true });
+});

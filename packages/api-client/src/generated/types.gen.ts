@@ -53,6 +53,39 @@ export type HealthResponseInput = {
     };
 };
 
+export type ManagedWorkingGroupInput = {
+    id: string;
+    name: string;
+    city: string;
+    active: boolean;
+    organization: {
+        id: string;
+        name: string;
+    };
+    memberCount: number;
+    pendingRequestCount: number;
+};
+
+export type ManagedWorkingGroupListResponseInput = {
+    workingGroups: Array<ManagedWorkingGroupInput>;
+};
+
+export type CreateWorkingGroupRequestInput = {
+    name: string;
+    city: string;
+    coordinatorEmail: string;
+};
+
+export type UpdateWorkingGroupRequestInput = {
+    name?: string;
+    city?: string;
+    active?: boolean;
+};
+
+export type UpdateMembershipRequestInput = {
+    isCoordinator: boolean;
+};
+
 export type WorkingGroupSummaryInput = {
     id: string;
     name: string;
@@ -256,6 +289,39 @@ export type HealthResponse = {
     worker: {
         lastHeartbeatAt: string | null;
     };
+};
+
+export type ManagedWorkingGroup = {
+    id: string;
+    name: string;
+    city: string;
+    active: boolean;
+    organization: {
+        id: string;
+        name: string;
+    };
+    memberCount: number;
+    pendingRequestCount: number;
+};
+
+export type ManagedWorkingGroupListResponse = {
+    workingGroups: Array<ManagedWorkingGroup>;
+};
+
+export type CreateWorkingGroupRequest = {
+    name: string;
+    city: string;
+    coordinatorEmail: string;
+};
+
+export type UpdateWorkingGroupRequest = {
+    name?: string;
+    city?: string;
+    active?: boolean;
+};
+
+export type UpdateMembershipRequest = {
+    isCoordinator: boolean;
 };
 
 export type WorkingGroupSummary = {
@@ -637,6 +703,74 @@ export type ListMembersResponses = {
 
 export type ListMembersResponse = ListMembersResponses[keyof ListMembersResponses];
 
+export type ListManagedWorkingGroupsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/managed-working-groups';
+};
+
+export type ListManagedWorkingGroupsErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+};
+
+export type ListManagedWorkingGroupsError = ListManagedWorkingGroupsErrors[keyof ListManagedWorkingGroupsErrors];
+
+export type ListManagedWorkingGroupsResponses = {
+    /**
+     * Default Response
+     */
+    200: ManagedWorkingGroupListResponse;
+};
+
+export type ListManagedWorkingGroupsResponse = ListManagedWorkingGroupsResponses[keyof ListManagedWorkingGroupsResponses];
+
+export type UpdateWorkingGroupData = {
+    body: UpdateWorkingGroupRequestInput;
+    path: {
+        workingGroupId: string;
+    };
+    query?: never;
+    url: '/api/working-groups/{workingGroupId}';
+};
+
+export type UpdateWorkingGroupErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type UpdateWorkingGroupError = UpdateWorkingGroupErrors[keyof UpdateWorkingGroupErrors];
+
+export type UpdateWorkingGroupResponses = {
+    /**
+     * Default Response
+     */
+    200: ManagedWorkingGroup;
+};
+
+export type UpdateWorkingGroupResponse = UpdateWorkingGroupResponses[keyof UpdateWorkingGroupResponses];
+
 export type RemoveMembershipData = {
     body?: never;
     path: {
@@ -679,6 +813,49 @@ export type RemoveMembershipResponses = {
 };
 
 export type RemoveMembershipResponse = RemoveMembershipResponses[keyof RemoveMembershipResponses];
+
+export type UpdateMembershipData = {
+    body: UpdateMembershipRequestInput;
+    path: {
+        membershipId: string;
+    };
+    query?: never;
+    url: '/api/memberships/{membershipId}';
+};
+
+export type UpdateMembershipErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type UpdateMembershipError = UpdateMembershipErrors[keyof UpdateMembershipErrors];
+
+export type UpdateMembershipResponses = {
+    /**
+     * Default Response
+     */
+    200: Member;
+};
+
+export type UpdateMembershipResponse = UpdateMembershipResponses[keyof UpdateMembershipResponses];
 
 export type ListOrganizationsData = {
     body?: never;
@@ -902,6 +1079,45 @@ export type RemoveOrganizationAdminResponses = {
 };
 
 export type RemoveOrganizationAdminResponse = RemoveOrganizationAdminResponses[keyof RemoveOrganizationAdminResponses];
+
+export type CreateWorkingGroupData = {
+    body: CreateWorkingGroupRequestInput;
+    path: {
+        organizationId: string;
+    };
+    query?: never;
+    url: '/api/organizations/{organizationId}/working-groups';
+};
+
+export type CreateWorkingGroupErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type CreateWorkingGroupError = CreateWorkingGroupErrors[keyof CreateWorkingGroupErrors];
+
+export type CreateWorkingGroupResponses = {
+    /**
+     * Default Response
+     */
+    201: ManagedWorkingGroup;
+};
+
+export type CreateWorkingGroupResponse = CreateWorkingGroupResponses[keyof CreateWorkingGroupResponses];
 
 export type ListSpeciesData = {
     body?: never;

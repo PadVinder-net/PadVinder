@@ -2,15 +2,19 @@ import {
   addOrganizationAdminRequestSchema,
   apiErrorCodes,
   createOrganizationRequestSchema,
+  createWorkingGroupRequestSchema,
+  managedWorkingGroupSchema,
   organizationDetailSchema,
   organizationListResponseSchema,
   updateOrganizationRequestSchema,
+  type ManagedWorkingGroup,
   type OrganizationDetail,
   type OrganizationListResponse,
 } from "@padvinder/contracts";
 import {
-  AdminError,
   createOrganization,
+  createWorkingGroup,
+  getManagedWorkingGroup,
   getOrganization,
   grantOrganizationAdmin,
   listAdministeredOrganizations,
@@ -20,22 +24,12 @@ import {
 } from "@padvinder/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { adminErrorToApiError } from "../admin-errors";
+import { mapAdminErrors } from "../admin-errors";
 import { apiError, errorResponses } from "../errors";
 import { authorize } from "../permissions/rules";
 
 const organizationParamsSchema = z.object({ organizationId: z.uuid() });
 const adminParamsSchema = z.object({ organizationId: z.uuid(), userId: z.uuid() });
-
-/** Runs an administration function; its `AdminError` becomes the matching API error. */
-async function mapAdminErrors<T>(run: () => Promise<T>, fields?: { email?: string }): Promise<T> {
-  try {
-    return await run();
-  } catch (error) {
-    if (error instanceof AdminError) throw adminErrorToApiError(error, fields);
-    throw error;
-  }
-}
 
 /**
  * Organizations and their admins. The list is scoped to what the actor administers; one
@@ -190,6 +184,39 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app,
       );
       if (!changed) throw apiError(404, apiErrorCodes.notFound, "This person is no admin there");
       return reply.code(204).send(null);
+    },
+  );
+
+  app.post(
+    "/organizations/:organizationId/working-groups",
+    {
+      preHandler: app.requireActor,
+      schema: {
+        operationId: "createWorkingGroup",
+        summary:
+          "Add a working group with its first coordinator (admins of the organization and platform admins)",
+        params: organizationParamsSchema,
+        body: createWorkingGroupRequestSchema,
+        response: { 201: managedWorkingGroupSchema, ...errorResponses(400, 401, 404, 409) },
+      },
+    },
+    async (request, reply): Promise<ManagedWorkingGroup> => {
+      const actor = request.actor!;
+      const { organizationId } = request.params;
+      authorize(actor, { action: "organization.createWorkingGroup", target: { organizationId } });
+      const created = await mapAdminErrors(
+        () =>
+          createWorkingGroup(
+            db,
+            { organizationId, ...request.body },
+            { kind: "user", userId: actor.userId },
+          ),
+        { email: "coordinatorEmail" },
+      );
+      const group = await getManagedWorkingGroup(db, created.id);
+      if (!group) throw apiError(404, apiErrorCodes.notFound, "Working group not found");
+      reply.code(201);
+      return group;
     },
   );
 };

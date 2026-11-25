@@ -1,5 +1,5 @@
 import { apiErrorCodes } from "@padvinder/contracts";
-import type { AdminError } from "@padvinder/db";
+import { AdminError } from "@padvinder/db";
 import { apiError, type ApiError } from "./errors";
 
 /**
@@ -56,5 +56,18 @@ export function adminErrorToApiError(error: AdminError, fields: { email?: string
       const unreachable: never = error.code;
       throw new Error(`Unknown admin error ${String(unreachable)}`);
     }
+  }
+}
+
+/** Runs an administration function; its `AdminError` becomes the matching API error. */
+export async function mapAdminErrors<T>(
+  run: () => Promise<T>,
+  fields?: { email?: string },
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof AdminError) throw adminErrorToApiError(error, fields);
+    throw error;
   }
 }

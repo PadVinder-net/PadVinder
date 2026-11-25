@@ -4,6 +4,7 @@ export * from "./errors";
 export * from "./events";
 export * from "./health";
 export * from "./login";
+export * from "./managed-working-groups";
 export * from "./me";
 export * from "./members";
 export * from "./membership-requests";
