@@ -23,6 +23,7 @@ export { LoginFlow, type LoginFlowProps, type LoginResult } from "./components/l
 export { AuthGateView, type AuthGateViewProps } from "./components/login/auth-gate-view";
 export {
   accountDeletionBlockedMessage,
+  addMemberOutcomeMessage,
   apiErrorMessage,
   connectionMessage,
   loginErrorMessage,

@@ -241,3 +241,16 @@ export function mayRemoveMember(
   if (relation === "coordinator") return !memberIsCoordinator;
   return staff.includes(relation);
 }
+
+/**
+ * The working groups the user can still ask to join: the directory without the groups they are a
+ * member of and without the group of a pending request. A rejected request does not count.
+ */
+export function otherWorkingGroups(
+  me: MeResponse,
+  directory: WorkingGroupSummary[],
+): WorkingGroupSummary[] {
+  const taken = new Set(me.memberships.map((membership) => membership.workingGroup.id));
+  if (me.membershipRequest?.status === "pending") taken.add(me.membershipRequest.workingGroup.id);
+  return directory.filter((group) => !taken.has(group.id));
+}

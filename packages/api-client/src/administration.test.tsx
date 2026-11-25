@@ -1,5 +1,6 @@
-import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addMembersResultFixture,
   coordinatorMeFixture,
   managedWorkingGroupsFixture,
   meFixture,
@@ -14,6 +15,7 @@ import {
   apiErrorCode,
   apiErrorIssues,
   mayManageWorkingGroup,
+  useAddMembers,
   useCreateWorkingGroup,
   useManagedWorkingGroups,
   useMe,
@@ -22,7 +24,10 @@ import {
   useSetCoordinator,
 } from "./index";
 import { client } from "./generated/client.gen";
-import { listManagedWorkingGroupsQueryKey } from "./generated/@tanstack/react-query.gen";
+import {
+  listManagedWorkingGroupsQueryKey,
+  listMembersOptions,
+} from "./generated/@tanstack/react-query.gen";
 import { createTestQueryClient } from "./testing";
 
 beforeEach(() => client.setConfig({ baseUrl: "http://localhost" }));
@@ -251,4 +256,40 @@ test("administersOrganization: a platform admin and an admin of it", () => {
   expect(administersOrganization(admin, group.organization.id)).toBe(true);
   expect(administersOrganization(admin, "0192f3c0-0000-7000-8000-0000000000a2")).toBe(false);
   expect(administersOrganization(coordinatorMeFixture, group.organization.id)).toBe(false);
+});
+
+test("useAddMembers gives the results and refetches the member lists and the managed groups", async () => {
+  const { calls } = mockFetch({
+    "GET /api/managed-working-groups": { workingGroups: managedWorkingGroupsFixture },
+    [`GET /api/working-groups/${group.id}/members`]: { members: [] },
+    [`POST /api/working-groups/${group.id}/members`]: addMembersResultFixture,
+  });
+  const { result } = setup(() => ({
+    groups: useManagedWorkingGroups(),
+    members: useQuery(listMembersOptions({ path: { workingGroupId: group.id } })),
+    add: useAddMembers(),
+  }));
+  await waitFor(() => expect(result.current.groups.isSuccess).toBe(true));
+  await waitFor(() => expect(result.current.members.isSuccess).toBe(true));
+  const answer = await result.current.add.mutateAsync({
+    workingGroupId: group.id,
+    emails: ["nieuw@example.test"],
+  });
+  expect(answer).toEqual(addMembersResultFixture);
+  await waitFor(() => expect(count(calls, "GET /api/managed-working-groups")).toBe(2));
+  await waitFor(() => expect(count(calls, `GET /api/working-groups/${group.id}/members`)).toBe(2));
+});
+
+test("a 429 surfaces with its code", async () => {
+  mockFetch({
+    [`POST /api/working-groups/${group.id}/members`]: Response.json(
+      { statusCode: 429, error: "Too Many Requests", message: "x", code: "too_many_additions" },
+      { status: 429 },
+    ),
+  });
+  const { result } = setup(() => useAddMembers());
+  const error = await result.current
+    .mutateAsync({ workingGroupId: group.id, emails: ["a@example.test"] })
+    .catch((caught: unknown) => caught);
+  expect(apiErrorCode(error)).toBe("too_many_additions");
 });
