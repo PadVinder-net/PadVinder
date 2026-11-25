@@ -173,6 +173,8 @@ Sent by the API over SMTP through a small mailer interface, so tests inject a fa
 
 The API sends the mail without waiting for the result and logs a failure. There are no retries: the login screen has "Stuur opnieuw", and a coordinator sees open requests in the app anyway. Part 3 (push) designs the notification pipeline with retries. _(Author's call.)_
 
+**Mails from staging are marked** (the maintainer, 25 November 2026). The subject of every mail that staging sends starts with `[STAGING] `, so nobody takes a mail from staging for one from production; both send from the same address. Production adds nothing, and neither does local development. It is a setting of the environment, `MAIL_SUBJECT_PREFIX`, which provisioning writes for staging only. The mailer applies it to every mail it sends, so no mail text can forget it. On staging the login code mail's subject is therefore `[STAGING] 123456 is je inlogcode voor PadVinder`, and the code no longer comes first: check how a phone offers the code on production.
+
 **Login code.** Phones find the code by guesswork; neither Apple nor Google publishes a format. So:
 
 - Subject: `123456 is je inlogcode voor PadVinder`, with the code first, so it shows in the notification.
