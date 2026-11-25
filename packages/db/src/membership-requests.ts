@@ -430,16 +430,16 @@ export async function decideMembershipRequest(
 }
 
 /**
- * The email addresses to mail about a new request: the group's coordinators; when it has none, the
+ * The email addresses and names to mail about a new request: the group's coordinators; when it has none, the
  * admins of its organization. Accounts that were deleted (`deleted_at`) never count, so a group
  * whose only coordinator is gone falls back to the admins. An unknown group has no recipients.
  */
 export async function listRequestNotificationRecipients(
   db: Db,
   workingGroupId: string,
-): Promise<string[]> {
+): Promise<{ email: string; name: string }[]> {
   const coordinators = await db
-    .select({ email: users.email })
+    .select({ email: users.email, name: users.name })
     .from(workingGroupMemberships)
     .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
     .where(
@@ -450,9 +450,9 @@ export async function listRequestNotificationRecipients(
       ),
     )
     .orderBy(asc(users.email));
-  if (coordinators.length > 0) return coordinators.map((row) => row.email);
-  const admins = await db
-    .select({ email: users.email })
+  if (coordinators.length > 0) return coordinators;
+  return db
+    .select({ email: users.email, name: users.name })
     .from(workingGroups)
     .innerJoin(
       organizationAdmins,
@@ -461,5 +461,4 @@ export async function listRequestNotificationRecipients(
     .innerJoin(users, eq(users.id, organizationAdmins.userId))
     .where(and(eq(workingGroups.id, workingGroupId), isNull(users.deletedAt)))
     .orderBy(asc(users.email));
-  return admins.map((row) => row.email);
 }

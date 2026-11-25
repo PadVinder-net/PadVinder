@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { createMemoryMailer } from "./mailer";
+import { createMemoryMailer } from "@padvinder/mail";
 import { sendInBackground } from "./send-in-background";
 
 const mail = { to: "geheim@example.test", subject: "Onderwerp", text: "t", html: "h" };

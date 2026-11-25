@@ -2,7 +2,7 @@ import { createDb, liveEventsChannel } from "@padvinder/db";
 import Fastify, { type FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import type { ApiEnv } from "./env";
-import { createSmtpMailer } from "./mail/mailer";
+import { createSmtpMailer } from "@padvinder/mail";
 import { startNotificationHub, type NotificationHub } from "./realtime/notification-hub";
 
 export type RunningApi = { app: FastifyInstance; stop(): Promise<void> };

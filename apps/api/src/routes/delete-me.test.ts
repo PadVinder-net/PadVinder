@@ -18,7 +18,7 @@ import type { FastifyInstance } from "fastify";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer } from "@padvinder/mail";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { openEvents } from "../test-open-events";

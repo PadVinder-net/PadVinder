@@ -24,9 +24,10 @@ import {
   buildApprovedMail,
   buildNewRequestMail,
   buildRejectedMail,
-} from "../mail/membership-mails";
-import type { Mailer } from "../mail/mailer";
-import { describeMailError, sendInBackground } from "../mail/send-in-background";
+  describeMailError,
+  type Mailer,
+} from "@padvinder/mail";
+import { sendInBackground } from "../mail/send-in-background";
 import { authorize } from "../permissions/rules";
 import {
   toMembershipRequest,
@@ -76,9 +77,10 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
         sendInBackground(
           mailer,
           log,
-          recipients.map((to) =>
+          recipients.map((recipient) =>
             buildNewRequestMail({
-              to,
+              to: recipient.email,
+              recipientName: recipient.name,
               applicantName: request.applicant.name,
               workingGroupName: request.workingGroup.name,
               requestUrl,
@@ -103,6 +105,7 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
     if (request.applicant.email === undefined) return;
     const input = {
       to: request.applicant.email,
+      recipientName: request.applicant.name,
       workingGroupName: request.workingGroup.name,
       appUrl: `${publicOrigin}/app/`,
     };

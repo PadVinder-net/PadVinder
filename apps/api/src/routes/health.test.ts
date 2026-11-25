@@ -4,7 +4,7 @@ import { startStallingProxy, type StallingProxy, type TestDatabase } from "@padv
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { createCast, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";

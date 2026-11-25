@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { buildApp } from "../app";
 import { createDb } from "@padvinder/db";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 

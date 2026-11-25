@@ -26,6 +26,7 @@
   "devDependencies": {
     "@padvinder/contracts": "workspace:*",
     "@padvinder/db": "workspace:*",
+    "@padvinder/mail": "workspace:*",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.15.0",
     "tsdown": "^0.23.7",

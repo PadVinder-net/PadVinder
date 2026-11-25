@@ -12,7 +12,7 @@ import { authRoutes } from "./auth/auth-routes";
 import { addActorLoading } from "./permissions/actor";
 import type { ApiEnv } from "./env";
 import { addErrorHandling } from "./errors";
-import type { Mailer } from "./mail/mailer";
+import type { Mailer } from "@padvinder/mail";
 import { addOriginCheck } from "./plugins/origin-check";
 import { registerStaticApps } from "./plugins/static-apps";
 import type { NotificationHub } from "./realtime/notification-hub";

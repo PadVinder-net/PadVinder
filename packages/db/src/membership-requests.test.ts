@@ -910,10 +910,13 @@ describe("listRequestNotificationRecipients", () => {
       { email: await person("rec-b1@example.test"), workingGroupId: other },
       system,
     );
-    expect((await listRequestNotificationRecipients(db(), group)).sort()).toEqual([
+    const recipients = await listRequestNotificationRecipients(db(), group);
+    expect(recipients.map((recipient) => recipient.email).sort()).toEqual([
       "rec-a1@example.test",
       "rec-a2@example.test",
     ]);
+    // `person` gives everyone the name "Persoon".
+    expect(recipients.every((recipient) => recipient.name === "Persoon")).toBe(true);
   });
 
   test("without a coordinator it returns the admins of the organization", async () => {
@@ -924,7 +927,7 @@ describe("listRequestNotificationRecipients", () => {
       system,
     );
     const recipients = await listRequestNotificationRecipients(db(), group);
-    expect(recipients).toContain("rec-admin@example.test");
+    expect(recipients.map((recipient) => recipient.email)).toContain("rec-admin@example.test");
   });
 
   test("with a coordinator it does not return the admins", async () => {
@@ -934,7 +937,9 @@ describe("listRequestNotificationRecipients", () => {
       { email: await person("rec-d@example.test"), workingGroupId: group },
       system,
     );
-    expect(await listRequestNotificationRecipients(db(), group)).toEqual(["rec-d@example.test"]);
+    expect(await listRequestNotificationRecipients(db(), group)).toEqual([
+      { email: "rec-d@example.test", name: "Persoon" },
+    ]);
   });
 
   test("never returns a deleted account; a group with only deleted coordinators falls back to the admins", async () => {
@@ -948,8 +953,8 @@ describe("listRequestNotificationRecipients", () => {
     // admin tool gives a deleted account no role.
     await markDeleted("rec-e-gone@example.test");
     const recipients = await listRequestNotificationRecipients(db(), group);
-    expect(recipients).not.toContain("rec-e-gone@example.test");
-    expect(recipients).toContain("rec-admin@example.test");
+    expect(recipients.map((recipient) => recipient.email)).not.toContain("rec-e-gone@example.test");
+    expect(recipients.map((recipient) => recipient.email)).toContain("rec-admin@example.test");
 
     const group2 = await fresh("Rec F");
     await grantCoordinator(
@@ -963,7 +968,9 @@ describe("listRequestNotificationRecipients", () => {
       system,
     );
     await markDeleted("rec-f-gone@example.test");
-    expect(await listRequestNotificationRecipients(db(), group2)).toEqual(["rec-f@example.test"]);
+    expect(await listRequestNotificationRecipients(db(), group2)).toEqual([
+      { email: "rec-f@example.test", name: "Persoon" },
+    ]);
   });
 
   test("an unknown group has no recipients", async () => {

@@ -3,7 +3,7 @@ import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
@@ -43,17 +43,32 @@ export async function createTestApp(overrides: Partial<ApiEnv> = {}): Promise<Te
   }
 }
 
-export function requestCode(
+export async function requestCode(
   ctx: TestApp,
   email: string,
   headers: Record<string, string> = {},
 ): Promise<LightMyRequestResponse> {
-  return ctx.app.inject({
+  const before = ctx.mailer.sent.length;
+  const res = await ctx.app.inject({
     method: "POST",
     url: "/api/auth/email-otp/send-verification-otp",
     headers,
     payload: { email, type: "sign-in" },
   });
+  // The API sends the mail without the request waiting for it (it looks up the name first), so
+  // wait for it here: the tests read the code right after.
+  for (
+    let i = 0;
+    res.statusCode === 200 &&
+    !ctx.mailer.sent
+      .slice(before)
+      .some((sent) => normalizeEmail(sent.to) === normalizeEmail(email)) &&
+    i < 100;
+    i++
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return res;
 }
 
 /** The code from the subject of the newest mail to that address. */

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createDb } from "@padvinder/db";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 
 // Written explicitly, never read from the environment: the file must not depend on who runs this.
