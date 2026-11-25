@@ -1,4 +1,10 @@
-import { useMutation, useQueryClient, type Query, type QueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type Query,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { apiErrorCode } from "./error-messages";
 import {
   approveMembershipRequest,
@@ -13,7 +19,10 @@ import {
   type MeResponse,
   type WorkingGroupSummary,
 } from "./generated";
-import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
+import {
+  getMeQueryKey,
+  listReviewableMembershipRequestsOptions,
+} from "./generated/@tanstack/react-query.gen";
 import { clearOtherUserData, refetchMe } from "./me-query";
 
 /** The operation a query belongs to: the `_id` the generated query keys carry. */
@@ -23,12 +32,15 @@ function operationOf(query: Query): string | undefined {
 
 /**
  * Refetches the request lists and the open requests. With a `workingGroupId`, only the list of
- * that group and the requests that belong to it (or whose group is not known yet).
+ * that group and the requests that belong to it (or whose group is not known yet); the reviewer's
+ * list of all groups is always refetched.
  */
 export function refetchMembershipRequests(queryClient: QueryClient, workingGroupId?: string): void {
   void queryClient.invalidateQueries({
     predicate: (query) => {
       const operation = operationOf(query);
+      // The reviewer's list spans every group the user reviews, so any change reaches it.
+      if (operation === "listReviewableMembershipRequests") return true;
       if (operation === "listMembershipRequests") {
         const path = (query.queryKey[0] as { path?: { workingGroupId?: string } }).path;
         return workingGroupId === undefined || path?.workingGroupId === workingGroupId;
@@ -44,6 +56,11 @@ export function refetchMembershipRequests(queryClient: QueryClient, workingGroup
       return false;
     },
   });
+}
+
+/** The open requests of every working group the user reviews, in one list. */
+export function useReviewableMembershipRequests() {
+  return useQuery(listReviewableMembershipRequestsOptions());
 }
 
 /** Refetches every member list. */
