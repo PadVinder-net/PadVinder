@@ -113,6 +113,58 @@ test("Log uit logs out and shows the login screen", async () => {
   expect(FakeEventSource.instances.every((source) => source.closed)).toBe(true);
 });
 
+test("after Log uit the next person starts at /, not on the page of the one before", async () => {
+  const routesByUrl: Record<string, unknown> = {
+    "/api/me": platformAdminMeFixture,
+    "/api/species": { species: speciesFixture },
+    "/api/auth/sign-out": { success: true },
+    "/api/auth/email-otp/send-verification-otp": { success: true },
+    "/api/auth/sign-in/email-otp": { user: { id: "u1", email: "noor@example.test" } },
+  };
+  mockFetch(routesByUrl);
+  const { router } = renderPortal("/species");
+  expect(await screen.findByRole("cell", { name: "Gewone pad" })).toBeVisible();
+  routesByUrl["/api/me"] = Response.json(
+    { statusCode: 401, error: "Unauthorized", message: "x", code: "not_logged_in" },
+    { status: 401 },
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Log uit" }));
+  await screen.findByRole("heading", { name: "Log in bij PadVinder" });
+  expect(router.state.location.pathname).toBe("/");
+
+  // A volunteer logs in on the same device and sees the home page, not "Deze pagina bestaat niet".
+  routesByUrl["/api/me"] = meFixture;
+  await userEvent.type(screen.getByLabelText("E-mailadres"), "noor@example.test");
+  await userEvent.click(screen.getByRole("button", { name: "Stuur code" }));
+  await userEvent.type(await screen.findByLabelText("Code"), "123456");
+  expect(
+    await screen.findByText(
+      "Het portaal is voor coördinatoren en beheerders. Tellen doe je in de app.",
+    ),
+  ).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Deze pagina bestaat niet" })).toBeNull();
+});
+
+test("someone who opens a page before logging in lands on that page after it", async () => {
+  const routesByUrl: Record<string, unknown> = {
+    "/api/me": Response.json(
+      { statusCode: 401, error: "Unauthorized", message: "x", code: "not_logged_in" },
+      { status: 401 },
+    ),
+    "/api/health": healthyFixture,
+    "/api/auth/email-otp/send-verification-otp": { success: true },
+    "/api/auth/sign-in/email-otp": { user: { id: "u1", email: "noor@example.test" } },
+  };
+  mockFetch(routesByUrl);
+  const { router } = renderPortal("/system");
+  await userEvent.type(await screen.findByLabelText("E-mailadres"), "noor@example.test");
+  routesByUrl["/api/me"] = platformAdminMeFixture;
+  await userEvent.click(screen.getByRole("button", { name: "Stuur code" }));
+  await userEvent.type(await screen.findByLabelText("Code"), "123456");
+  expect(await screen.findByRole("heading", { level: 1, name: "Systeemstatus" })).toBeVisible();
+  expect(router.state.location.pathname).toBe("/system");
+});
+
 test("Log uit that fails keeps the user logged in and says so", async () => {
   mockFetch({
     "/api/me": meFixture,
