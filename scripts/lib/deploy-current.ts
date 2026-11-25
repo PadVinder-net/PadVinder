@@ -34,7 +34,7 @@ export function deployPathsIgnore(workflow: string): string[] {
  * `*` matches any characters except `/`; everything else is literal. The whole path must match.
  */
 export function matchesFilterPattern(path: string, pattern: string): boolean {
-  if (/[?+[\]!]/.test(pattern)) {
+  if (/[?+[\]!\\]/.test(pattern)) {
     throw new Error(
       `The filter pattern "${pattern}" uses a character this check does not support.`,
     );
@@ -78,6 +78,11 @@ function lines(output: string): string[] {
   return output.split("\n").filter((line) => line !== "");
 }
 
+/** The paths of `-z` output: NUL separated, never quoted. */
+function paths(output: string): string[] {
+  return output.split("\0").filter((path) => path !== "");
+}
+
 /** Whether `commit` is `head` or in its history. An unknown commit throws. */
 export function isAncestor(cwd: string, commit: string, head: string): boolean {
   try {
@@ -96,7 +101,9 @@ export function isAncestor(cwd: string, commit: string, head: string): boolean {
 export function readNewerCommits(cwd: string, commit: string, head: string): NewerCommit[] {
   return lines(git(cwd, ["rev-list", "--first-parent", `${commit}..${head}`])).map((sha) => ({
     sha,
-    paths: lines(git(cwd, ["diff", "--name-only", `${sha}^1`, sha])),
+    paths: paths(
+      git(cwd, ["diff-tree", "-r", "--name-only", "--no-renames", "-z", `${sha}^1`, sha]),
+    ),
   }));
 }
 
@@ -118,7 +125,7 @@ function describe(decision: DeployDecision, commit: string, headSha: string): st
   if (decision.current) {
     if (decision.newerCommits === 0) return `${commit} is the head of main: deploying it.`;
     const n = decision.newerCommits;
-    return `main has moved on to ${headSha}, but the ${n} newer ${n === 1 ? "commit" : "commits"} change only paths Deploy ignores (paths-ignore): ${commit} is still the current release. Deploying it.`;
+    return `main has moved on to ${headSha}, but the ${n} newer ${n === 1 ? "commit changes" : "commits change"} only paths Deploy ignores (paths-ignore): ${commit} is still the current release. Deploying it.`;
   }
   if (decision.reason === "release-changed") {
     return `Deployed nothing: ${decision.commit} on main is newer than ${commit} and changes the release. The Deploy run of ${decision.commit} deploys it; or run Deploy by hand from main.`;

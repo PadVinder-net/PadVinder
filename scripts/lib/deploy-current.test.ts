@@ -61,7 +61,7 @@ describe("matchesFilterPattern", () => {
   });
 
   test("throws for characters GitHub gives a meaning that is not supported", () => {
-    for (const pattern of ["a?.ts", "a+.ts", "[ab].ts", "a].ts", "!a.ts"]) {
+    for (const pattern of ["a?.ts", "a+.ts", "[ab].ts", "a].ts", "!a.ts", "a\\*.ts"]) {
       expect(() => matchesFilterPattern("a.ts", pattern), pattern).toThrow();
     }
   });
@@ -148,6 +148,9 @@ describe("checkDeploy in a git repository", () => {
   let dir = "";
 
   function git(...args: string[]): string {
+    // Nothing of the developer's setup, or of a calling hook, may reach another repository.
+    const env = { ...process.env };
+    for (const key of ["GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"]) delete env[key];
     return execFileSync(
       "git",
       [
@@ -157,9 +160,11 @@ describe("checkDeploy in a git repository", () => {
         "user.email=test@example.test",
         "-c",
         "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
         ...args,
       ],
-      { cwd: dir, encoding: "utf8", stdio: "pipe" },
+      { cwd: dir, encoding: "utf8", stdio: "pipe", env },
     ).trim();
   }
 
@@ -205,6 +210,34 @@ describe("checkDeploy in a git repository", () => {
     expect(result.message).toContain(`main has moved on to ${docsTwo}`);
     expect(result.message).toContain("the 2 newer commits change only paths Deploy ignores");
     expect(result.message).toContain(`${base} is still the current release`);
+  });
+
+  test("one ignored newer commit reads in the singular", () => {
+    git("checkout", "-q", "-b", "one-doc", release);
+    const doc = commit("docs/single.md", "one doc");
+    const result = checkDeploy({ cwd: dir, commit: release, head: doc, patterns });
+    expect(result.decision).toEqual({ current: true, newerCommits: 1 });
+    expect(result.message).toContain("the 1 newer commit changes only paths Deploy ignores");
+    git("checkout", "-q", "main");
+  });
+
+  test("a release file moved into docs counts as a release change", () => {
+    git("checkout", "-q", "-b", "moved", release);
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    git("mv", "apps/api/main.ts", "docs/moved.ts");
+    git("commit", "-q", "-m", "move into docs");
+    const moved = git("rev-parse", "HEAD");
+    const result = checkDeploy({ cwd: dir, commit: release, head: moved, patterns });
+    expect(result.decision).toEqual({ current: false, reason: "release-changed", commit: moved });
+    git("checkout", "-q", "main");
+  });
+
+  test("a path with a non-ASCII character is read as it is", () => {
+    git("checkout", "-q", "-b", "cafe", release);
+    const doc = commit("docs/café.md", "cafe");
+    const result = checkDeploy({ cwd: dir, commit: release, head: doc, patterns });
+    expect(result.decision).toEqual({ current: true, newerCommits: 1 });
+    git("checkout", "-q", "main");
   });
 
   test("a newer commit that changes the release is named", () => {
