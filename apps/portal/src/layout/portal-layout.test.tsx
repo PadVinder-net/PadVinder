@@ -1,5 +1,10 @@
 import { FakeEventSource, mockFetch } from "@padvinder/api-client/testing";
-import { healthyFixture, meFixture, platformAdminMeFixture } from "@padvinder/contracts/fixtures";
+import {
+  healthyFixture,
+  meFixture,
+  platformAdminMeFixture,
+  speciesFixture,
+} from "@padvinder/contracts/fixtures";
 import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
@@ -53,7 +58,11 @@ test("the layout opens the live stream", async () => {
 });
 
 test("when me changes to a platform admin, the items appear without a reload", async () => {
-  const routesByUrl: Record<string, unknown> = { "/api/me": meFixture };
+  const routesByUrl: Record<string, unknown> = {
+    "/api/me": meFixture,
+    // Home sends a platform admin on to the species page.
+    "/api/species": { species: speciesFixture },
+  };
   mockFetch(routesByUrl);
   renderPortal("/");
   expect(
@@ -66,6 +75,7 @@ test("when me changes to a platform admin, the items appear without a reload", a
   const navigation = await screen.findByRole("navigation", { name: "Beheer" });
   expect(within(navigation).getByRole("link", { name: "Soorten" })).toBeVisible();
   expect(within(navigation).getByRole("link", { name: "Systeemstatus" })).toBeVisible();
+  expect(await screen.findByRole("cell", { name: "Gewone pad" })).toBeVisible();
 });
 
 test("when a platform admin loses the flag, an open /system turns into not found", async () => {

@@ -39,7 +39,7 @@ export {
 } from "./components/joining/waiting-for-approval";
 export { ConfirmDialog, type ConfirmDialogProps } from "./components/confirm-dialog";
 export { Modal, type ModalProps } from "./components/modal";
-export { showToast, Toaster } from "./components/toast";
+export { dismissAllToasts, showToast, Toaster } from "./components/toast";
 export {
   MembershipRequestList,
   type MembershipRequestListProps,

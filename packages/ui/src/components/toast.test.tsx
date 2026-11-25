@@ -1,9 +1,21 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
-import { showToast, Toaster } from "./toast";
+import { dismissAllToasts, showToast, Toaster } from "./toast";
 
 test("showToast shows the message in the Toaster", async () => {
   render(<Toaster />);
   act(() => showToast("Soort bewaard."));
   expect(await screen.findByText("Soort bewaard.")).toBeInTheDocument();
+});
+
+test("after dismissAllToasts, a new Toaster does not show the old toasts", async () => {
+  render(<Toaster />);
+  act(() => showToast("Oude melding."));
+  expect(await screen.findByText("Oude melding.")).toBeInTheDocument();
+  cleanup();
+  dismissAllToasts();
+  render(<Toaster />);
+  act(() => showToast("Nieuwe melding."));
+  expect(await screen.findByText("Nieuwe melding.")).toBeInTheDocument();
+  expect(screen.queryByText("Oude melding.")).toBeNull();
 });

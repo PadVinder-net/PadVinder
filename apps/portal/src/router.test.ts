@@ -27,8 +27,8 @@ async function expectNotFound() {
   expect(screen.getByRole("link", { name: "Terug naar het begin" })).toHaveAttribute("href", "/");
 }
 
-test("the portal has a system page and a not-found page", () => {
-  expect(collectPaths(routes)).toEqual(expect.arrayContaining(["/system", "/*"]));
+test("the portal has a species page, a system page and a not-found page", () => {
+  expect(collectPaths(routes)).toEqual(expect.arrayContaining(["/species", "/system", "/*"]));
 });
 
 test("no portal route starts with /app or /api", () => {

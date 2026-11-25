@@ -10,3 +10,11 @@ export function Toaster() {
 export function showToast(message: string): void {
   toast(message);
 }
+
+/**
+ * Dismisses every toast. Sonner keeps toasts in a module-wide list and shows them again in the
+ * next Toaster that mounts, so tests call this between tests to start clean.
+ */
+export function dismissAllToasts(): void {
+  toast.dismiss();
+}

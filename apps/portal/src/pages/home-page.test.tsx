@@ -4,6 +4,7 @@ import {
   coordinatorMeFixture,
   meFixture,
   platformAdminMeFixture,
+  speciesFixture,
 } from "@padvinder/contracts/fixtures";
 import { screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
@@ -12,12 +13,13 @@ import { renderPortal } from "../testing/render-portal";
 const notForYou = "Het portaal is voor coördinatoren en beheerders. Tellen doe je in de app.";
 
 test("home sends a platform admin to /species", async () => {
-  mockFetch({ "/api/me": platformAdminMeFixture });
+  mockFetch({ "/api/me": platformAdminMeFixture, "/api/species": { species: speciesFixture } });
   const { router } = renderPortal("/");
   await waitFor(() => expect(router.state.location.pathname).toBe("/species"));
   // Replaced, not pushed: going back does not land on home, which would send them on again.
   expect(router.state.historyAction).toBe("REPLACE");
   expect(screen.queryByText(notForYou)).toBeNull();
+  expect(await screen.findByRole("heading", { level: 1, name: "Soorten" })).toBeVisible();
 });
 
 test("home tells a volunteer the portal is not for them, with a link to /app/", async () => {
