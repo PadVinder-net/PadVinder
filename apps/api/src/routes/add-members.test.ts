@@ -7,7 +7,7 @@ import {
 } from "@padvinder/db";
 import { and, count, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { testEnv } from "../test-env";
 import { createCast, expectStatuses, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
@@ -36,7 +36,6 @@ const post = (
     payload: { emails },
   });
 const adder = () => cast.members.coordinator.headers;
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 const memberCount = async () => {
   const [row] = await ctx.t.db
     .select({ n: count() })
@@ -92,7 +91,7 @@ test("coordinators and admins of the group add people, nobody else", async () =>
 });
 
 test("a list with every kind of address gives one outcome each, in order", async () => {
-  const profile = await loginAs(ctx, "profiel-1@example.test", {
+  await loginAs(ctx, "profiel-1@example.test", {
     name: "Geheime Naam",
     phone: "06 99999999",
   });
@@ -137,9 +136,7 @@ test("a list with every kind of address gives one outcome each, in order", async
     "added-to-working-group",
     "invited-to-working-group",
   ]);
-  await settle();
-  expect(approvalMails().length).toBe(mailsBefore + 1);
-  expect(profile.userId).toBeDefined();
+  await vi.waitFor(() => expect(approvalMails().length).toBe(mailsBefore + 1), { timeout: 2000 });
 });
 
 test("the raw answer holds no name and no phone number of the person with a profile", async () => {

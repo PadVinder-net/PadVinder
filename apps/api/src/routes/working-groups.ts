@@ -162,6 +162,8 @@ export const workingGroupRoutes: FastifyPluginAsyncZod<{
           `At most ${MAX_ADDITIONS_PER_DAY} people may be added in 24 hours`,
         );
       }
+      // Each address commits on its own: an error partway leaves the earlier ones added, and sending
+      // the same list again is safe (they answer `already_member` or `invited` without a second mail).
       const results: AddMembersResponse["results"] = [];
       for (const email of addresses) {
         const result = await mapAdminErrors(() =>
