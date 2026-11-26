@@ -23,6 +23,7 @@ import {
   invalidEmailMessage,
   Modal,
   nameInSentence,
+  nameOrAddress,
   OrganizationAdminsTable,
   OrganizationForm,
   organizationNameTakenMessage,
@@ -31,11 +32,11 @@ import {
   type OrganizationFormValues,
 } from "@padvinder/ui";
 import { useState } from "react";
-import { useOnSuccess } from "./use-on-success";
 import { Link, useParams } from "react-router";
 import { CreateWorkingGroup } from "./create-working-group";
 import { LoadError } from "./load-error";
 import { NotFoundPage } from "./not-found-page";
+import { useOnSuccess } from "./use-on-success";
 
 /**
  * One organization (`/organizations/{organizationId}`): its contact address, its admins and its
@@ -107,10 +108,6 @@ function addAdminErrors(error: unknown): { fieldError?: string; error?: string }
     return { fieldError: invalidEmailMessage };
   return { error: apiErrorMessage(code) };
 }
-
-/** Someone who never logged in has no name yet: the address tells them apart. */
-const nameOrAddress = (admin: OrganizationAdmin) =>
-  admin.name.trim() === "" ? admin.email : admin.name;
 
 const failureText = (error: unknown) => apiErrorMessage(apiErrorCode(error));
 

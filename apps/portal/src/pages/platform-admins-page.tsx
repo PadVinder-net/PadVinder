@@ -15,6 +15,7 @@ import {
   invalidEmailMessage,
   lastLoggedInPlatformAdminMessage,
   Modal,
+  nameOrAddress,
   PersonEmailForm,
   PlatformAdminsTable,
   showToast,
@@ -32,10 +33,6 @@ type AddState = {
   /** The address as the server stores it: trimmed and in lowercase. */
   email: string;
 };
-
-/** Someone who never logged in has no name yet: the address tells two of them apart. */
-const nameOrAddress = (admin: PlatformAdmin) =>
-  admin.name.trim() === "" ? admin.email : admin.name;
 
 type RemoveState = { open: boolean; admin: PlatformAdmin | null };
 

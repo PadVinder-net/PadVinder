@@ -52,7 +52,7 @@ test("the passkeys page lists, adds and removes, with the phone hint", async () 
   });
   const requests = recordRequests();
   renderPortal("/profile/passkeys");
-  expect(await screen.findByRole("heading", { name: "Toegangssleutels" })).toBeVisible();
+  expect(await screen.findByRole("heading", { level: 1, name: "Toegangssleutels" })).toBeVisible();
   expect(await screen.findAllByRole("button", { name: "Verwijder" })).toHaveLength(2);
   expect(screen.getByText(/Kies dan in het venster voor je telefoon/)).toBeVisible();
 
@@ -71,20 +71,57 @@ test("the passkeys page lists, adds and removes, with the phone hint", async () 
   expect(requestsTo(requests, "DELETE", "/api/passkeys")).toHaveLength(1);
 });
 
-test("adding a passkey shows its toast when the list has grown", async () => {
-  const list = { passkeys: [first] };
+test("adding a passkey shows its toast once when it succeeds, and none when it fails", async () => {
   mockFetch({
     "/api/me": withPasskey,
-    "GET /api/passkeys": list,
+    "GET /api/passkeys": { passkeys: [first] },
     "POST /api/auth/passkey/generate-register-options": { challenge: "c" },
     "POST /api/auth/passkey/verify-registration": { ok: true },
   });
   renderPortal("/profile/passkeys");
   await screen.findByRole("button", { name: "Verwijder" });
-  list.passkeys = [first, second];
+  vi.mocked(startRegistration).mockRejectedValueOnce(
+    Object.assign(new Error("x"), { name: "NotAllowedError" }),
+  );
   await userEvent.click(screen.getByRole("button", { name: "Voeg een toegangssleutel toe" }));
-  expect(await screen.findByText("De toegangssleutel is toegevoegd.")).toBeVisible();
-  expect(await screen.findAllByRole("button", { name: "Verwijder" })).toHaveLength(2);
+  expect(await screen.findByText("Dat lukte niet. Probeer het nog eens.")).toBeVisible();
+  expect(screen.queryByText("De toegangssleutel is toegevoegd.")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Voeg een toegangssleutel toe" }));
+  expect(await screen.findAllByText("De toegangssleutel is toegevoegd.")).toHaveLength(1);
+});
+
+test("the first passkey made in the confirmation modal shows the toast, once", async () => {
+  let made = false;
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    "POST /api/auth/passkey/generate-register-options": { challenge: "c" },
+    "POST /api/auth/passkey/verify-registration": { ok: true },
+  });
+  answerRequests(
+    (url) => url.pathname === "/api/me",
+    () =>
+      Response.json(
+        made
+          ? {
+              ...platformAdminMeFixture,
+              user: { ...platformAdminMeFixture.user, hasPasskey: true },
+            }
+          : platformAdminMeFixture,
+      ),
+  );
+  answerRequests(
+    (url, request) => url.pathname === "/api/passkeys" && request.method === "GET",
+    () => (made ? Response.json(passkeysFixture) : errorResponse(403, "passkey_required")),
+  );
+  vi.mocked(startRegistration).mockImplementation(async () => {
+    made = true;
+    return { id: "x" } as never;
+  });
+  renderPortal("/profile/passkeys", createQueryClient());
+  const modal = await screen.findByRole("dialog", { name: "Maak een toegangssleutel" });
+  await userEvent.click(within(modal).getByRole("button", { name: "Maak een toegangssleutel" }));
+  expect(await screen.findAllByText("De toegangssleutel is toegevoegd.")).toHaveLength(1);
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
 test("an admin without a passkey shows Nog geen toegangssleutel on the organization page", async () => {

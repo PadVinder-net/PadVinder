@@ -78,9 +78,10 @@ export function useResetPlatformAdminPasskeys() {
  * passkey prompt only then. A further passkey needs a recent confirmation: on
  * `confirmation_required` this opens the confirmation instead of showing an error, and after it the
  * person taps again. On success me and the list are refetched, and the event stream reopens: the
- * server replaced the session.
+ * server replaced the session. `onCreated` is called once after a success (a creation is never
+ * sent again, so a callback is safe).
  */
-export function useCreatePasskey(): {
+export function useCreatePasskey(options: { onCreated?: () => void } = {}): {
   create(): void;
   pending: boolean;
   error: PasskeyError | null;
@@ -100,6 +101,7 @@ export function useCreatePasskey(): {
       running.current = false;
       setPending(false);
       if (result.ok) {
+        options.onCreated?.();
         void refetchMe(queryClient);
         reopenServerEvents();
         void queryClient.invalidateQueries({ queryKey: listPasskeysQueryKey() });

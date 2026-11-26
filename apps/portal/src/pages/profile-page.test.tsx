@@ -31,7 +31,7 @@ test("the name in the header links to /profile, which saves the name and has no 
   expect(link).toHaveTextContent(coordinatorMeFixture.user.name);
   await userEvent.click(link);
   expect(router.state.location.pathname).toBe("/profile");
-  expect(await screen.findByRole("heading", { name: "Profiel" })).toBeVisible();
+  expect(await screen.findByRole("heading", { level: 1, name: "Profiel" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Verwijder account" })).toBeNull();
 
   const name = screen.getByLabelText("Naam");

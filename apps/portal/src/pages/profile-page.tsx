@@ -1,12 +1,12 @@
-import { connectionMessage, ProfileForm } from "@padvinder/ui";
 import { useMe, useUpdateMe } from "@padvinder/api-client";
-import { Button } from "@padvinder/ui";
+import { Button, connectionMessage, ProfileForm } from "@padvinder/ui";
 import { Link } from "react-router";
 import { hasAdminRole } from "../layout/require-admin-role";
 
 /**
  * The user's own profile (`/profile`): name and phone number, without account deletion (that goes
- * through the app). Admins also get the way to their passkeys.
+ * through the app). Admins also get the way to their passkeys. The page's heading is the form's
+ * own "Profiel", rendered as the h1 (`headingLevel`), so the page has no second one.
  */
 export function ProfilePage() {
   const me = useMe().data;
@@ -18,6 +18,7 @@ export function ProfilePage() {
         me={me}
         saving={updateMe.isPending}
         saved={updateMe.isSuccess}
+        headingLevel={1}
         deleting={false}
         error={updateMe.isError ? connectionMessage : undefined}
         onSave={({ name, phone }) => updateMe.mutate({ name, phone })}

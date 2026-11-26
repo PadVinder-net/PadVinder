@@ -11,3 +11,8 @@ export function displayName(name: string, hasLoggedIn?: boolean): string {
 export function nameInSentence(name: string): string {
   return name.trim() === "" ? "Deze persoon" : name;
 }
+
+/** A person in a sentence by name, or by address when they have no name yet. */
+export function nameOrAddress(person: { name: string; email: string }): string {
+  return person.name.trim() === "" ? person.email : person.name;
+}

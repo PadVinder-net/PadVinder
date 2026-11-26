@@ -20,6 +20,8 @@ export type PasskeysPanelProps = {
   onRemove(passkey: Passkey): void;
   /** Shows the hint that the person can also choose their phone in the browser's window. */
   phoneHint: boolean;
+  /** 1 where the panel is the whole page (the portal); the default is 2. */
+  headingLevel?: 1 | 2;
 };
 
 /** The admin's own passkeys: the list, adding one and removing one. */
@@ -35,7 +37,9 @@ export function PasskeysPanel({
   removeError,
   onRemove,
   phoneHint,
+  headingLevel = 2,
 }: PasskeysPanelProps) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   const [asking, setAsking] = useState<Passkey | null>(null);
   const wasRemoving = useRef(false);
   // The dialog closes when the removal ends without an error.
@@ -47,7 +51,7 @@ export function PasskeysPanel({
   const only = passkeys?.length === 1;
   return (
     <section className="flex flex-col gap-6 text-lg">
-      <h2 className="text-2xl font-semibold">Toegangssleutels</h2>
+      <Heading className="text-2xl font-semibold">Toegangssleutels</Heading>
       <p>
         Met een toegangssleutel bevestig je dat jij het bent als je iets beheert. Je telefoon of
         laptop vraagt dan om je vingerafdruk, gezicht of pincode.

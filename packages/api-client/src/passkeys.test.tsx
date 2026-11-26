@@ -201,3 +201,17 @@ test("useCreatePasskey reopens the event stream on success: the server replaced 
   expect(reopened?.closed).toBe(false);
   close();
 });
+
+test("useCreatePasskey calls onCreated once after a success, never after a failure or a confirmation request", async () => {
+  mockFetch({ "GET /api/me": platformAdminMeFixture, "GET /api/passkeys": passkeysFixture });
+  const onCreated = vi.fn();
+  const { result } = setup(() => useCreatePasskey({ onCreated }));
+  vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "cancelled" });
+  await act(async () => result.current.create());
+  vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "confirmation_required" });
+  await act(async () => result.current.create());
+  expect(onCreated).not.toHaveBeenCalled();
+  vi.mocked(createPasskey).mockResolvedValueOnce({ ok: true });
+  await act(async () => result.current.create());
+  expect(onCreated).toHaveBeenCalledTimes(1);
+});

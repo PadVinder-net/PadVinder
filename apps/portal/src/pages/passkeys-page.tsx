@@ -1,5 +1,6 @@
 import {
   apiErrorCode,
+  useMe,
   useCreatePasskey,
   usePasskeys,
   useRemovePasskey,
@@ -15,21 +16,26 @@ import { useOnSuccess } from "./use-on-success";
  */
 export function PasskeysPage() {
   const passkeys = usePasskeys();
-  const create = useCreatePasskey();
   const remove = useRemovePasskey();
-  const count = passkeys.data?.passkeys.length;
 
-  // `useCreatePasskey` has no success state: a new passkey shows as a longer list.
-  const countAtTap = useRef<number | null>(null);
-  useEffect(() => {
-    if (countAtTap.current !== null && count !== undefined && count > countAtTap.current) {
-      countAtTap.current = null;
+  const hasPasskey = useMe().data?.user.hasPasskey ?? false;
+  // A first passkey made in the confirmation modal reaches this page only as `hasPasskey` turning
+  // true; one made here toasts through `onCreated`, and this flag stops the second toast.
+  const toastedHere = useRef(false);
+  const create = useCreatePasskey({
+    onCreated: () => {
+      toastedHere.current = !hasPasskey;
       showToast("De toegangssleutel is toegevoegd.");
-    }
-  }, [count]);
+    },
+  });
+  const wasPasskey = useRef(hasPasskey);
   useEffect(() => {
-    if (create.error) countAtTap.current = null;
-  }, [create.error]);
+    if (hasPasskey && !wasPasskey.current) {
+      if (toastedHere.current) toastedHere.current = false;
+      else showToast("De toegangssleutel is toegevoegd.");
+    }
+    wasPasskey.current = hasPasskey;
+  }, [hasPasskey]);
 
   useOnSuccess(remove.status, () => showToast("De toegangssleutel is verwijderd."));
 
@@ -45,14 +51,12 @@ export function PasskeysPage() {
         onRetry={() => void passkeys.refetch()}
         creating={create.pending}
         createError={create.error}
-        onCreate={() => {
-          countAtTap.current = count ?? null;
-          create.create();
-        }}
+        onCreate={create.create}
         removing={remove.isPending}
         removeError={remove.error ? apiErrorMessage(apiErrorCode(remove.error)) : undefined}
         onRemove={(passkey) => remove.mutate(passkey.id)}
         phoneHint
+        headingLevel={1}
       />
     </main>
   );

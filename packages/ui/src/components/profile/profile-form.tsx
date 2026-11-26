@@ -23,6 +23,8 @@ export type ProfileFormProps = {
   withdrawing?: boolean;
   /** Opens the picker for another working group; shown when there is no pending request. */
   onJoinAnother?(): void;
+  /** 1 where the form is the whole page (the portal); the default is 2. */
+  headingLevel?: 1 | 2;
 };
 
 export function ProfileForm({
@@ -37,7 +39,9 @@ export function ProfileForm({
   onWithdrawRequest,
   withdrawing,
   onJoinAnother,
+  headingLevel = 2,
 }: ProfileFormProps) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   const [name, setName] = useState(me.user.name);
   const [phone, setPhone] = useState(me.user.phone ?? "");
   const [missingName, setMissingName] = useState(false);
@@ -60,7 +64,7 @@ export function ProfileForm({
   const nameMessage = missingName ? "Vul je naam in." : undefined;
   return (
     <section className="flex flex-col gap-6 text-lg">
-      <h2 className="text-2xl font-semibold">Profiel</h2>
+      <Heading className="text-2xl font-semibold">Profiel</Heading>
       <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="profile-name" className={labelClass}>
