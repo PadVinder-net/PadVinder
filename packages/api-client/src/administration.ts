@@ -202,9 +202,18 @@ export function useCreateWorkingGroup() {
 }
 
 /** Changes the name, the city or whether a working group is active, with a partial patch. */
-export function useUpdateWorkingGroup() {
+export function useUpdateWorkingGroup(
+  options: {
+    /** Runs on every success, also of a request sent again after a passkey confirmation. */
+    onSuccess?(
+      saved: { name: string },
+      variables: { workingGroupId: string; patch: UpdateWorkingGroupRequestInput },
+    ): void;
+  } = {},
+) {
   const onSettled = useSettled();
   return useMutation({
+    onSuccess: options.onSuccess,
     mutationFn: async ({
       workingGroupId,
       patch,
@@ -224,9 +233,15 @@ export function useUpdateWorkingGroup() {
 }
 
 /** Makes a member a coordinator, or a volunteer again. The last coordinator stays (`last_coordinator` is 409). */
-export function useSetCoordinator() {
+export function useSetCoordinator(
+  options: {
+    /** Runs on every success, also of a request sent again after a passkey confirmation. */
+    onSuccess?(variables: { membershipId: string; isCoordinator: boolean }): void;
+  } = {},
+) {
   const onSettled = useSettled();
   return useMutation({
+    onSuccess: (_data, variables) => options.onSuccess?.(variables),
     mutationFn: async ({
       membershipId,
       isCoordinator,

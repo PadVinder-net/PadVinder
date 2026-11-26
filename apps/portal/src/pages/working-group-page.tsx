@@ -105,8 +105,26 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
   const queryClient = useQueryClient();
   const members = useQuery(listMembersOptions({ path: { workingGroupId: group.id } }));
   const edit = useUpdateWorkingGroup();
-  const setActive = useUpdateWorkingGroup();
-  const setCoordinator = useSetCoordinator();
+  // A switch on has no dialog; its toast comes from the mutation's success, so a request sent
+  // again after a passkey confirmation says it too.
+  const setActive = useUpdateWorkingGroup({
+    onSuccess: (saved, variables) => {
+      if (variables.patch.active === true) showToast(`Werkgroep ${saved.name} staat aan.`);
+    },
+  });
+  const setCoordinator = useSetCoordinator({
+    onSuccess: ({ membershipId, isCoordinator }) => {
+      const member = members.data?.members.find(
+        (candidate) => candidate.membershipId === membershipId,
+      );
+      const name = nameInSentence(member?.name ?? "");
+      showToast(
+        isCoordinator
+          ? `${name} is nu coördinator van ${group.name}.`
+          : `${name} is geen coördinator meer van ${group.name}.`,
+      );
+    },
+  });
   const remove = useRemoveMembership();
   const [form, setForm] = useState({ open: false, key: 0 });
   const [askingTurnOff, setAskingTurnOff] = useState(false);
@@ -141,10 +159,9 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
 
   function switchOn() {
     // Not `mutate`'s callbacks: those fire only for the latest call, and each tap gets its toast.
-    void setActive.mutateAsync({ workingGroupId: group.id, patch: { active: true } }).then(
-      (saved) => showToast(`Werkgroep ${saved.name} staat aan.`),
-      (error: unknown) => showToast(failureText(error)),
-    );
+    void setActive
+      .mutateAsync({ workingGroupId: group.id, patch: { active: true } })
+      .catch((error: unknown) => showToast(failureText(error)));
   }
 
   function askTurnOff() {
@@ -163,16 +180,10 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
   });
 
   function handleSetCoordinator(member: Member, isCoordinator: boolean) {
-    const name = nameInSentence(member.name);
-    void setCoordinator.mutateAsync({ membershipId: member.membershipId, isCoordinator }).then(
-      () =>
-        showToast(
-          isCoordinator
-            ? `${name} is nu coördinator van ${group.name}.`
-            : `${name} is geen coördinator meer van ${group.name}.`,
-        ),
-      (error: unknown) => showToast(failureText(error)),
-    );
+    // The toast is the hook's; an error shows here.
+    void setCoordinator
+      .mutateAsync({ membershipId: member.membershipId, isCoordinator })
+      .catch((error: unknown) => showToast(failureText(error)));
   }
 
   function askRemove(member: Member) {
@@ -185,11 +196,13 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
     if (!member) return;
     remove.mutate(
       { membershipId: member.membershipId },
-      // The list's member count changed too.
-      { onSettled: () => void refetchAdministration(queryClient) },
+      // The list's member count changed too; also when the request failed.
+      { onError: () => void refetchAdministration(queryClient) },
     );
   }
   useOnSuccess(remove.status, () => {
+    // Also after a confirmation, when the request was sent again.
+    void refetchAdministration(queryClient);
     setRemoving((current) => ({ ...current, open: false }));
     if (removing.member)
       showToast(`${nameInSentence(removing.member.name)} is verwijderd uit ${group.name}.`);

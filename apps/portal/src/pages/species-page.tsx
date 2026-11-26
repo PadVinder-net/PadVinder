@@ -69,7 +69,13 @@ export function SpeciesPage() {
   const species = useSpecies();
   const create = useCreateSpecies();
   const edit = useUpdateSpecies();
-  const setActive = useUpdateSpecies();
+  // A switch on has no dialog; its toast comes from the mutation's success, so a request sent
+  // again after a passkey confirmation says it too.
+  const setActive = useUpdateSpecies({
+    onSuccess: (saved, variables) => {
+      if (variables.patch.active === true) showToast(`${nameOf(saved)} staat aan.`);
+    },
+  });
   const [form, setForm] = useState<FormState>({ open: false, key: 0, species: null });
   const [turnOff, setTurnOff] = useState<TurnOffState>({ open: false, species: null });
 
@@ -107,10 +113,9 @@ export function SpeciesPage() {
 
   function switchOn(item: Species) {
     // Not `mutate`'s callbacks: those fire only for the latest call, and each tap gets its toast.
-    void setActive.mutateAsync({ speciesId: item.id, patch: { active: true } }).then(
-      (saved) => showToast(`${nameOf(saved)} staat aan.`),
-      (error: unknown) => showToast(apiErrorMessage(apiErrorCode(error))),
-    );
+    void setActive
+      .mutateAsync({ speciesId: item.id, patch: { active: true } })
+      .catch((error: unknown) => showToast(apiErrorMessage(apiErrorCode(error))));
   }
 
   function askTurnOff(item: Species) {

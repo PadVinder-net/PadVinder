@@ -146,6 +146,10 @@ function MembershipRequests() {
   const missing = requestId !== null && !invalidId && listHasLoaded && !inList && !deciding;
   useEffect(() => {
     if (!missing || requestId === null || inFlight.current.has(requestId)) return;
+    // This page's own decision went through (also one sent again after a passkey confirmation):
+    // `decided` says so, in its own effect; the list lacking the request is not news.
+    if (lastDecision.current?.request.id === requestId && (approve.isSuccess || reject.isSuccess))
+      return;
     // Already said what became of it (a decision here, a toast before): just tidy the address.
     if (handled.current.has(requestId)) return closeRequest(requestId);
     if (shown.current?.id === requestId) {
@@ -214,7 +218,7 @@ function MembershipRequests() {
   } | null>(null);
   const said = useRef(new Set<string>());
   function decided(request: MembershipRequestForReview, decision: "approve" | "reject") {
-    if (said.current.has(request.id)) return;
+    if (said.current.has(request.id) || handled.current.has(request.id)) return;
     said.current.add(request.id);
     handled.current.add(request.id);
     showToast(
@@ -234,6 +238,7 @@ function MembershipRequests() {
   function decide(request: MembershipRequestForReview, decision: "approve" | "reject") {
     lastDecision.current = { request, decision };
     said.current.delete(request.id);
+    handled.current.delete(request.id);
     const mutation = decision === "approve" ? approve : reject;
     (decision === "approve" ? reject : approve).reset();
     // Not `mutate`'s callbacks: those do not run once the page is gone, and a decision that was

@@ -6,6 +6,8 @@ import {
   membersWithContactFixture,
   platformAdminMeFixture,
   platformAdminsFixture,
+  reviewableRequestsFixture,
+  organizationsFixture,
   speciesFixture,
 } from "@padvinder/contracts/fixtures";
 import type { MeResponse } from "@padvinder/contracts";
@@ -210,4 +212,149 @@ test("Annuleer in the modal leaves the species dialog open with Bevestig eerst m
   await waitFor(() => expect(screen.queryByRole("dialog", { name: confirmTitle })).toBeNull());
   expect(screen.getByRole("dialog", { name: "Nieuwe soort" })).toBeVisible();
   expect(screen.getByText("Bevestig eerst met je toegangssleutel.")).toBeVisible();
+});
+
+/** Answers `passkey_required` to the matching requests until the ceremony ran, then `answer`. */
+function needsConfirmation(
+  state: { confirmed: boolean },
+  match: (url: URL, request: Request) => boolean,
+  answer: () => Response,
+) {
+  answerRequests(match, () =>
+    state.confirmed ? answer() : errorResponse(403, "passkey_required"),
+  );
+}
+
+test("a new working group created after a confirmation closes the modal, toasts and opens the group", async () => {
+  const state = workingCeremony();
+  const org = organizationsFixture[0]!;
+  const oost = {
+    ...noord,
+    id: "0192f3c0-0000-7000-8000-0000000000b9",
+    name: "Oost",
+    organization: { id: org.id, name: org.name },
+  };
+  mockFetch({
+    ...ceremonyRoutes,
+    "GET /api/managed-working-groups": { workingGroups: managedWorkingGroupsFixture },
+    "/api/organizations": { organizations: organizationsFixture },
+    [`/api/working-groups/${oost.id}/members`]: { members: [] },
+  });
+  answerRequests(
+    (url) => url.pathname === "/api/me",
+    () => meNow(state)(),
+  );
+  needsConfirmation(
+    state,
+    (url, request) =>
+      url.pathname === `/api/organizations/${org.id}/working-groups` && request.method === "POST",
+    () => Response.json(oost, { status: 201 }),
+  );
+  const { router } = renderPortal("/working-groups", createQueryClient());
+  await userEvent.click(await screen.findByRole("button", { name: "Nieuwe werkgroep" }));
+  const dialog = await screen.findByRole("dialog", { name: "Nieuwe werkgroep" });
+  await userEvent.type(within(dialog).getByLabelText("Naam"), "Oost");
+  await userEvent.type(within(dialog).getByLabelText("Plaats"), "Voorbeeldstad");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Bewaar" }));
+  await confirmInModal();
+  expect(await screen.findByText("Werkgroep Oost is toegevoegd.")).toBeVisible();
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Nieuwe werkgroep" })).toBeNull(),
+  );
+  expect(router.state.location.pathname).toBe(`/working-groups/${oost.id}`);
+});
+
+test("approving a request after a confirmation closes the modal with one toast", async () => {
+  const state = workingCeremony();
+  const lotte = reviewableRequestsFixture[0]!;
+  let decided = false;
+  mockFetch({
+    ...ceremonyRoutes,
+    "/api/managed-working-groups": { workingGroups: managedWorkingGroupsFixture },
+  });
+  answerRequests(
+    (url) => url.pathname === "/api/me",
+    () => meNow(state)(),
+  );
+  answerRequests(
+    (url) => url.pathname === "/api/membership-requests",
+    () =>
+      Response.json({
+        membershipRequests: decided
+          ? reviewableRequestsFixture.slice(1)
+          : reviewableRequestsFixture,
+      }),
+  );
+  needsConfirmation(
+    state,
+    (url, request) =>
+      url.pathname === `/api/membership-requests/${lotte.id}/approve` && request.method === "POST",
+    () => {
+      decided = true;
+      return Response.json({ ...lotte, status: "approved" });
+    },
+  );
+  renderPortal(`/membership-requests?request=${lotte.id}`, createQueryClient());
+  const dialog = await screen.findByRole("dialog", { name: lotte.applicant.name });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Keur goed" }));
+  await confirmInModal();
+  expect(
+    await screen.findByText(
+      `${lotte.applicant.name} is toegelaten tot ${lotte.workingGroup.name}.`,
+    ),
+  ).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.queryByText("Deze aanmelding is al behandeld.")).toBeNull();
+});
+
+test("switching a species on after a confirmation shows its toast", async () => {
+  const state = workingCeremony();
+  const off = speciesFixture.find((item) => !item.active)!;
+  mockFetch({ ...ceremonyRoutes, "/api/species": { species: speciesFixture } });
+  answerRequests(
+    (url) => url.pathname === "/api/me",
+    () => meNow(state)(),
+  );
+  needsConfirmation(
+    state,
+    (url, request) => url.pathname === `/api/species/${off.id}` && request.method === "PATCH",
+    () => Response.json({ ...off, active: true }),
+  );
+  renderPortal("/species", createQueryClient());
+  const row = (await screen.findByRole("cell", { name: /Vuursalamander/ })).closest("tr")!;
+  await userEvent.click(within(row).getByRole("button", { name: "Zet aan" }));
+  await confirmInModal();
+  expect(await screen.findByText(/staat aan\./)).toBeVisible();
+});
+
+test("a platform admin removing themself after a confirmation gets the toast", async () => {
+  const state = workingCeremony();
+  const own = platformAdminsFixture.find(
+    (admin) => admin.userId === platformAdminMeFixture.user.id,
+  );
+  expect(own).toBeDefined();
+  mockFetch({
+    ...ceremonyRoutes,
+    "GET /api/platform-admins": { platformAdmins: platformAdminsFixture },
+    "/api/managed-working-groups": { workingGroups: managedWorkingGroupsFixture },
+  });
+  answerRequests(
+    (url) => url.pathname === "/api/me",
+    () => meNow(state)(),
+  );
+  needsConfirmation(
+    state,
+    (url, request) =>
+      url.pathname === `/api/platform-admins/${own!.userId}` && request.method === "DELETE",
+    () => new Response(null, { status: 204 }),
+  );
+  renderPortal("/platform-admins", createQueryClient());
+  await userEvent.click(await screen.findByRole("button", { name: `Acties voor ${own!.name}` }));
+  await userEvent.click(
+    await screen.findByRole("menuitem", { name: "Verwijder als hoofdbeheerder" }),
+  );
+  const confirm = await screen.findByRole("alertdialog");
+  await userEvent.click(within(confirm).getByRole("button", { name: "Verwijder" }));
+  await confirmInModal();
+  expect(await screen.findByText("Je bent geen hoofdbeheerder meer.")).toBeVisible();
 });
