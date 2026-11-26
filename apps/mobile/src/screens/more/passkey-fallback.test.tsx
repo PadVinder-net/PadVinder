@@ -115,6 +115,7 @@ test("the members screen of a volunteer-admin opens a member, whose detail shows
   // One bar for the address and one for the phone number.
   expect(screen.getAllByRole("button", { name: "Toon met je toegangssleutel" })).toHaveLength(2);
   expect(screen.queryByRole("link", { name: /@example\.test/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Verwijder/ })).toBeNull();
 });
 
 test("a request of an administered group opened by its address shows the modal, then the request", async () => {
@@ -176,4 +177,20 @@ test("a volunteer and a coordinator without an admin role see no bar and no moda
   expect(await screen.findByRole("button", { name: /Bram Jansen/ })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Toon met je toegangssleutel" })).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("an unconfirmed organization admin without memberships sees every group as a name with the bar", async () => {
+  const admin: MeResponse = { ...coordinatingAdmin, memberships: [] };
+  const own = workingGroupsFixture.filter((g) => g.organization.id === noord.organization.id);
+  for (const path of ["/app/more/membership-requests", "/app/more/members"]) {
+    mockFetch({ "/api/me": admin, "/api/working-groups": directory });
+    const { unmount } = renderApp(path);
+    for (const group of own) expect(await screen.findByText(group.name)).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "Toon met je toegangssleutel" })).toHaveLength(
+      own.length,
+    );
+    expect(screen.queryByText("Dit mag je niet doen.")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    unmount();
+  }
 });
