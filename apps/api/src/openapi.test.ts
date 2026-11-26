@@ -54,3 +54,20 @@ test("documents getMe and updateMe with their error responses as ApiError", asyn
   await app.close();
   await pool.end();
 });
+
+test("leaves the Sentry tunnel out: the browser SDK is its only caller", async () => {
+  const { db, pool } = createDb("postgres://padvinder:padvinder@127.0.0.1:1/none");
+  const app = await buildApp({
+    env: testEnv,
+    db,
+    notifications: createNoopNotificationHub(),
+    mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
+  });
+  await app.ready();
+  const doc = app.swagger();
+  expect(Object.keys(doc.paths ?? {})).not.toContain("/api/sentry-tunnel");
+  expect(JSON.stringify(doc)).not.toContain("forwardSentryEnvelope");
+  await app.close();
+  await pool.end();
+});

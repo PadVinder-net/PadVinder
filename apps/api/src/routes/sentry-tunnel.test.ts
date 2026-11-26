@@ -38,7 +38,7 @@ function newAddress(): string {
 
 const PHONE_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 7) UA-MARKER";
 
-function browserEnvelope(): string {
+function browserEnvelope(release = "browser"): string {
   const lines: unknown[] = [
     {
       event_id: "9ec79c33ec9942ab8353589fcb2e04dc",
@@ -52,7 +52,7 @@ function browserEnvelope(): string {
       event_id: "9ec79c33ec9942ab8353589fcb2e04dc",
       message: "send to noor@example.test failed",
       environment: "production",
-      release: "browser",
+      release,
       tags: { service: "app" },
       user: { id: "u1", ip_address: "{{auto}}", email: "x@y.test" },
       request: { url: "https://padvinder.test/app/", headers: { "User-Agent": "UA-MARKER" } },
@@ -69,7 +69,7 @@ function browserEnvelope(): string {
     {
       sid: "s1",
       status: "ok",
-      attrs: { release: "browser", environment: "production", user_agent: PHONE_UA },
+      attrs: { release, environment: "production", user_agent: PHONE_UA },
     },
   ];
   return [
@@ -125,6 +125,16 @@ test("forwards a scrubbed envelope once, to our DSN, without the phone's headers
   });
   expect(event!.user).toEqual({ id: "u1" });
   expect(items[1]![1]).toMatchObject({ attrs: { environment: "staging", release: "rel-1" } });
+});
+
+test("keeps the release of a browser that sends its build's full commit", async () => {
+  // An installed app runs its old build until it is updated: its errors stay under that release.
+  const commit = "0123456789abcdef0123456789abcdef01234567";
+  const res = await postEnvelope(ctx, browserEnvelope(commit));
+  expect(res.statusCode).toBe(200);
+  const [, items] = fake.envelopes().at(-1)!;
+  expect(fake.events().at(-1)).toMatchObject({ environment: "staging", release: commit });
+  expect(items[1]![1]).toMatchObject({ attrs: { environment: "staging", release: commit } });
 });
 
 test("works without a cookie and with the SDK's own content type", async () => {

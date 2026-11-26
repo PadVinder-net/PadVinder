@@ -12,7 +12,11 @@ export type BrowserMonitoringOptions = {
   app: "app" | "portal";
   /** The `app_version` tag. */
   appVersion: string;
-  /** The build's commit. The tunnel sets the server's own release; sessions need one here. */
+  /**
+   * The build's commit, Sentry's release. The tunnel keeps it when it is a full 40-character
+   * commit (an installed app's errors stay under the build it runs) and sets the server's own
+   * otherwise, as for "dev".
+   */
   release: string;
   /** React Router's hooks, for spans named after routes. Without them, plain page load spans. */
   router?: RouterTracingHooks;

@@ -11,6 +11,11 @@ const SESSION_ITEM_TYPES = new Set(["session", "sessions"]);
 // asks Sentry to store the sender's address.
 const DROPPED_SESSION_ATTRIBUTES = ["user_agent", "ip_address"];
 const DEFAULT_FORWARD_TIMEOUT_MS = 5_000;
+// A full git commit: what a production build of the apps sends as its release. An installed app
+// keeps running its old build until it is updated, so its release stays the browser's own.
+const COMMIT_RELEASE = /^[0-9a-f]{40}$/;
+// The SDK's own working data, never sent by a real SDK: from a browser it is just another field.
+const SDK_PROCESSING_METADATA = "sdkProcessingMetadata";
 
 type JsonObject = Record<string, unknown>;
 
@@ -23,6 +28,18 @@ export type BrowserEnvelopeOptions = {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The browser's release when it is a full commit (its build), else the server's. */
+function releaseFor(browserRelease: unknown, options: BrowserEnvelopeOptions): string {
+  return typeof browserRelease === "string" && COMMIT_RELEASE.test(browserRelease)
+    ? browserRelease
+    : options.release;
+}
+
+function withoutSdkMetadata(object: JsonObject): JsonObject {
+  const { [SDK_PROCESSING_METADATA]: _, ...rest } = object;
+  return rest;
 }
 
 /** An item's payload as a JSON object, or null: parseEnvelope gives bytes for an item with a length. */
@@ -39,40 +56,53 @@ function jsonPayload(payload: unknown): JsonObject | null {
 }
 
 function prepareItem(type: string, payload: JsonObject, options: BrowserEnvelopeOptions) {
+  // `scrubEvent` and `scrubStrings` pass `sdkProcessingMetadata` on untouched (the server SDK
+  // never sends it), so it goes first, from every item type.
+  const item = withoutSdkMetadata(payload);
   if (EVENT_ITEM_TYPES.has(type)) {
-    // `scrubEvent` passes `sdkProcessingMetadata` on untouched (the server SDK never sends it);
-    // from a browser it is just another field.
-    const { sdkProcessingMetadata: _, ...event } = payload;
-    return { ...scrubEvent(event), environment: options.environment, release: options.release };
+    return {
+      ...scrubEvent(item),
+      environment: options.environment,
+      release: releaseFor(item.release, options),
+    };
   }
-  const scrubbed = scrubStrings(payload);
+  const scrubbed = scrubStrings(item);
   if (SESSION_ITEM_TYPES.has(type)) {
     const attrs = isJsonObject(scrubbed.attrs) ? { ...scrubbed.attrs } : {};
     for (const key of DROPPED_SESSION_ATTRIBUTES) delete attrs[key];
     return {
       ...scrubbed,
-      attrs: { ...attrs, release: options.release, environment: options.environment },
+      attrs: {
+        ...attrs,
+        release: releaseFor(attrs.release, options),
+        environment: options.environment,
+      },
     };
   }
   return scrubbed;
 }
 
-/** The envelope header: an allowlist, the server's DSN, and the trace without its user fields. */
+/**
+ * The envelope header: an allowlist, the server's DSN, and the trace without its user fields, with
+ * the server's environment and the release as on the items.
+ */
 function prepareHeader(header: JsonObject, options: BrowserEnvelopeOptions): JsonObject {
   const prepared: JsonObject = { dsn: options.dsn };
   for (const key of ["event_id", "sent_at"]) {
     if (typeof header[key] === "string") prepared[key] = scrubStrings(header[key]);
   }
-  if (isJsonObject(header.sdk)) prepared.sdk = scrubStrings(header.sdk);
+  if (isJsonObject(header.sdk)) prepared.sdk = scrubStrings(withoutSdkMetadata(header.sdk));
   if (isJsonObject(header.trace)) {
     const trace = Object.fromEntries(
-      Object.entries(scrubStrings(header.trace)).filter(([key]) => !key.startsWith("user_")),
+      Object.entries(scrubStrings(withoutSdkMetadata(header.trace))).filter(
+        ([key]) => !key.startsWith("user_"),
+      ),
     );
     prepared.trace = {
       ...trace,
       public_key: parseDsn(options.dsn).publicKey,
       environment: options.environment,
-      release: options.release,
+      release: releaseFor(header.trace.release, options),
     };
   }
   return prepared;
@@ -80,11 +110,14 @@ function prepareHeader(header: JsonObject, options: BrowserEnvelopeOptions): Jso
 
 /**
  * Makes an envelope from the browser SDK fit to forward: keeps only the item types we use (as
- * JSON objects, each with a fresh item header holding only its type), scrubs every event and
- * transaction with `scrubEvent` and sets the server's environment and release on them (their
- * `tags.service`, `app` or `portal`, stays as the browser set it), sets the same on sessions
- * without the phone's user agent, scrubs the strings of everything else, and puts the server's DSN
- * in the header. Null for a body that is not an envelope or has no item left.
+ * JSON objects, each with a fresh item header holding only its type), drops
+ * `sdkProcessingMetadata` everywhere, scrubs every event and transaction with `scrubEvent` and sets
+ * the server's environment on them (their `tags.service`, `app` or `portal`, stays as the browser
+ * set it), does the same on sessions without the phone's user agent, scrubs the strings of
+ * everything else, and puts the server's DSN in the header. The release (on events, transactions,
+ * session attributes and the header's trace) stays the browser's when it is a full 40-character
+ * commit, the build an installed app still runs, and is the server's otherwise ("dev", anything
+ * else). Null for a body that is not an envelope or has no item left.
  */
 export function prepareBrowserEnvelope(
   body: string | Uint8Array,

@@ -325,3 +325,69 @@ test("a browser that sent a tap's selector with a person's name: the tunnel keep
   expect(transaction.contexts).toEqual({ trace: { data: { "lcp.element": "p[title]" } } });
   expect(JSON.stringify(items)).not.toContain("Anne");
 });
+
+// The build's commit, as the browser bundles carry it: an installed app keeps its own release
+// until it is updated, so an old phone's error stays under the old release.
+const BROWSER_COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
+test("keeps the browser's release when it is a full commit: event, transaction, session, header", () => {
+  const [header, items] = prepared(
+    envelopeOf(
+      { ...browserHeader, trace: { ...browserHeader.trace, release: BROWSER_COMMIT } },
+      [{ type: "event" }, { message: "m", environment: "x", release: BROWSER_COMMIT }],
+      [{ type: "transaction" }, { type: "transaction", release: BROWSER_COMMIT }],
+      [{ type: "session" }, { sid: "s1", attrs: { release: BROWSER_COMMIT, environment: "x" } }],
+      [{ type: "sessions" }, { aggregates: [], attrs: { release: BROWSER_COMMIT } }],
+    ),
+  );
+  expect((header.trace as { release?: unknown }).release).toBe(BROWSER_COMMIT);
+  expect(items.map(([, payload]) => payload)).toEqual([
+    { message: "m", environment: "staging", release: BROWSER_COMMIT },
+    { type: "transaction", environment: "staging", release: BROWSER_COMMIT },
+    { sid: "s1", attrs: { release: BROWSER_COMMIT, environment: "staging" } },
+    { aggregates: [], attrs: { release: BROWSER_COMMIT, environment: "staging" } },
+  ]);
+});
+
+test.each([
+  ["dev", "dev"],
+  ["a short commit", "0123456"],
+  ["upper case", BROWSER_COMMIT.toUpperCase()],
+  ["a commit with more after it", `${BROWSER_COMMIT}x`],
+  ["an address", "someone@example.test"],
+  ["not a string", 42],
+])("uses the server's release for a browser release that is %s", (_, release) => {
+  const [header, items] = prepared(
+    envelopeOf(
+      { ...browserHeader, trace: { ...browserHeader.trace, release } },
+      [{ type: "event" }, { message: "m", release }],
+      [{ type: "session" }, { sid: "s1", attrs: { release } }],
+    ),
+  );
+  expect((header.trace as { release?: unknown }).release).toBe("abc123");
+  expect(items.map(([, payload]) => payload)).toEqual([
+    { message: "m", environment: "staging", release: "abc123" },
+    { sid: "s1", attrs: { release: "abc123", environment: "staging" } },
+  ]);
+});
+
+test("drops sdkProcessingMetadata from every item type and from the header", () => {
+  const metadata = { sdkProcessingMetadata: { note: "meta@example.test" } };
+  const [header, items] = prepared(
+    envelopeOf(
+      {
+        ...browserHeader,
+        sdk: { ...browserHeader.sdk, ...metadata },
+        trace: { ...browserHeader.trace, ...metadata },
+      },
+      [{ type: "session" }, { sid: "s1", ...metadata }],
+      [{ type: "sessions" }, { aggregates: [], ...metadata }],
+      [{ type: "client_report" }, { timestamp: 1, ...metadata }],
+      [{ type: "transaction" }, { type: "transaction", ...metadata }],
+    ),
+  );
+  const raw = JSON.stringify([header, items]);
+  expect(raw).not.toContain("sdkProcessingMetadata");
+  expect(raw).not.toContain("meta@example.test");
+  expect(header.sdk).toEqual(browserHeader.sdk);
+});

@@ -1943,51 +1943,6 @@ export type RejectMembershipRequestResponses = {
 
 export type RejectMembershipRequestResponse = RejectMembershipRequestResponses[keyof RejectMembershipRequestResponses];
 
-export type ForwardSentryEnvelopeData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/sentry-tunnel';
-};
-
-export type ForwardSentryEnvelopeErrors = {
-    /**
-     * Default Response
-     */
-    400: ApiError;
-    /**
-     * Default Response
-     */
-    403: ApiError;
-    /**
-     * Default Response
-     */
-    413: ApiError;
-    /**
-     * Default Response
-     */
-    429: ApiError;
-    /**
-     * Default Response
-     */
-    502: ApiError;
-};
-
-export type ForwardSentryEnvelopeError = ForwardSentryEnvelopeErrors[keyof ForwardSentryEnvelopeErrors];
-
-export type ForwardSentryEnvelopeResponses = {
-    /**
-     * Default Response
-     */
-    200: null;
-    /**
-     * Default Response
-     */
-    204: null;
-};
-
-export type ForwardSentryEnvelopeResponse = ForwardSentryEnvelopeResponses[keyof ForwardSentryEnvelopeResponses];
-
 export type ReportProblemData = {
     body: ProblemReportRequestInput;
     path?: never;

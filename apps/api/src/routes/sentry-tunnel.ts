@@ -24,8 +24,8 @@ export type SentryTunnelOptions = {
 
 /**
  * `POST /sentry-tunnel`: the browser SDK's `tunnel`. Takes an envelope without a login, makes it
- * fit with `prepareBrowserEnvelope` (only our item types, scrubbed, our DSN, environment and
- * release) and forwards it to `SENTRY_DSN`'s ingest address with none of the phone's headers.
+ * fit with `prepareBrowserEnvelope` (only our item types, scrubbed, our DSN and environment, the
+ * browser's release when it is a full commit, else ours) and forwards it to `SENTRY_DSN`'s ingest address with none of the phone's headers.
  * Sentry's answer comes back for 2xx and 429 (with its rate limit headers, which the SDK obeys),
  * 502 for anything else.
  */
@@ -48,6 +48,8 @@ export const sentryTunnelRoutes: FastifyPluginAsyncZod<SentryTunnelOptions> = as
     {
       bodyLimit: SENTRY_TUNNEL_BODY_LIMIT,
       schema: {
+        // Not in openapi.json or the generated client: the browser SDK is its only caller.
+        hide: true,
         operationId: "forwardSentryEnvelope",
         summary: "Forward an envelope of the browser SDK to Sentry, scrubbed",
         description:
