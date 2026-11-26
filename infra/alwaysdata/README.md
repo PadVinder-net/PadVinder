@@ -124,7 +124,7 @@ Settings, Environments in the repository. The step by step for the environments,
 
 - [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, the branch rule `main` only.
 - [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off (one maintainer would block himself). Deployment branches and tags: `main` only.
-- [ ] In each environment, these ten secrets, and in the repository one variable:
+- [ ] In each environment, these eleven secrets:
 
 | Name                 | Kind   | Staging and production                             | How to make it                                                                         |
 | -------------------- | ------ | -------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -138,12 +138,11 @@ Settings, Environments in the repository. The step by step for the environments,
 | `SMTP_PASSWORD`      | Secret | The same in both                                   | The mailbox's password, `openssl rand -hex 32` (see "Mail")                            |
 | `SENTRY_DSN`         | Secret | Per environment; the same value in both is fine    | The project's DSN: Sentry, Settings, Projects, `padvinder`, Client Keys (see "Sentry") |
 | `SENTRY_AUTH_TOKEN`  | Secret | The same in both                                   | An organization auth token, for uploading source maps (see "Sentry")                   |
-
-- [ ] The repository variable `SENTRY_ORG`: the slug of the Sentry organization (Settings, Variables, Actions). Not a secret; the Deploy workflow reads it as `vars.SENTRY_ORG`.
+| `SENTRY_ORG`         | Secret | The same in both                                   | The slug of the Sentry organization, for uploading source maps (see "Sentry")          |
 
 **Why `main` only, also for staging.** Both environments live on one Alwaysdata account, and there every SSH user and every API token reaches everything: the staging token can read and change production, and the deploy key logs in as the account's main user, which runs and owns both. Whoever can run code in the `staging` environment can therefore read production's secrets and data. So the account is the security boundary, not the environment, and staging is treated as production-sensitive: only reviewed code on `main` may hold the deploy credentials. A branch cannot be tried on staging from GitHub; merge it, or the maintainer deploys it locally with the CLI (see "Running locally").
 
-The account name and the known-hosts line are secrets too, not variables: GitHub prints the `env:` values of a non-secret in a step's log, and this repository's logs are public. A secret is masked there. The known-hosts line holds `ssh-<account>.alwaysdata.net`, so it would reveal the account name. The scripts also mask the account name in their own output.
+The account name, the known-hosts line and the Sentry organization's slug are secrets too, not variables: GitHub prints the `env:` values of a non-secret in a step's log, and this repository's logs are public. A secret is masked there. The known-hosts line holds `ssh-<account>.alwaysdata.net`, so it would reveal the account name. The scripts also mask the account name in their own output.
 
 ### Making each value
 
@@ -264,9 +263,9 @@ The design is `docs/superpowers/specs/2026-11-26-logging-and-monitoring-design.m
 
 How it works on the server:
 
-- **Off without a DSN.** The API and the worker read `SENTRY_DSN` and `PADVINDER_ENVIRONMENT` from the env file. Without a DSN Sentry is off (locally, in tests, in CI, in the container smoke test). An invalid `SENTRY_DSN` (not an `http` or `https` address) or `PADVINDER_ENVIRONMENT` (not `production`, `staging` or `development`) stops the service at once with only that message, before the rest of the environment is checked; the message never holds the value.
-- **Provisioning requires the DSN** like every other secret of the env file, and requires an `https` address: it stops before it changes anything when `SENTRY_DSN` is missing. Set the secret in both environments before the next Provision run (see "Rolling out Sentry").
-- **Source maps.** `pnpm release:build` injects Sentry debug IDs into the server bundles and moves their maps to `release/sourcemaps/`; the servers never use them. The Deploy workflow uploads that directory before it switches releases (`scripts/upload-sourcemaps.sh`, with `SENTRY_AUTH_TOKEN` and `vars.SENTRY_ORG`). The upload has a 5-minute limit and `continue-on-error`: a failed upload never fails a deploy, it only leaves the next errors without readable stack traces. Without `SENTRY_AUTH_TOKEN` (a local deploy) it uploads nothing. The EU region's address, `https://de.sentry.io`, is the default of `SENTRY_URL`.
+- **Off without a DSN.** The API and the worker read `SENTRY_DSN` and `PADVINDER_ENVIRONMENT` from the env file. Without a DSN Sentry is off (locally, in tests, in CI, in the container smoke test). An invalid `SENTRY_DSN` (not a DSN: an `http` or `https` address with a public key and a numeric project ID, `parseDsn` in `packages/monitoring`) or `PADVINDER_ENVIRONMENT` (not `production`, `staging` or `development`) stops the service at once with only that message, before the rest of the environment is checked; the message never holds the value.
+- **Provisioning requires the DSN** like every other secret of the env file, and requires an `https` DSN by the same rule: it stops before it changes anything when `SENTRY_DSN` is missing. Set the secret in both environments before the next Provision run (see "Rolling out Sentry").
+- **Source maps.** `pnpm release:build` injects Sentry debug IDs into the server bundles and moves their maps to `release/sourcemaps/`; the servers never use them. The Deploy workflow uploads that directory before it switches releases (`scripts/upload-sourcemaps.sh`, with the secrets `SENTRY_AUTH_TOKEN` and `SENTRY_ORG`; the slug reaches sentry-cli through its environment only, never on a command line). The upload has a 5-minute limit and `continue-on-error`: a failed upload never fails a deploy, it only leaves the next errors without readable stack traces. Without `SENTRY_AUTH_TOKEN` (a local deploy) it uploads nothing. The EU region's address, `https://de.sentry.io`, is the default of `SENTRY_URL`.
 - **The sentry-cli image.** `scripts/sentry-cli.sh` runs `getsentry/sentry-cli` in Docker, pinned by tag and digest. The release build pulls it from Docker Hub, so a registry outage fails the release build (try again later). The upload mounts the checkout read-only, because the deploy uses that checkout afterwards with the deploy credentials.
 - **Test error.** A platform admin can make the API throw on purpose: `POST /api/system/test-error` answers 500 and the error arrives in Sentry with the trace of its database query.
 
@@ -275,7 +274,7 @@ How it works on the server:
 The maintainer, once, in this order:
 
 1. Make the organization, the project `padvinder` and an organization auth token, and do the checklist in "Sentry".
-2. Set the secrets `SENTRY_DSN` and `SENTRY_AUTH_TOKEN` in both GitHub environments, and the repository variable `SENTRY_ORG`. Do this before the next Provision run: Provision refuses to run until `SENTRY_DSN` is set in that environment.
+2. Set the secrets `SENTRY_DSN`, `SENTRY_AUTH_TOKEN` and `SENTRY_ORG` in both GitHub environments. Do this before the next Provision run: Provision refuses to run until `SENTRY_DSN` is set in that environment.
 3. Merge. Then run Provision with `apply` for staging and for production (it writes `SENTRY_DSN` and `PADVINDER_ENVIRONMENT`), and restart the services (`pnpm infra:services --environment <env> --restart`) or deploy again.
 
 A deploy before step 3 works: without `SENTRY_DSN` the API and the worker run with Sentry off. The sections of "Verification" below say what to check afterwards.
@@ -383,6 +382,7 @@ NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/adm
 | `SENTRY_AUTH_TOKEN`                     | Uploads source maps to the Sentry project; no use for anything else, but it writes to the organization | Every January, together with the API token; at once on suspicion                                                                                                    |
 | `SENTRY_DSN` (per environment)          | Lets anyone who has it send events to the project; readable on the server in the env file              | Not on a schedule. On suspicion of abuse: make a new client key in Sentry, set the secret, Provision with `apply`, restart, then delete the old key                 |
 | `ALWAYSDATA_ACCOUNT`, `SSH_KNOWN_HOSTS` | Not real secrets; secrets only to stay out of public logs                                              | Only when the account moves or Alwaysdata changes its host key                                                                                                      |
+| `SENTRY_ORG`                            | Not a real secret; a secret only to stay out of public logs                                            | Only when the Sentry organization changes                                                                                                                           |
 | `SMTP_USER`                             | Not a real secret on Alwaysdata (the sender address); a secret for another mail service's login        | Only when the mailbox or the mail service changes                                                                                                                   |
 
 "At once" also covers a lost or compromised laptop that held a key or token, and anyone losing access.

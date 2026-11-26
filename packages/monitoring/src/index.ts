@@ -1,3 +1,4 @@
+export { DsnError, parseDsn, type Dsn } from "./dsn";
 export { scrubBreadcrumb, scrubEvent } from "./scrub-event";
 export {
   closeMonitoring,

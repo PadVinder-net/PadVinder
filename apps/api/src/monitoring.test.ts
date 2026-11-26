@@ -11,8 +11,10 @@ import {
 } from "@padvinder/monitoring";
 import { createTestTransport } from "@padvinder/monitoring/testing";
 import * as Sentry from "@sentry/node";
+import type { FastifyRequest } from "fastify";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { sendInBackground } from "./mail/send-in-background";
+import { loadActor } from "./permissions/actor";
 import type { NotificationHub } from "./realtime/notification-hub";
 import { openEvents } from "./test-open-events";
 import { createTestApp, loginAs, type TestApp } from "./testing/login";
@@ -49,8 +51,10 @@ beforeAll(async () => {
       notifications: hub,
     },
   );
+  // A new message each time: Sentry's dedupe drops an event that repeats the one before it.
+  let failures = 0;
   ctx.app.get("/api/monitoring-test/anonymous-error", async () => {
-    throw new Error("Failure without a login");
+    throw new Error(`Failure without a login (${++failures})`);
   });
   admin = await loginAs(ctx, "monitoring-admin@example.test");
   await grantPlatformAdmin(
@@ -124,6 +128,19 @@ test("a reload of the event stream's actor does not make later requests that use
   } finally {
     stream.close();
   }
+  const before = sentry.events().length;
+  expect((await fetch(`${origin}/api/monitoring-test/anonymous-error`)).status).toBe(500);
+  await flushMonitoring();
+  const events = sentry.events().slice(before);
+  expect(events).toHaveLength(1);
+  expect(events[0]!.user).toBeUndefined();
+});
+
+test("loadActor never makes the actor the Sentry user; only requireActor does", async () => {
+  // Outside any request, as the event stream's reloads run: the process's own isolation scope.
+  expect(
+    await loadActor(ctx!.app, ctx!.t.db, { headers: admin.headers } as FastifyRequest),
+  ).not.toBeNull();
   const before = sentry.events().length;
   expect((await fetch(`${origin}/api/monitoring-test/anonymous-error`)).status).toBe(500);
   await flushMonitoring();

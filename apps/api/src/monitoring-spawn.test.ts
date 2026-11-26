@@ -94,3 +94,24 @@ test("an unreachable Sentry neither slows a request nor blocks the shutdown", as
   expect(await api.closed).toBe(0);
   expect(performance.now() - stopping).toBeLessThan(5_000);
 }, 30_000);
+
+test("no address or phone number in a query string or a path reaches Sentry", async () => {
+  const before = fake!.bodies().length;
+  const api = await startMain(fake!.dsn);
+  const version = await fetch(`${api.url}/api/version?email=noor%40example.test&phone=0612345678`);
+  expect(version.status).toBe(200);
+  // Validation answers before the login is checked: a traced 400 with the address in its path.
+  const invalid = await fetch(
+    `${api.url}/api/membership-requests/noor%40example.test?phone=0612345678`,
+  );
+  expect(invalid.status).toBe(400);
+  api.child.kill("SIGTERM");
+  expect(await api.closed).toBe(0);
+
+  const names = fake!.transactions().map((transaction) => transaction.transaction);
+  expect(names, api.output()).toContain("GET /api/version");
+  expect(names).toContain("GET /api/membership-requests/:id");
+  const sent = fake!.bodies().slice(before).join("\n");
+  expect(sent).not.toContain("example.test");
+  expect(sent).not.toContain("0612345678");
+}, 30_000);

@@ -124,8 +124,11 @@ Settings, Environments. The workflows in `.github/workflows/` (`deploy.yml`, `pr
   - `AUTH_SECRET` (a different one per environment)
   - `SMTP_USER`
   - `SMTP_PASSWORD`
+  - `SENTRY_DSN`
+  - `SENTRY_AUTH_TOKEN`
+  - `SENTRY_ORG`
 
-  There are no variables: GitHub prints the `env:` values of a non-secret in the step log, and the logs are public (the account name and the known-hosts line, which holds the account name, would show). One deploy key may serve both environments: both log in as the account's main SSH user.
+  There are no variables: GitHub prints the `env:` values of a non-secret in the step log, and the logs are public (the account name, the known-hosts line, which holds the account name, and the Sentry organization's slug would show). One deploy key may serve both environments: both log in as the account's main SSH user.
 
 Through the API (the environment names are created on the first call; add the secrets with `gh secret set`, see the README):
 

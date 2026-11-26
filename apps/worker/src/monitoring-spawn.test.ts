@@ -75,3 +75,31 @@ test("a mail job is a transaction with db spans, tagged with the job; the heartb
   expect(transaction!.spans?.some((span) => span.op === "db")).toBe(true);
   expect(fake!.transactions().some((tx) => tx.transaction === "heartbeat")).toBe(false);
 }, 60_000);
+
+test("a worker that cannot start sends its error to Sentry before it exits", async () => {
+  const before = fake!.events().length;
+  const child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
+    cwd: `${import.meta.dirname}/..`,
+    env: {
+      PATH: process.env.PATH ?? "",
+      // The server answers, but this database does not exist: pg-boss cannot start.
+      DATABASE_URL: `${t!.url}_missing`,
+      PUBLIC_ORIGIN: "http://localhost:4101",
+      SMTP_HOST: "127.0.0.1",
+      SMTP_PORT: "1",
+      MAIL_FROM: "PadVinder <noreply@padvinder.test>",
+      SENTRY_DSN: fake!.dsn,
+    },
+  });
+  let output = "";
+  child.stdout.on("data", (chunk) => (output += chunk));
+  child.stderr.on("data", (chunk) => (output += chunk));
+  const code = await new Promise<number | null>((resolve) => child.on("close", resolve));
+  expect(code, output).toBe(1);
+  expect(output).toContain("Worker failed to start");
+
+  const events = fake!.events().slice(before);
+  expect(events, output).toHaveLength(1);
+  expect(JSON.stringify(events[0])).toContain("Worker failed to start");
+  expect(fake!.bodies().join("\n")).not.toContain("padvinder.test");
+}, 30_000);

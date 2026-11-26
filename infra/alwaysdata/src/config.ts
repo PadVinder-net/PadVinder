@@ -35,13 +35,29 @@ const authSecretMinLength = 32;
 const envFileValuePattern = /^[\x21-\x7e]+$/;
 const envFileUnsafePattern = /["#'\\`]/;
 
-/** Whether a value parses as an https URL; the services refuse a DSN that is no URL. */
-function isHttpsAddress(value: string): boolean {
+/**
+ * Whether a value is an https Sentry DSN: a public key (the user name), a host and a numeric
+ * project ID as the last path segment, without a query or fragment. The same rule as `parseDsn`
+ * in packages/monitoring/src/dsn.ts, which the services apply at start (a URL that is no DSN would
+ * leave them without error tracking); duplicated because this code runs with plain node and
+ * cannot load that package. Keep the two in step.
+ */
+export function isHttpsDsn(value: string): boolean {
+  let url: URL;
   try {
-    return new URL(value).protocol === "https:";
+    url = new URL(value);
   } catch {
     return false;
   }
+  return (
+    url.protocol === "https:" &&
+    url.search === "" &&
+    url.hash === "" &&
+    !value.includes("?") &&
+    !value.includes("#") &&
+    /^\w+$/.test(url.username) &&
+    /^\d+$/.test(url.pathname.split("/").pop() ?? "")
+  );
 }
 
 /**
@@ -115,9 +131,9 @@ export function loadInfraConfig(
         "SMTP_USER must be the mailbox address in mailFrom (src/environments.ts): Alwaysdata's SMTP server sends only as the mailbox it logs in as",
       );
     }
-    if (!isHttpsAddress(value("SENTRY_DSN"))) {
+    if (!isHttpsDsn(value("SENTRY_DSN"))) {
       throw new Error(
-        "SENTRY_DSN must be the DSN of the Sentry project, an https address (Sentry: Settings, Projects, padvinder, Client Keys), or the services do not start",
+        "SENTRY_DSN must be the DSN of the Sentry project, https://<key>@<host>/<project ID> (Sentry: Settings, Projects, padvinder, Client Keys), or the services do not start",
       );
     }
     config.databasePassword = value("DATABASE_PASSWORD");
