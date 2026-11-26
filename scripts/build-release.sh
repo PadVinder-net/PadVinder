@@ -79,11 +79,17 @@ for app in api worker; do
     mkdir -p "$maps/$(dirname "$relative")"
     mv "$map" "$maps/$relative"
     cp "$dist/$bundle" "$maps/$bundle"
+    # The copy keeps its reference to the map; the bundle that runs would point at nothing.
+    sed -i.bak '/^\/\/# sourceMappingURL=/d' "$dist/$bundle"
+    rm "$dist/$bundle.bak"
     count=$((count + 1))
   done < <(find "$dist" -type f -name '*.map' -print0)
   [[ "$count" -gt 0 ]] || fail "release/$app/dist holds no source maps; the build should make them."
   leftover="$(find "$dist" -name '*.map' -print -quit)"
   [[ -z "$leftover" ]] || fail "a source map is still in the release: ${leftover#"$root/"}"
+  referencing="$(grep -rl --include='*.js' '^//# sourceMappingURL=' "$dist" | head -n 1 || true)"
+  [[ -z "$referencing" ]] ||
+    fail "a bundle still references a source map: ${referencing#"$root/"}"
 done
 
 echo "build-release: copying the mobile and portal builds and the migrations"
