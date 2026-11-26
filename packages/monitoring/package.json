@@ -1,0 +1,23 @@
+{
+  "name": "@padvinder/monitoring",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@padvinder/logging": "workspace:*",
+    "@sentry/core": "11.18.0",
+    "@sentry/node": "11.18.0"
+  },
+  "devDependencies": {
+    "@padvinder/db": "workspace:*",
+    "@types/pg": "^8.15.0",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15"
+  }
+}
