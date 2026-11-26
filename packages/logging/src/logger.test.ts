@@ -45,3 +45,11 @@ test("respects the level", () => {
   logger.warn("loud");
   expect(entries().map((e) => e.msg)).toEqual(["loud"]);
 });
+test("an address in quotes or before a newline leaves a parseable line", () => {
+  const { logger, entries, text } = createTestLogger();
+  logger.info({ detail: 'rejected "a@b.test" now' }, "Mail to a@b.test\nsecond line");
+  expect(text()).not.toContain("a@b.test");
+  const [entry] = entries();
+  expect(entry!.detail).toBe('rejected "[email]" now');
+  expect(entry!.msg).toBe("Mail to [email]\nsecond line");
+});
