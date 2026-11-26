@@ -1,6 +1,6 @@
 # A stronger login for admins: passkeys
 
-Date: 26 November 2026. Status: provisionally approved by the maintainer on 26 November 2026; the maintainer still reviews the document.
+Date: 26 November 2026. Status: approved by the maintainer on 26 November 2026.
 
 ## Intent
 
