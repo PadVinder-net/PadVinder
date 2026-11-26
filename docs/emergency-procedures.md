@@ -25,17 +25,13 @@ A platform admin who lost every passkey (a lost phone, a wiped laptop) is normal
 
    It answers `DELETE <n>`, the number of passkeys removed. The sessions are not touched: one confirmed with an old passkey stays confirmed until its window ends (at most 24 hours).
 
-4. **Only when a device may be in someone else's hands** (a stolen phone, a laptop left behind), deal with that user's sessions in the same database session, with the same ID. Either take away the confirmation of every session, as the portal's reset does; the person stays logged in everywhere, but no session can do what needs a passkey:
-
-   ```sql
-   update sessions set passkey_verified_at = null where user_id = '<id>';
-   ```
-
-   Or, when the device itself must lose its access, log the person out everywhere:
+4. **Only when a device may be in someone else's hands** (a stolen phone, a laptop left behind), log the person out everywhere, in the same database session, with the same ID. This is what the portal's reset does:
 
    ```sql
    delete from sessions where user_id = '<id>';
    ```
+
+   Taking away only the confirmation of the sessions is not enough: a confirmed session is always young enough to add a first passkey, so a device in someone else's hands could add one of its own after step 3.
 
    Then close the database session.
 

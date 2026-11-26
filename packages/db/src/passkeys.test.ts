@@ -1,7 +1,10 @@
+import type { LiveEvent } from "@padvinder/contracts";
 import { eq } from "drizzle-orm";
+import pg from "pg";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { createOrganization, grantPlatformAdmin } from "./admin";
 import type { MailJob, QueueMail } from "./mail-jobs";
+import { liveEventsChannel, notify } from "./notifications";
 import {
   countPasskeys,
   listOwnPasskeys,
@@ -73,6 +76,44 @@ function collector() {
 const entries = () => db().select().from(auditLogEntries);
 const verifiedAt = async (sessionId: string) =>
   (await db().select().from(sessions).where(eq(sessions.id, sessionId)))[0]!.passkeyVerifiedAt;
+const sessionsOf = (userId: string) =>
+  db().select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId));
+
+/** Listens on the live events channel; `drain` gives what arrived up to a marker it sends. */
+async function listenForLiveEvents() {
+  const listener = new pg.Client({ connectionString: t!.url });
+  await listener.connect();
+  const received: LiveEvent[] = [];
+  let arrived: (() => void) | undefined;
+  listener.on("notification", (message) => {
+    received.push(liveEventsChannel.schema.parse(JSON.parse(message.payload ?? "")));
+    arrived?.();
+  });
+  await listener.query(`LISTEN ${liveEventsChannel.name}`);
+  let markers = 0;
+  return {
+    async drain(): Promise<LiveEvent[]> {
+      const beatAt = new Date(Date.UTC(2027, 2, 2, 19, 30, markers++)).toISOString();
+      await db().transaction((tx) =>
+        notify(tx, liveEventsChannel, { type: "worker-heartbeat", beatAt }),
+      );
+      const isMarker = (e: LiveEvent) => e.type === "worker-heartbeat" && e.beatAt === beatAt;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("The marker did not arrive")), 5_000);
+        const check = () => {
+          if (!received.some(isMarker)) return;
+          clearTimeout(timer);
+          resolve();
+        };
+        arrived = check;
+        check();
+      });
+      const index = received.findIndex(isMarker);
+      return received.splice(0, index + 1).slice(0, index);
+    },
+    close: () => listener.end(),
+  };
+}
 
 test("the limit is ten", () => {
   expect(MAX_PASSKEYS_PER_ACCOUNT).toBe(10);
@@ -152,7 +193,7 @@ test("removeOwnPasskey writes passkey.removed and queues passkeys-removed with b
   expect(await verifiedAt(session)).toEqual(moment);
 });
 
-test("resetPasskeys removes all, clears passkey_verified_at on every session of that person and of nobody else", async () => {
+test("resetPasskeys removes all passkeys and deletes every session of that person, and of nobody else", async () => {
   const user = await newUser("reset");
   const bystander = await newUser("reset-other");
   const admin = await newUser("reset-admin");
@@ -160,9 +201,9 @@ test("resetPasskeys removes all, clears passkey_verified_at on every session of 
   await newPasskey(user);
   await newPasskey(bystander);
   const moment = new Date("2027-01-10T10:00:00Z");
-  const s1 = await newSession(user, moment);
-  const s2 = await newSession(user, moment);
-  const s3 = await newSession(user, null);
+  await newSession(user, moment);
+  await newSession(user, moment);
+  await newSession(user, null);
   const sOther = await newSession(bystander, moment);
   const { jobs, queueMail } = collector();
   expect(
@@ -172,14 +213,40 @@ test("resetPasskeys removes all, clears passkey_verified_at on every session of 
       { kind: "user", userId: admin },
       { queueMail },
     ),
-  ).toEqual({ removed: 2 });
+  ).toEqual({ removed: 2, sessionsEnded: 3 });
   expect(await countPasskeys(db(), user)).toBe(0);
   expect(await countPasskeys(db(), bystander)).toBe(1);
-  expect(await verifiedAt(s1)).toBeNull();
-  expect(await verifiedAt(s2)).toBeNull();
-  expect(await verifiedAt(s3)).toBeNull();
+  expect(await sessionsOf(user)).toEqual([]);
+  expect(await sessionsOf(bystander)).toEqual([{ id: sOther }]);
   expect(await verifiedAt(sOther)).toEqual(moment);
   expect(jobs).toEqual([{ kind: "passkeys-removed", userId: user, byUserId: admin }]);
+});
+
+test("resetPasskeys sends access-changed for the person, as deleteAccount does, so their open streams end", async () => {
+  const user = await newUser("reset-event");
+  const admin = await newUser("reset-event-admin");
+  await newPasskey(user);
+  await newSession(user, new Date());
+  const events = await listenForLiveEvents();
+  try {
+    await resetPasskeys(
+      db(),
+      { userId: user, organizationId: null },
+      { kind: "user", userId: admin },
+      {},
+    );
+    expect(await events.drain()).toEqual([{ type: "access-changed", userId: user }]);
+    // With nothing left to remove or end, no event.
+    await resetPasskeys(
+      db(),
+      { userId: user, organizationId: null },
+      { kind: "user", userId: admin },
+      {},
+    );
+    expect(await events.drain()).toEqual([]);
+  } finally {
+    await events.close();
+  }
 });
 
 test("resetPasskeys writes passkey.reset with the organization given, or none", async () => {
@@ -210,10 +277,11 @@ test("resetPasskeys writes passkey.reset with the organization given, or none", 
   });
 });
 
-test("resetPasskeys of a person without passkeys clears the sessions and writes no entry and no mail", async () => {
-  const user = await newUser("reset-empty");
-  const admin = await newUser("reset-empty-admin");
-  const session = await newSession(user, new Date("2027-01-10T10:00:00Z"));
+test("resetPasskeys of a person without passkeys but with sessions ends them, and writes the entry and the mail", async () => {
+  const user = await newUser("reset-sessions-only");
+  const admin = await newUser("reset-sessions-only-admin");
+  await newSession(user, new Date("2027-01-10T10:00:00Z"));
+  await newSession(user, null);
   const { jobs, queueMail } = collector();
   expect(
     await resetPasskeys(
@@ -222,8 +290,26 @@ test("resetPasskeys of a person without passkeys clears the sessions and writes 
       { kind: "user", userId: admin },
       { queueMail },
     ),
-  ).toEqual({ removed: 0 });
-  expect(await verifiedAt(session)).toBeNull();
+  ).toEqual({ removed: 0, sessionsEnded: 2 });
+  expect(await sessionsOf(user)).toEqual([]);
+  expect((await entries()).filter((e) => e.subjectId === user)).toMatchObject([
+    { action: "passkey.reset", actorUserId: admin, organizationId: null, details: {} },
+  ]);
+  expect(jobs).toEqual([{ kind: "passkeys-removed", userId: user, byUserId: admin }]);
+});
+
+test("resetPasskeys of a person with no passkey and no session writes no entry and no mail", async () => {
+  const user = await newUser("reset-empty");
+  const admin = await newUser("reset-empty-admin");
+  const { jobs, queueMail } = collector();
+  expect(
+    await resetPasskeys(
+      db(),
+      { userId: user, organizationId: null },
+      { kind: "user", userId: admin },
+      { queueMail },
+    ),
+  ).toEqual({ removed: 0, sessionsEnded: 0 });
   expect((await entries()).filter((e) => e.subjectId === user)).toEqual([]);
   expect(jobs).toEqual([]);
 });
@@ -259,6 +345,7 @@ test("resetAdminPasskeys resets an admin of the organization who is still what t
     { kind: "system" },
   );
   await newPasskey(adminUserId);
+  await newSession(adminUserId, new Date());
   const actor = { kind: "user", userId: await newUser("resetter") } as const;
   const { jobs, queueMail } = collector();
   const result = await resetAdminPasskeys(
@@ -267,17 +354,19 @@ test("resetAdminPasskeys resets an admin of the organization who is still what t
     actor,
     { queueMail },
   );
-  expect(result).toEqual({ outcome: "reset", removed: 1 });
+  expect(result).toEqual({ outcome: "reset", removed: 1, sessionsEnded: 1 });
+  expect(await sessionsOf(adminUserId)).toEqual([]);
   expect(jobs).toHaveLength(1);
 });
 
-test("resetAdminPasskeys answers subject_changed, and removes nothing, when the person became a platform admin", async () => {
+test("resetAdminPasskeys answers subject_changed, and removes and ends nothing, when the person became a platform admin", async () => {
   const { id: organizationId, adminUserId } = await createOrganization(
     db(),
     { name: "Changed Org", adminEmail: "changed-admin@example.test" },
     { kind: "system" },
   );
   await newPasskey(adminUserId);
+  const session = await newSession(adminUserId, new Date());
   await grantPlatformAdmin(db(), { email: "changed-admin@example.test" }, { kind: "system" });
   const actor = { kind: "user", userId: await newUser("resetter") } as const;
   const result = await resetAdminPasskeys(
@@ -288,6 +377,7 @@ test("resetAdminPasskeys answers subject_changed, and removes nothing, when the 
   );
   expect(result).toEqual({ outcome: "subject_changed" });
   expect(await countPasskeys(db(), adminUserId)).toBe(1);
+  expect(await sessionsOf(adminUserId)).toEqual([{ id: session }]);
 });
 
 test("resetAdminPasskeys is not_found for no admin of the organization, no platform admin, or a deleted account", async () => {

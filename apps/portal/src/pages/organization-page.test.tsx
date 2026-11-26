@@ -380,6 +380,11 @@ test("resetting an admin asks first and names them; the request goes to the orga
   expect(
     within(dialog).getByText(`Toegangssleutels van ${firstAdmin.name} verwijderen?`),
   ).toBeVisible();
+  expect(
+    within(dialog).getByText(
+      `Doe dit als ${firstAdmin.name} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${firstAdmin.name} een nieuwe bij de volgende keer beheren. ${firstAdmin.name} moet daarna overal opnieuw inloggen.`,
+    ),
+  ).toBeVisible();
   expect(requestsTo(requests, "DELETE", "/api/organizations")).toEqual([]);
   await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder" }));
   expect(

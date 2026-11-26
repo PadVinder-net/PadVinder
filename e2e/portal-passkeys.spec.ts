@@ -109,48 +109,69 @@ test("a platform admin repairs an organization admin who lost their passkey", as
   const group = createWorkingGroup();
   const adminName = `Bram ${randomWord()}`;
 
-  // The organization admin makes a passkey on their own laptop.
+  // The organization admin makes a passkey on their own laptop, which stays open.
   const adminPage = await newPortalPage(browser);
   try {
     await createSession(adminPage.context(), group.adminAddress, { name: adminName });
-    const adminAuthenticator = await addVirtualAuthenticator(adminPage);
+    const lostAuthenticator = await addVirtualAuthenticator(adminPage);
     await makeFirstPasskey(adminPage);
-    await adminAuthenticator.remove();
+    await lostAuthenticator.remove();
+
+    // A platform admin makes their own passkey, which confirms their session for the reset.
+    const platformAdmin = newAddress("hoofdbeheerder");
+    runAdmin("grant-platform-admin", "--email", platformAdmin);
+    await createSession(page.context(), platformAdmin, { name: `Hanna ${randomWord()}` });
+    const authenticator = await addVirtualAuthenticator(page);
+    try {
+      await makeFirstPasskey(page);
+
+      await page.goto(`/organizations/${group.organizationId}`);
+      await expect(page.getByRole("heading", { name: group.organizationName })).toBeVisible();
+      const row = page.getByRole("row").filter({ hasText: group.adminAddress });
+      await expect(row).toContainText(adminName);
+      await expect(row).not.toContainText("Nog geen toegangssleutel");
+
+      await row.getByRole("button", { name: `Acties voor ${adminName}` }).click();
+      await page.getByRole("menuitem", { name: "Verwijder toegangssleutels" }).click();
+      const question = page.getByRole("alertdialog", {
+        name: `Toegangssleutels van ${adminName} verwijderen?`,
+      });
+      await expect(question).toContainText(
+        `Doe dit als ${adminName} geen toegangssleutel meer heeft`,
+      );
+      await expect(question).toContainText(`${adminName} moet daarna overal opnieuw inloggen.`);
+      await question.getByRole("button", { name: "Verwijder" }).click();
+
+      await expect(
+        page.getByText(`De toegangssleutels van ${adminName} zijn verwijderd.`),
+      ).toBeVisible();
+      await expect(question).toHaveCount(0);
+      await expect(row).toContainText("Nog geen toegangssleutel");
+      await readMail(group.adminAddress, "Je toegangssleutels zijn verwijderd");
+    } finally {
+      await authenticator.remove();
+    }
+
+    // The reset ended every session of the organization admin: their open laptop shows the
+    // login screen once its event stream notices (it reconnects after 5 seconds).
+    await expect(adminPage.getByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // They log in again with a code and make a new passkey on a new device.
+    await adminPage.getByLabel("E-mailadres").fill(group.adminAddress);
+    await adminPage.getByRole("button", { name: "Stuur code" }).click();
+    await expect(adminPage.getByRole("heading", { name: "Vul je code in" })).toBeVisible();
+    // The first code was createSession's.
+    await adminPage.getByLabel("Code").fill(await readLoginCode(group.adminAddress, { count: 2 }));
+    await expect(adminPage).toHaveURL(/\/working-groups$/);
+    const newAuthenticator = await addVirtualAuthenticator(adminPage);
+    try {
+      await makeFirstPasskey(adminPage);
+    } finally {
+      await newAuthenticator.remove();
+    }
   } finally {
     await adminPage.context().close();
-  }
-
-  // A platform admin makes their own passkey, which confirms their session for the reset.
-  const platformAdmin = newAddress("hoofdbeheerder");
-  runAdmin("grant-platform-admin", "--email", platformAdmin);
-  await createSession(page.context(), platformAdmin, { name: `Hanna ${randomWord()}` });
-  const authenticator = await addVirtualAuthenticator(page);
-  try {
-    await makeFirstPasskey(page);
-
-    await page.goto(`/organizations/${group.organizationId}`);
-    await expect(page.getByRole("heading", { name: group.organizationName })).toBeVisible();
-    const row = page.getByRole("row").filter({ hasText: group.adminAddress });
-    await expect(row).toContainText(adminName);
-    await expect(row).not.toContainText("Nog geen toegangssleutel");
-
-    await row.getByRole("button", { name: `Acties voor ${adminName}` }).click();
-    await page.getByRole("menuitem", { name: "Verwijder toegangssleutels" }).click();
-    const question = page.getByRole("alertdialog", {
-      name: `Toegangssleutels van ${adminName} verwijderen?`,
-    });
-    await expect(question).toContainText(
-      `Doe dit als ${adminName} geen toegangssleutel meer heeft`,
-    );
-    await question.getByRole("button", { name: "Verwijder" }).click();
-
-    await expect(
-      page.getByText(`De toegangssleutels van ${adminName} zijn verwijderd.`),
-    ).toBeVisible();
-    await expect(question).toHaveCount(0);
-    await expect(row).toContainText("Nog geen toegangssleutel");
-    await readMail(group.adminAddress, "Je toegangssleutels zijn verwijderd");
-  } finally {
-    await authenticator.remove();
   }
 });

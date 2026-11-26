@@ -2,6 +2,7 @@ import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { recordAudit } from "./audit-log";
 import type { QueueMail } from "./mail-jobs";
+import { notifyAccessChanged } from "./notifications";
 import { organizationAdmins, passkeys, sessions, users } from "./schema";
 
 /** The most passkeys one account may have. */
@@ -84,18 +85,26 @@ export async function removeOwnPasskey(
 }
 
 /**
- * Removes all of a person's passkeys on behalf of an admin, and always clears the confirmation of
- * every session of that person, so a confirmed session on a lost laptop loses its admin power at
- * once. Writes the entry and queues the mail only when a passkey was removed.
+ * Removes all of a person's passkeys on behalf of an admin, and deletes every session of that
+ * person, so they are logged out on every device and log in again with a code. Clearing only the
+ * confirmation is not enough: every passkey ceremony makes a new session, so a confirmed session
+ * is always young enough for Better Auth's first-passkey rule (`freshAge`), and a thief's session
+ * on a lost laptop could add a first passkey of their own. Sends `access-changed` for the person,
+ * as `deleteAccount` does, so their open event streams reload, find no session and end. Writes the
+ * entry and queues the mail when a passkey was removed or a session ended (a logout always leaves
+ * a trace); with neither, nothing.
  */
 export async function resetPasskeys(
   db: Db,
   input: { userId: string; organizationId: string | null },
   actor: { kind: "user"; userId: string },
   options: MailOptions,
-): Promise<{ removed: number }> {
+): Promise<ResetResult> {
   return db.transaction((tx) => resetPasskeysIn(tx, input, actor, options));
 }
+
+/** How many passkeys a reset removed, and how many sessions it ended. */
+export type ResetResult = { removed: number; sessionsEnded: number };
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -103,7 +112,8 @@ type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
  * An admin's reset, decided on what the route authorized. In one transaction it locks the
  * person's user row, checks that they are still the kind of admin the route meant (an admin of
  * `organizationId`, or with a null one a platform admin; not deleted) and that
- * `isPlatformAdmin` is still `expectedIsPlatformAdmin`, then resets. `not_found` when they are
+ * `isPlatformAdmin` is still `expectedIsPlatformAdmin`, then resets (the user row first, then
+ * the passkeys and sessions, the order of `deleteAccount`). `not_found` when they are
  * no such admin; `subject_changed` when they became or stopped being a platform admin since the
  * route decided (the route answers 409, as `expectedIsCoordinator` does for removing a member).
  */
@@ -112,7 +122,7 @@ export async function resetAdminPasskeys(
   input: { userId: string; organizationId: string | null; expectedIsPlatformAdmin: boolean },
   actor: { kind: "user"; userId: string },
   options: MailOptions,
-): Promise<{ outcome: "reset"; removed: number } | { outcome: "not_found" | "subject_changed" }> {
+): Promise<({ outcome: "reset" } & ResetResult) | { outcome: "not_found" | "subject_changed" }> {
   return db.transaction(async (tx) => {
     const [subject] = await tx
       .select({ isPlatformAdmin: users.isPlatformAdmin })
@@ -137,8 +147,8 @@ export async function resetAdminPasskeys(
     if (subject.isPlatformAdmin !== input.expectedIsPlatformAdmin) {
       return { outcome: "subject_changed" as const };
     }
-    const { removed } = await resetPasskeysIn(tx, input, actor, options);
-    return { outcome: "reset" as const, removed };
+    const result = await resetPasskeysIn(tx, input, actor, options);
+    return { outcome: "reset" as const, ...result };
   });
 }
 
@@ -147,29 +157,28 @@ async function resetPasskeysIn(
   input: { userId: string; organizationId: string | null },
   actor: { kind: "user"; userId: string },
   options: MailOptions,
-): Promise<{ removed: number }> {
-  {
-    const deleted = await tx
-      .delete(passkeys)
-      .where(eq(passkeys.userId, input.userId))
-      .returning({ id: passkeys.id });
-    await tx
-      .update(sessions)
-      .set({ passkeyVerifiedAt: null })
-      .where(eq(sessions.userId, input.userId));
-    if (deleted.length > 0) {
-      await recordAudit(tx, {
-        actor,
-        organizationId: input.organizationId,
-        action: "passkey.reset",
-        subject: { type: "user", id: input.userId },
-      });
-      await options.queueMail?.(tx, {
-        kind: "passkeys-removed",
-        userId: input.userId,
-        byUserId: actor.userId,
-      });
-    }
-    return { removed: deleted.length };
+): Promise<ResetResult> {
+  const deleted = await tx
+    .delete(passkeys)
+    .where(eq(passkeys.userId, input.userId))
+    .returning({ id: passkeys.id });
+  const ended = await tx
+    .delete(sessions)
+    .where(eq(sessions.userId, input.userId))
+    .returning({ id: sessions.id });
+  if (deleted.length > 0 || ended.length > 0) {
+    await recordAudit(tx, {
+      actor,
+      organizationId: input.organizationId,
+      action: "passkey.reset",
+      subject: { type: "user", id: input.userId },
+    });
+    await options.queueMail?.(tx, {
+      kind: "passkeys-removed",
+      userId: input.userId,
+      byUserId: actor.userId,
+    });
+    await notifyAccessChanged(tx, input.userId);
   }
+  return { removed: deleted.length, sessionsEnded: ended.length };
 }

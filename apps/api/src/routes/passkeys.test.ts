@@ -11,7 +11,15 @@ import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
-import { stampSession } from "../testing/passkeys";
+import {
+  addPasskey,
+  postAuth,
+  sessionTokenOf,
+  stampSession,
+  withCookies,
+} from "../testing/passkeys";
+import { createSoftAuthenticator } from "../testing/soft-authenticator";
+import { testEnv } from "../test-env";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -230,30 +238,86 @@ test("the list is passkey_required at 24 h; a removal and a reset are passkey_re
   expect(old.json().code).toBe("passkey_required");
 });
 
-test("a reset clears the confirmation of all the person's sessions: their next GET /api/passkeys is passkey_required", async () => {
-  const target = await newOrganizationAdmin();
-  // A second logged-in session of the same person, also confirmed.
-  const email = (await ctx.t.db.select().from(users).where(eq(users.id, target.userId)))[0]!.email;
-  const second = await loginAs(ctx, email);
-  expect(second.userId).toBe(target.userId);
-  await stampSession(ctx, second.headers.cookie, new Date());
-  expect((await list(target)).statusCode).toBe(200);
-  expect((await list(second)).statusCode).toBe(200);
+const me = (cookie: string) =>
+  ctx.app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
+const sessionsOf = (userId: string) =>
+  ctx.t.db.select().from(sessions).where(eq(sessions.userId, userId));
+const emailOf = async (userId: string) =>
+  (await ctx.t.db.select().from(users).where(eq(users.id, userId)))[0]!.email;
+
+test("a reset logs the person out everywhere: every old cookie is 401 on GET /api/me, on both routes", async () => {
+  const organizationTarget = await newOrganizationAdmin();
+  const platformTarget = await newPlatformAdmin();
+  const reset = [
+    () =>
+      resetOrganizationAdmin(
+        cast.members.platformAdmin,
+        cast.organization.id,
+        organizationTarget.userId,
+      ),
+    () => resetPlatformAdmin(cast.members.platformAdmin, platformTarget.userId),
+  ];
+  for (const [index, target] of [organizationTarget, platformTarget].entries()) {
+    // A second logged-in session of the same person: a code session, not confirmed.
+    const second = await loginAs(ctx, await emailOf(target.userId));
+    expect(second.userId).toBe(target.userId);
+    for (const session of [target, second]) {
+      expect((await me(session.headers.cookie)).statusCode).toBe(200);
+    }
+    expect((await reset[index]!()).statusCode).toBe(204);
+    for (const session of [target, second]) {
+      const after = await me(session.headers.cookie);
+      expect(after.statusCode).toBe(401);
+      expect(after.json().code).toBe("not_logged_in");
+    }
+    expect(await sessionsOf(target.userId)).toEqual([]);
+  }
+  // The admin who reset stays logged in.
+  expect((await me(cast.members.platformAdmin.headers.cookie)).statusCode).toBe(200);
+});
+
+test("a stolen laptop's session cannot add a first passkey after the reset; the person logs in with a code and can", async () => {
+  const email = address("stolen");
+  const code = await loginAs(ctx, email);
+  await grantOrganizationAdmin(ctx.t.db, { email, organizationId: cast.organization.id }, system);
+  const newAuthenticator = () => createSoftAuthenticator({ origin: testEnv.PUBLIC_ORIGIN });
+  // The laptop's session is the one the first passkey's registration made: stamped and young.
+  const added = await addPasskey(ctx, code.headers.cookie, newAuthenticator());
+  expect(added.response.statusCode).toBe(200);
+  const laptop = added.cookie;
+  // The thief asks for registration options before the reset and finishes after it.
+  const options = await postAuth(ctx, "/passkey/generate-register-options", laptop);
+  expect(options.statusCode).toBe(200);
+  const withChallenge = withCookies(laptop, options) ?? laptop;
 
   const res = await resetOrganizationAdmin(
-    cast.members.platformAdmin,
+    cast.members.organizationAdmin,
     cast.organization.id,
-    target.userId,
+    code.userId,
   );
   expect(res.statusCode).toBe(204);
-  for (const session of [target, second]) {
-    const after = await list(session);
-    expect(after.statusCode).toBe(403);
-    expect(after.json().code).toBe("passkey_required");
-  }
-  const rows = await ctx.t.db.select().from(sessions).where(eq(sessions.userId, target.userId));
-  expect(rows.length).toBeGreaterThanOrEqual(2);
-  expect(rows.every((row) => row.passkeyVerifiedAt === null)).toBe(true);
+  expect(await passkeysOf(code.userId)).toEqual([]);
+
+  const thief = newAuthenticator();
+  const finish = await postAuth(ctx, "/passkey/verify-registration", withChallenge, {
+    response: thief.register(options.json()),
+  });
+  expect(finish.statusCode).toBe(401);
+  const again = await addPasskey(ctx, laptop, thief);
+  expect(again.response.statusCode).toBe(401);
+  expect(await passkeysOf(code.userId)).toEqual([]);
+
+  // The person logs in again with a code and adds a new first passkey.
+  const fresh = await loginAs(ctx, email);
+  expect(fresh.userId).toBe(code.userId);
+  const owner = newAuthenticator();
+  const repaired = await addPasskey(ctx, fresh.headers.cookie, owner);
+  expect(repaired.response.statusCode).toBe(200);
+  expect(await passkeysOf(code.userId)).toMatchObject([{ credentialID: owner.credentialId }]);
+  const token = sessionTokenOf(repaired.cookie);
+  const [session] = (await sessionsOf(code.userId)).filter((row) => row.token === token);
+  expect(session?.passkeyVerifiedAt).not.toBeNull();
+  expect((await me(repaired.cookie)).json()).toMatchObject({ user: { hasPasskey: true } });
 });
 
 test("a volunteer gets 403 not_allowed, not passkey_required, on the list and the removal", async () => {

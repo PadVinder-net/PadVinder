@@ -315,7 +315,7 @@ test("resetting a platform admin asks first, names them, and calls the route; no
   ).toBeVisible();
   expect(
     within(dialog).getByText(
-      `Doe dit als ${pieter.name} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${pieter.name} een nieuwe bij de volgende keer beheren.`,
+      `Doe dit als ${pieter.name} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${pieter.name} een nieuwe bij de volgende keer beheren. ${pieter.name} moet daarna overal opnieuw inloggen.`,
     ),
   ).toBeVisible();
   expect(requestsTo(requests, "DELETE", listPath)).toEqual([]);

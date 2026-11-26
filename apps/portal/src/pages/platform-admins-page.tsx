@@ -232,7 +232,7 @@ export function PlatformAdminsPage() {
         title={resetting.admin ? `Toegangssleutels van ${resetName} verwijderen?` : ""}
         text={
           resetting.admin
-            ? `Doe dit als ${resetName} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${resetName} een nieuwe bij de volgende keer beheren.`
+            ? `Doe dit als ${resetName} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${resetName} een nieuwe bij de volgende keer beheren. ${resetName} moet daarna overal opnieuw inloggen.`
             : ""
         }
         confirmLabel="Verwijder"

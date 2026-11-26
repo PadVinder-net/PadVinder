@@ -134,6 +134,9 @@ A new admin action in a later slice falls under the 24-hour rule by itself, thro
 - **A passkey for the phone, made on the laptop.** An admin whose laptop passkey does not reach their phone (Windows Hello with an iPhone, for example) adds one for the phone on the portal's passkeys screen: the browser's own dialog offers to store it on a phone through a QR code. The portal's screen says so in one line under the button: "Wil je ook op je telefoon beheren? Kies dan in het venster voor je telefoon." Adding a further passkey in the app itself needs a recent confirmation, which a phone without a passkey cannot give; the QR code on the laptop is the way for that phone.
 - **Settings:** user verification `required` (always a fingerprint, face or PIN), resident key `required` (so login works without typing an address), attestation none, the relying party ID the host name of `PUBLIC_ORIGIN` (`padvinder.net`, `staging.padvinder.net`, `localhost`), the name "PadVinder". Any passkey the browser offers counts, also a security key.
 - **Removing someone's passkeys** deletes all of them and clears `passkey_verified_at` on all that person's sessions, so a stolen laptop with a confirmed session loses admin power at once. Who may: a platform admin for anyone; an organization admin for a fellow admin of an organization they administer, unless that person is a platform admin (otherwise an organization admin plus someone with the platform admin's mailbox could take over the platform). A new permission action in `decide`, recently confirmed. Removing one's own passkeys goes through the passkeys screen, one at a time.
+
+  _Changed on 26 November 2026 by the maintainer: a reset also deletes all of the person's sessions, so they log in again with a code everywhere. Clearing the confirmation alone left a stolen laptop's session fresh enough to add a first passkey._
+
 - **Account deletion** (`deleteAccount`) deletes the person's passkeys too.
 
 ### Better Auth
@@ -204,6 +207,9 @@ A new admin action in a later slice falls under the 24-hour rule by itself, thro
   - In the app, Profiel gets a button "Toegangssleutels" for someone with an admin role, which opens the screen at `/more/profile/passkeys`.
   - The portal has no profile page yet. The name in its header becomes a link to a new page `/profile` (Profiel) with the same profile form as the app (`ProfileForm` in `packages/ui`) and, for someone with an admin role, the button "Toegangssleutels", which opens the screen at `/profile/passkeys`. The page is not in the navigation.
 - **Repairing someone else:** on `/organizations/{id}`, each admin row shows "Nog geen toegangssleutel" where `hasPasskey` is false and has a row action "Verwijder toegangssleutels" (a `ConfirmDialog`: "Toegangssleutels van {naam} verwijderen?", "Doe dit als {naam} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt {naam} een nieuwe bij de volgende keer beheren.", buttons "Verwijder" and "Annuleer"); the same on `/platform-admins` for platform admins. Shown only where the API allows it.
+
+  _Changed on 26 November 2026 by the maintainer, with the reset that deletes all sessions: the question ends with "{naam} moet daarna overal opnieuw inloggen."_
+
 - **`/system`** shows an unconfirmed platform admin the status with the grey bar and the eye button in the place of the database details.
 
 ### Data model
@@ -230,6 +236,9 @@ As AGENTS.md requires. The parts that need care:
 - **Lists:** each listed endpoint answers `passkey_required` to an unconfirmed admin and reads nothing.
 - **The real passkey flow** against Better Auth with a software authenticator (made in the test with Node's `crypto`, or a small library): add a first passkey from a code session; a second one refused without and allowed with a recent confirmation; refused without an admin role; login with a passkey stamps the session; a confirmation and an addition each replace the session and delete the old one, also when the client sends `createSession: false`; no answer of the four routes holds a session token, a public key or a credential ID (checked on the raw body); another account's passkey in a confirmation is refused and leaves the session; the two `generate-*` routes refuse `GET` and a foreign `Origin`.
 - **Removal:** removing someone's passkeys clears the confirmation of all their sessions; an organization admin cannot repair a platform admin; account deletion deletes passkeys.
+
+  _Changed on 26 November 2026 by the maintainer: a reset also deletes all of the person's sessions, so they log in again with a code everywhere. Clearing the confirmation alone left a stolen laptop's session fresh enough to add a first passkey._ The test now checks that every old cookie is 401 and that the old session cannot add a first passkey.
+
 - **Audit and mails:** entries and queued mails for add, remove and reset, without names or addresses in the entries and IDs only in the jobs.
 - **Event stream:** an unconfirmed organization admin does not receive an event for a group they do not coordinate.
 - **Fields:** an unconfirmed organization admin who is a volunteer of a group gets its members without `email`, `phone` and `hasLoggedIn` keys (raw JSON), with `passkeyReveals`, and no `passkey_required`; a confirmed one gets the keys and no `passkeyReveals`; a volunteer who is no admin gets neither the keys nor `passkeyReveals`.

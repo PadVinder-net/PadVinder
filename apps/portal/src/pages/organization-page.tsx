@@ -312,7 +312,7 @@ function OrganizationDetails({
         }
         text={
           resetting.admin
-            ? `Doe dit als ${nameOrAddress(resetting.admin)} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${nameOrAddress(resetting.admin)} een nieuwe bij de volgende keer beheren.`
+            ? `Doe dit als ${nameOrAddress(resetting.admin)} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${nameOrAddress(resetting.admin)} een nieuwe bij de volgende keer beheren. ${nameOrAddress(resetting.admin)} moet daarna overal opnieuw inloggen.`
             : ""
         }
         confirmLabel="Verwijder"
