@@ -18,6 +18,7 @@ export async function recordQueries(pool: pg.Pool, fn: () => Promise<unknown>): 
   // Every connection wrapped during this recording, restored afterwards: pooled connections are
   // reused, and a wrapper left behind would write into this recording's log forever.
   const restores: Array<() => void> = [];
+  const wrapped = new Set<unknown>();
   poolAny.query = function (this: unknown, ...args: unknown[]) {
     log.push(textOf(args[0]));
     return originalQuery.apply(pool, args);
@@ -27,6 +28,9 @@ export async function recordQueries(pool: pg.Pool, fn: () => Promise<unknown>): 
     if (!result || typeof result.then !== "function") return result;
     return result.then((client) => {
       const clientAny = client as unknown as { query: (...a: unknown[]) => unknown };
+      // The same client taken again in this recording is wrapped already: once is enough.
+      if (wrapped.has(client)) return client;
+      wrapped.add(client);
       const original = clientAny.query;
       clientAny.query = function (this: unknown, ...a: unknown[]) {
         log.push(textOf(a[0]));
