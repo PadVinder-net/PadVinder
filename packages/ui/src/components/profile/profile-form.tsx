@@ -9,7 +9,8 @@ import { Label } from "../ui/label";
 export type ProfileFormProps = {
   me: MeResponse;
   onSave(values: { name: string; phone: string | null }): void;
-  onDelete(): void;
+  /** Without it the delete section does not show (the portal: an account is deleted in the app). */
+  onDelete?(): void;
   saving: boolean;
   /** True after the last save succeeded. */
   saved?: boolean;
@@ -140,23 +141,25 @@ export function ProfileForm({
           Meld je aan bij nog een werkgroep
         </WideButton>
       ) : null}
-      <WideButton
-        type="button"
-        variant="outline"
-        pending={deleting}
-        onClick={() => setAsking(true)}
-      >
-        Verwijder account
-      </WideButton>
+      {onDelete ? (
+        <WideButton
+          type="button"
+          variant="outline"
+          pending={deleting}
+          onClick={() => setAsking(true)}
+        >
+          Verwijder account
+        </WideButton>
+      ) : null}
       <ConfirmDialog
-        open={asking}
+        open={asking && onDelete !== undefined}
         title="Account verwijderen?"
         text="Je naam, e-mailadres en telefoonnummer worden gewist. Wat je hebt geteld blijft bewaard, zonder je naam. Dit kun je niet terugdraaien."
         confirmLabel="Verwijder account"
         destructive
         pending={deleting}
         error={error}
-        onConfirm={onDelete}
+        onConfirm={() => onDelete?.()}
         onCancel={() => setAsking(false)}
       />
     </section>

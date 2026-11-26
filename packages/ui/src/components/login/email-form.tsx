@@ -10,9 +10,11 @@ export type EmailFormProps = {
   error?: string;
   /** A message above the form, for example after the account was deleted. */
   notice?: string;
+  /** When given, the button "Log in met je toegangssleutel" shows under the form. */
+  onPasskey?: () => void;
 };
 
-export function EmailForm({ onSubmit, pending, error, notice }: EmailFormProps) {
+export function EmailForm({ onSubmit, pending, error, notice, onPasskey }: EmailFormProps) {
   const [email, setEmail] = useState("");
   const [invalid, setInvalid] = useState(false);
 
@@ -55,6 +57,11 @@ export function EmailForm({ onSubmit, pending, error, notice }: EmailFormProps) 
           Stuur code
         </WideButton>
       </form>
+      {onPasskey ? (
+        <WideButton type="button" variant="outline" pending={pending} onClick={onPasskey}>
+          Log in met je toegangssleutel
+        </WideButton>
+      ) : null}
     </Step>
   );
 }

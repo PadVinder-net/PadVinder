@@ -14,4 +14,11 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const AsPlatformAdmin: Story = {};
+/** The admin without a passkey may have the passkeys reset (the row action). */
+export const WithReset: Story = {
+  args: {
+    admins: organizationDetailFixture.admins.map((admin) => ({ ...admin, mayResetPasskeys: true })),
+    onResetPasskeys: () => {},
+  },
+};
 export const AsOrganizationAdmin: Story = { args: { canRemove: false } };

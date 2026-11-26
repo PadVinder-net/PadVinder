@@ -156,3 +156,18 @@ test("the profile shows the pending request with Trek aanmelding in, or the butt
   rerender(<ProfileForm {...base} />);
   expect(screen.queryByRole("button", { name: "Meld je aan bij nog een werkgroep" })).toBeNull();
 });
+
+test("ProfileForm without onDelete has no delete button", () => {
+  render(<ProfileForm me={meFixture} onSave={() => {}} saving={false} deleting={false} />);
+  expect(screen.queryByRole("button", { name: "Verwijder account" })).toBeNull();
+  render(
+    <ProfileForm
+      me={meFixture}
+      onSave={() => {}}
+      onDelete={() => {}}
+      saving={false}
+      deleting={false}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Verwijder account" })).toBeVisible();
+});

@@ -58,7 +58,7 @@ test("shows the platform admins, one of them as (nog niet ingelogd)", async () =
   expect(
     screen.getByText("Een hoofdbeheerder kan alles inzien en wijzigen, in alle organisaties."),
   ).toBeVisible();
-  expect(await screen.findByRole("cell", { name: "(nog niet ingelogd)" })).toBeVisible();
+  expect(await screen.findByRole("cell", { name: /^\(nog niet ingelogd\)/ })).toBeVisible();
   expect(screen.getByRole("cell", { name: ownRow.name })).toBeVisible();
   expect(screen.getByRole("cell", { name: pieter.name })).toBeVisible();
   expect(screen.getByRole("link", { name: newAdmin.email })).toBeVisible();

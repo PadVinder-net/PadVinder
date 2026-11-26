@@ -8,20 +8,24 @@ export type OrganizationAdminsTableProps = {
   admins: OrganizationAdmin[];
   canRemove: boolean;
   onRemove(admin: OrganizationAdmin): void;
+  /** Adds the row action "Verwijder toegangssleutels" where `admin.mayResetPasskeys`. */
+  onResetPasskeys?(admin: OrganizationAdmin): void;
 };
 
 export function OrganizationAdminsTable({
   admins,
   canRemove,
   onRemove,
+  onResetPasskeys,
 }: OrganizationAdminsTableProps) {
+  const showMenu = canRemove || onResetPasskeys !== undefined;
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Naam</TableHead>
           <TableHead>E-mailadres</TableHead>
-          {canRemove ? <TableHead /> : null}
+          {showMenu ? <TableHead /> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -29,23 +33,43 @@ export function OrganizationAdminsTable({
           const name = displayName(admin.name, admin.hasLoggedIn);
           return (
             <TableRow key={admin.userId}>
-              <TableCell>{name}</TableCell>
+              <TableCell>
+                {name}
+                {admin.hasPasskey ? null : (
+                  <span className="block text-sm text-muted-foreground">
+                    Nog geen toegangssleutel
+                  </span>
+                )}
+              </TableCell>
               <TableCell>
                 <a href={mailHref(admin.email)} className="underline underline-offset-4 break-all">
                   {admin.email}
                 </a>
               </TableCell>
-              {canRemove ? (
+              {showMenu ? (
                 <TableCell>
                   <div className="flex justify-end">
                     <RowMenu
                       label={`Acties voor ${name}`}
                       items={[
-                        {
-                          label: "Verwijder als beheerder",
-                          onSelect: () => onRemove(admin),
-                          destructive: true,
-                        },
+                        ...(canRemove
+                          ? [
+                              {
+                                label: "Verwijder als beheerder",
+                                onSelect: () => onRemove(admin),
+                                destructive: true,
+                              },
+                            ]
+                          : []),
+                        ...(onResetPasskeys && admin.mayResetPasskeys
+                          ? [
+                              {
+                                label: "Verwijder toegangssleutels",
+                                onSelect: () => onResetPasskeys(admin),
+                                destructive: true,
+                              },
+                            ]
+                          : []),
                       ]}
                     />
                   </div>

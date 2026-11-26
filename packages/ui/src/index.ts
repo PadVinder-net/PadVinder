@@ -36,6 +36,7 @@ export {
   logOutFailedMessage,
   noAccountMessage,
   organizationNameTakenMessage,
+  passkeyErrorMessage,
   personOutsideOrganizationMessage,
   speciesNameTakenMessage,
   workingGroupNameTakenMessage,
@@ -146,3 +147,5 @@ export {
 } from "./monitoring/browser-monitoring";
 export { useBrowserMonitoringUser } from "./monitoring/use-browser-monitoring-user";
 export { reloadOnPreloadError } from "./lib/reload-on-preload-error";
+export { PasskeyModal, type PasskeyModalProps } from "./components/passkeys/passkey-modal";
+export { PasskeysPanel, type PasskeysPanelProps } from "./components/passkeys/passkeys-panel";
