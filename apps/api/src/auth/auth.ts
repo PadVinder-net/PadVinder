@@ -12,7 +12,7 @@ import {
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { eq } from "drizzle-orm";
 import { scrub } from "@padvinder/logging";
@@ -37,10 +37,12 @@ const PASSKEY_SESSION_PATHS = new Set([
 ]);
 
 /**
- * Every double-quoted value in a log message, replaced. SimpleWebAuthn quotes the challenge and
- * the origin in its errors (`Unexpected authentication response challenge "…", expected "…"`).
+ * Everything from the first double quote to the last, replaced. SimpleWebAuthn quotes the
+ * challenge and the origin in its errors (`Unexpected authentication response challenge "…",
+ * expected "…"`). A client chooses what it sends as the challenge, quotes included, so quotes are
+ * not paired: one span covers every quoted value, whatever sits between them.
  */
-const redactQuoted = (text: string): string => text.replace(/"[^"]*"/g, '"[redacted]"');
+const redactQuoted = (text: string): string => text.replace(/"[\s\S]*"/, '"[redacted]"');
 
 const clean = (text: string): string => scrub(redactQuoted(text));
 
@@ -243,9 +245,21 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
           // passkey's account with the session's; a confirmation with someone else's passkey (two
           // admins on one laptop) is refused, and the old session stays. Without a session (the
           // login screen) any account's passkey logs in.
+          //
+          // The session is read here directly, not with `getSessionFromCtx`, which answers "no
+          // session" when the read fails: then someone else's passkey would switch the laptop to
+          // their account. `findSession` throws on a database error instead, and the plugin
+          // refuses (400 AUTHENTICATION_FAILED) before any session is made. A cookie without a
+          // valid signature, or for a session that is gone or expired, is no session, as for
+          // Better Auth's `getSession`.
           async afterVerification({ ctx, clientData }) {
-            const session = await getSessionFromCtx(ctx, { disableRefresh: true });
-            if (!session) return;
+            const token = await ctx.getSignedCookie(
+              ctx.context.authCookies.sessionToken.name,
+              ctx.context.secret,
+            );
+            if (!token) return;
+            const session = await ctx.context.internalAdapter.findSession(token);
+            if (!session || session.session.expiresAt < new Date()) return;
             const [row] = await db
               .select({ userId: passkeys.userId })
               .from(passkeys)

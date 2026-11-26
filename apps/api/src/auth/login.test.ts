@@ -442,7 +442,7 @@ test("Better Auth's log lines lose quoted values and addresses, in the message a
     errors: [
       {
         type: "Error",
-        message: expect.stringContaining('challenge "[redacted]", expected "[redacted]"'),
+        message: expect.stringMatching(/^Unexpected challenge "\[redacted\]" from /),
       },
     ],
   });
@@ -450,6 +450,25 @@ test("Better Auth's log lines lose quoted values and addresses, in the message a
   for (const secret of ["secret-in-message", "abc123", "def456", "noor@example.test", "sam@"]) {
     expect(text).not.toContain(secret);
   }
+});
+
+test("a quote inside a quoted value does not let another quoted value through", () => {
+  const logs = createTestLogger("debug");
+  // A client chose the challenge `x"`, so the quotes no longer pair up.
+  forwardLog(logs.logger)(
+    "error",
+    'Unexpected challenge "x"", expected "REAL-SERVER-CHALLENGE"',
+    new Error(
+      'Unexpected authentication response challenge "x"", expected "REAL-SERVER-CHALLENGE"',
+    ),
+    new Error('One " quote, then "REAL-SERVER-CHALLENGE" and "another"'),
+  );
+  const text = logs.text();
+  expect(text).not.toContain("REAL-SERVER-CHALLENGE");
+  expect(text).not.toContain("another");
+  expect(logs.entries()[0]).toMatchObject({
+    msg: 'Better Auth: Unexpected challenge "[redacted]"',
+  });
 });
 
 test("a POST from a foreign Origin is refused", async () => {

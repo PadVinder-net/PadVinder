@@ -9,7 +9,7 @@ import {
 } from "@padvinder/db";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createCast, expectStatuses } from "../testing/cast";
 import { codeFor, createTestApp, loginAs, requestCode, type TestApp } from "../testing/login";
 import {
@@ -271,6 +271,33 @@ test("another account's passkey in a confirmation is 403 PASSKEY_OF_OTHER_ACCOUN
   expect((await me(login.cookie)).json()).toMatchObject({ user: { id: second.userId } });
 });
 
+test("when the session cannot be read during a confirmation, another account's passkey is refused, not logged in", async () => {
+  const first = await adminWithPasskey("eerste@example.test");
+  const second = await adminWithPasskey("tweede@example.test");
+  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", first.cookie);
+  const jar = withCookies(first.cookie, options);
+  const { internalAdapter } = await ctx.app.auth.$context;
+  const findSession = internalAdapter.findSession.bind(internalAdapter);
+  let reads = 0;
+  // The route's own read of the previous session works; every read after it (the check inside
+  // Better Auth) fails, as a database error would.
+  const spy = vi.spyOn(internalAdapter, "findSession").mockImplementation(async (token) => {
+    reads += 1;
+    if (reads === 1) return findSession(token);
+    throw new Error("connection terminated");
+  });
+  const before = await allSessions();
+  const res = await postAuth(ctx, "/passkey/verify-authentication", jar, {
+    response: second.authenticator.authenticate(options.json()),
+  });
+  spy.mockRestore();
+  expect(reads).toBeGreaterThan(1);
+  expect(res.statusCode).toBe(400);
+  expect(res.json()).toMatchObject({ code: "AUTHENTICATION_FAILED" });
+  expect(await allSessions()).toEqual(before);
+  expect((await me(first.cookie)).json()).toMatchObject({ user: { id: first.userId } });
+});
+
 test("a passkey that was removed answers PASSKEY_NOT_FOUND and makes no session", async () => {
   const admin = await adminWithPasskey();
   await ctx.t.db.delete(passkeys).where(eq(passkeys.userId, admin.userId));
@@ -490,6 +517,26 @@ test("with LOGIN_RATE_LIMITS on, the 61st options request in 5 minutes from one 
   expect((await options("10.0.0.10")).statusCode).toBe(200);
 }, 60_000);
 
+test("with LOGIN_RATE_LIMITS on, the 61st verify request in 5 minutes from one address is 429", async () => {
+  await ctx.close();
+  ctx = await createTestApp({ LOGIN_RATE_LIMITS: "on" });
+  const verify = (address: string) =>
+    ctx.app.inject({
+      method: "POST",
+      url: "/api/auth/passkey/verify-authentication",
+      headers: { origin: testEnv.PUBLIC_ORIGIN, "x-forwarded-for": address },
+      payload: { response: {} },
+    });
+  // Without a challenge each is refused by Better Auth, and counted all the same.
+  for (let i = 0; i < 60; i++) {
+    const res = await verify("10.0.0.9");
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: "CHALLENGE_NOT_FOUND" });
+  }
+  expect((await verify("10.0.0.9")).statusCode).toBe(429);
+  expect((await verify("10.0.0.10")).statusCode).toBe(400);
+}, 60_000);
+
 test("no log line of a failed verification holds the challenge or the credential ID", async () => {
   await ctx.close();
   const logs = createTestLogger("debug");
@@ -529,7 +576,7 @@ test("no log line of a failed verification holds the challenge or the credential
   expect(log).toContain("Failed to verify registration");
   expect(log).toContain("Failed to verify authentication");
   // In a JSON line the quotes are escaped.
-  expect(log).toContain('challenge \\"[redacted]\\", expected \\"[redacted]\\"');
+  expect(log).toContain('response challenge \\"[redacted]\\""');
   for (const secret of [
     wrongChallenge,
     registerOptions.json().challenge,
