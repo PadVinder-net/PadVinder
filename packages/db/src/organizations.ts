@@ -8,7 +8,10 @@ import { userHasLoggedIn } from "./users";
 
 export type OrganizationRecord = Organization;
 export type OrganizationAdminRecord = OrganizationAdmin;
-export type OrganizationDetailRecord = OrganizationDetail;
+/** The admins also say whether they are platform admins, for the route's decision; it never goes out. */
+export type OrganizationDetailRecord = Omit<OrganizationDetail, "admins"> & {
+  admins: (OrganizationAdmin & { isPlatformAdmin: boolean })[];
+};
 
 const columns = {
   id: organizations.id,
@@ -61,6 +64,7 @@ export async function getOrganization(
       email: users.email,
       hasLoggedIn: userHasLoggedIn,
       hasPasskey: userHasPasskey,
+      isPlatformAdmin: users.isPlatformAdmin,
     })
     .from(organizationAdmins)
     .innerJoin(users, eq(users.id, organizationAdmins.userId))

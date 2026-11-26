@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import {
   grantCoordinator,
+  grantPlatformAdmin,
   membershipRequests,
+  passkeys,
   users,
   workingGroupMemberships,
 } from "@padvinder/db";
@@ -9,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { createCast, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -44,10 +47,12 @@ test("returns the logged-in user", async () => {
       email: "noor@example.test",
       phone: null,
       isPlatformAdmin: false,
+      hasPasskey: false,
     },
     memberships: [],
     organizationAdminOf: [],
     membershipRequest: null,
+    adminConfirmedUntil: null,
   });
 });
 
@@ -302,4 +307,50 @@ test("me shows an older pending request over a newer withdrawn or rejected one",
       .where(eq(membershipRequests.id, newer.id));
     expect((await getMe(user.headers)).membershipRequest, status).toEqual(older.res.json());
   }
+});
+
+const meOf = async (who: { headers: Record<string, string> }) =>
+  (await ctx.app.inject({ method: "GET", url: "/api/me", headers: who.headers })).json();
+
+test("me says hasPasskey, and adminConfirmedUntil for a confirmed admin only", async () => {
+  const confirmed = await loginAs(ctx, `confirmed-${uuidv7().slice(-8)}@example.test`);
+  const unconfirmed = await loginAs(ctx, `unconfirmed-${uuidv7().slice(-8)}@example.test`);
+  const volunteer = await loginAs(ctx, `plain-${uuidv7().slice(-8)}@example.test`);
+  for (const who of [confirmed, unconfirmed]) {
+    const [row] = await ctx.t.db.select().from(users).where(eq(users.id, who.userId));
+    await grantPlatformAdmin(ctx.t.db, { email: row!.email }, { kind: "system" });
+  }
+  await ctx.t.db.insert(passkeys).values({
+    userId: confirmed.userId,
+    publicKey: "pk",
+    credentialID: `cred-${uuidv7()}`,
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+  });
+  await stampSession(ctx, confirmed.headers.cookie, new Date());
+
+  const a = await meOf(confirmed);
+  expect(a.user.hasPasskey).toBe(true);
+  expect(typeof a.adminConfirmedUntil).toBe("string");
+  const b = await meOf(unconfirmed);
+  expect(b.user.hasPasskey).toBe(false);
+  expect(b.adminConfirmedUntil).toBeNull();
+  const c = await meOf(volunteer);
+  expect(c.user.hasPasskey).toBe(false);
+  expect(c.adminConfirmedUntil).toBeNull();
+  // A volunteer's stamp does not make them confirmed.
+  await stampSession(ctx, volunteer.headers.cookie, new Date());
+  expect((await meOf(volunteer)).adminConfirmedUntil).toBeNull();
+});
+
+test("adminConfirmedUntil is the passkey moment plus 24 hours, with an offset", async () => {
+  const admin = await loginAs(ctx, `until-${uuidv7().slice(-8)}@example.test`);
+  const [row] = await ctx.t.db.select().from(users).where(eq(users.id, admin.userId));
+  await grantPlatformAdmin(ctx.t.db, { email: row!.email }, { kind: "system" });
+  const at = new Date(Date.now() - 3 * 3_600_000);
+  await stampSession(ctx, admin.headers.cookie, at);
+  const until = (await meOf(admin)).adminConfirmedUntil as string;
+  expect(until).toMatch(/(Z|[+-]\d\d:\d\d)$/);
+  expect(new Date(until).getTime()).toBe(at.getTime() + 24 * 3_600_000);
 });

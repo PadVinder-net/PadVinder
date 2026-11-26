@@ -31,6 +31,7 @@ import { meRoutes } from "./routes/me";
 import { membershipRequestRoutes } from "./routes/membership-requests";
 import { membershipRoutes } from "./routes/memberships";
 import { organizationRoutes } from "./routes/organizations";
+import { passkeyRoutes } from "./routes/passkeys";
 import { platformAdminRoutes } from "./routes/platform-admins";
 import { problemReportRoutes } from "./routes/problem-reports";
 import { speciesRoutes } from "./routes/species";
@@ -140,6 +141,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(membershipRoutes, { db: deps.db });
       await api.register(organizationRoutes, { db: deps.db, queueMail: deps.queueMail });
       await api.register(platformAdminRoutes, { db: deps.db });
+      await api.register(passkeyRoutes, { db: deps.db, queueMail: deps.queueMail });
       await api.register(userRoutes, { db: deps.db });
       await api.register(speciesRoutes, { db: deps.db });
       await api.register(auditLogRoutes, { db: deps.db });

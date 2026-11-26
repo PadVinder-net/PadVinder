@@ -20,12 +20,14 @@ export const meFixture: MeResponse = {
     email: "noor@example.test",
     phone: null,
     isPlatformAdmin: false,
+    hasPasskey: false,
   },
   memberships: [
     { id: "0192f3c0-0000-7000-8000-0000000000c1", isCoordinator: false, workingGroup: northGroup },
   ],
   organizationAdminOf: [],
   membershipRequest: null,
+  adminConfirmedUntil: null,
 };
 
 export const meWithoutNameFixture: MeResponse = {

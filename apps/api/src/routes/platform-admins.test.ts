@@ -1,4 +1,4 @@
-import { auditLogEntries, deleteAccount, grantPlatformAdmin, users } from "@padvinder/db";
+import { auditLogEntries, deleteAccount, grantPlatformAdmin, passkeys, users } from "@padvinder/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
@@ -262,4 +262,22 @@ test("a POST from a foreign Origin is refused", async () => {
     { email },
   );
   expect(own.statusCode).toBe(200);
+});
+
+test("each platform admin shows hasPasskey", async () => {
+  const email = uniqueAddress("platform-key");
+  const login = await loginAs(ctx, email);
+  await grantPlatformAdmin(ctx.t.db, { email }, { kind: "system" });
+  const find = async () =>
+    rows(await list(cast.members.platformAdmin)).find((row) => row.userId === login.userId);
+  expect((await find())?.hasPasskey).toBe(false);
+  await ctx.t.db.insert(passkeys).values({
+    userId: login.userId,
+    publicKey: "pk",
+    credentialID: `cred-${uuidv7()}`,
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+  });
+  expect((await find())?.hasPasskey).toBe(true);
 });

@@ -6,6 +6,7 @@ import {
   type MeResponse,
 } from "@padvinder/contracts";
 import {
+  countPasskeys,
   deleteAccount,
   getMeRoles,
   updateUserProfile,
@@ -17,6 +18,7 @@ import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import type { Actor } from "../permissions/actor";
+import { adminConfirmedUntil } from "../permissions/confirmation";
 import { apiError, apiErrorBody, errorResponses } from "../errors";
 import { toMembershipRequest } from "../serializers/membership-requests";
 
@@ -56,10 +58,12 @@ export const meRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) =
   /** The profile and the platform flag come from the actor, read with the session. */
   async function toMe(actor: Actor, user: UserProfile): Promise<MeResponse> {
     const { membershipRequest, ...roles } = await getMeRoles(db, actor.userId);
+    const hasPasskey = (await countPasskeys(db, actor.userId)) > 0;
     return {
-      user: { ...user, isPlatformAdmin: actor.isPlatformAdmin },
+      user: { ...user, isPlatformAdmin: actor.isPlatformAdmin, hasPasskey },
       ...roles,
       membershipRequest: membershipRequest && toMembershipRequest(membershipRequest),
+      adminConfirmedUntil: adminConfirmedUntil(actor)?.toISOString() ?? null,
     };
   }
 

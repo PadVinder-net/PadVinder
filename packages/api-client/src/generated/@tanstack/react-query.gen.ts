@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { addMembers, addOrganizationAdmin, addPlatformAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, deleteUser, findAccount, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listAuditLogEntries, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listPlatformAdmins, listReviewableMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, removePlatformAdmin, reportProblem, triggerTestError, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
-import type { AddMembersData, AddMembersError, AddMembersResponse2, AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, AddPlatformAdminData, AddPlatformAdminError, AddPlatformAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, FindAccountData, FindAccountError, FindAccountResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListAuditLogEntriesData, ListAuditLogEntriesError, ListAuditLogEntriesResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListPlatformAdminsData, ListPlatformAdminsError, ListPlatformAdminsResponse, ListReviewableMembershipRequestsData, ListReviewableMembershipRequestsError, ListReviewableMembershipRequestsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, RemovePlatformAdminData, RemovePlatformAdminError, RemovePlatformAdminResponse, ReportProblemData, ReportProblemError, ReportProblemResponse, TriggerTestErrorData, TriggerTestErrorError, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { addMembers, addOrganizationAdmin, addPlatformAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, deleteUser, findAccount, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listAuditLogEntries, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listPasskeys, listPlatformAdmins, listReviewableMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, removePasskey, removePlatformAdmin, reportProblem, resetOrganizationAdminPasskeys, resetPlatformAdminPasskeys, triggerTestError, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
+import type { AddMembersData, AddMembersError, AddMembersResponse2, AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, AddPlatformAdminData, AddPlatformAdminError, AddPlatformAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, FindAccountData, FindAccountError, FindAccountResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListAuditLogEntriesData, ListAuditLogEntriesError, ListAuditLogEntriesResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListPasskeysData, ListPasskeysError, ListPasskeysResponse, ListPlatformAdminsData, ListPlatformAdminsError, ListPlatformAdminsResponse, ListReviewableMembershipRequestsData, ListReviewableMembershipRequestsError, ListReviewableMembershipRequestsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, RemovePasskeyData, RemovePasskeyError, RemovePasskeyResponse, RemovePlatformAdminData, RemovePlatformAdminError, RemovePlatformAdminResponse, ReportProblemData, ReportProblemError, ReportProblemResponse, ResetOrganizationAdminPasskeysData, ResetOrganizationAdminPasskeysError, ResetOrganizationAdminPasskeysResponse, ResetPlatformAdminPasskeysData, ResetPlatformAdminPasskeysError, ResetPlatformAdminPasskeysResponse, TriggerTestErrorData, TriggerTestErrorError, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -430,6 +430,75 @@ export const removePlatformAdminMutation = (options?: Partial<Options<RemovePlat
     const mutationOptions: UseMutationOptions<RemovePlatformAdminResponse, RemovePlatformAdminError, Options<RemovePlatformAdminData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await removePlatformAdmin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listPasskeysQueryKey = (options?: Options<ListPasskeysData>) => createQueryKey('listPasskeys', options);
+
+/**
+ * The logged-in admin's own passkeys, oldest first
+ */
+export const listPasskeysOptions = (options?: Options<ListPasskeysData>) => queryOptions<ListPasskeysResponse, ListPasskeysError, ListPasskeysResponse, ReturnType<typeof listPasskeysQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listPasskeys({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listPasskeysQueryKey(options)
+});
+
+/**
+ * Remove one of the logged-in admin's own passkeys; 404 for another person's
+ */
+export const removePasskeyMutation = (options?: Partial<Options<RemovePasskeyData>>): UseMutationOptions<RemovePasskeyResponse, RemovePasskeyError, Options<RemovePasskeyData>> => {
+    const mutationOptions: UseMutationOptions<RemovePasskeyResponse, RemovePasskeyError, Options<RemovePasskeyData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await removePasskey({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Remove all passkeys of an admin of the organization (its admins and platform admins), for someone who lost their device. Never one's own; an organization admin cannot reset a platform admin's
+ */
+export const resetOrganizationAdminPasskeysMutation = (options?: Partial<Options<ResetOrganizationAdminPasskeysData>>): UseMutationOptions<ResetOrganizationAdminPasskeysResponse, ResetOrganizationAdminPasskeysError, Options<ResetOrganizationAdminPasskeysData>> => {
+    const mutationOptions: UseMutationOptions<ResetOrganizationAdminPasskeysResponse, ResetOrganizationAdminPasskeysError, Options<ResetOrganizationAdminPasskeysData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await resetOrganizationAdminPasskeys({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Remove all passkeys of a platform admin (platform admins), for someone who lost their device. Never one's own
+ */
+export const resetPlatformAdminPasskeysMutation = (options?: Partial<Options<ResetPlatformAdminPasskeysData>>): UseMutationOptions<ResetPlatformAdminPasskeysResponse, ResetPlatformAdminPasskeysError, Options<ResetPlatformAdminPasskeysData>> => {
+    const mutationOptions: UseMutationOptions<ResetPlatformAdminPasskeysResponse, ResetPlatformAdminPasskeysError, Options<ResetPlatformAdminPasskeysData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await resetPlatformAdminPasskeys({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

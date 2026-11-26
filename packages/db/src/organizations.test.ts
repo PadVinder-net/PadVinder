@@ -115,6 +115,7 @@ test("getOrganization lists the admins by name, without deleted accounts", async
         hasLoggedIn: false,
         hasPasskey: false,
         mayResetPasskeys: false,
+        isPlatformAdmin: false,
       },
       {
         userId: organization.adminUserId,
@@ -123,6 +124,7 @@ test("getOrganization lists the admins by name, without deleted accounts", async
         hasLoggedIn: true,
         hasPasskey: false,
         mayResetPasskeys: false,
+        isPlatformAdmin: false,
       },
     ],
   });

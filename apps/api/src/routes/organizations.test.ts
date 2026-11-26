@@ -1,7 +1,10 @@
 import {
   auditLogEntries,
+  grantOrganizationAdmin,
+  grantPlatformAdmin,
   organizationAdmins,
   organizations,
+  passkeys,
   users,
   workingGroupMemberships,
 } from "@padvinder/db";
@@ -10,7 +13,7 @@ import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "../test-env";
 import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
-import { createTestApp, type TestApp } from "../testing/login";
+import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -509,4 +512,65 @@ test("a new working group queues first-coordinator; making a member coordinator 
     expect(res.statusCode).toBe(200);
   });
   expect(raised).toEqual([]);
+});
+
+test("each admin shows hasPasskey; mayResetPasskeys is false for yourself and for a platform admin when you are an organization admin", async () => {
+  const system = { kind: "system" } as const;
+  const organization = cast.otherOrganization.id;
+  const plain = await loginAs(ctx, `plain-admin-${uuidv7().slice(-8)}@example.test`, {
+    name: "Gewone Beheerder",
+  });
+  const platform = await loginAs(ctx, `platform-admin-${uuidv7().slice(-8)}@example.test`, {
+    name: "Hoofd Beheerder",
+  });
+  const plainEmail = (await ctx.t.db.select().from(users).where(eq(users.id, plain.userId)))[0]!
+    .email;
+  const platformEmail = (
+    await ctx.t.db.select().from(users).where(eq(users.id, platform.userId))
+  )[0]!.email;
+  await grantOrganizationAdmin(
+    ctx.t.db,
+    { email: plainEmail, organizationId: organization },
+    system,
+  );
+  await grantOrganizationAdmin(
+    ctx.t.db,
+    { email: platformEmail, organizationId: organization },
+    system,
+  );
+  await grantPlatformAdmin(ctx.t.db, { email: platformEmail }, system);
+  await ctx.t.db.insert(passkeys).values({
+    userId: plain.userId,
+    publicKey: "pk",
+    credentialID: `cred-${uuidv7()}`,
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+  });
+
+  type Row = { userId: string; hasPasskey: boolean; mayResetPasskeys: boolean };
+  const admins = async (who: Who) =>
+    new Map(
+      (
+        (await send(who, "GET", `/api/organizations/${organization}`)).json() as { admins: Row[] }
+      ).admins.map((admin) => [admin.userId, admin]),
+    );
+
+  // The organization's own admin (recently confirmed) may reset the plain admin only.
+  const own = cast.members.organizationAdminOtherOrganization;
+  const seenByAdmin = await admins(own);
+  expect(seenByAdmin.get(own.userId)).toMatchObject({ hasPasskey: false, mayResetPasskeys: false });
+  expect(seenByAdmin.get(plain.userId)).toMatchObject({ hasPasskey: true, mayResetPasskeys: true });
+  expect(seenByAdmin.get(platform.userId)).toMatchObject({
+    hasPasskey: false,
+    mayResetPasskeys: false,
+  });
+
+  // A platform admin may reset every admin but themself.
+  const seenByPlatform = await admins(cast.members.platformAdmin);
+  expect(seenByPlatform.get(plain.userId)?.mayResetPasskeys).toBe(true);
+  expect(seenByPlatform.get(platform.userId)?.mayResetPasskeys).toBe(true);
+  expect(seenByPlatform.get(own.userId)?.mayResetPasskeys).toBe(true);
+  const seenByThemself = await admins(platform);
+  expect(seenByThemself.get(platform.userId)?.mayResetPasskeys).toBe(false);
 });

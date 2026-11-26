@@ -12,6 +12,7 @@ export * from "./me";
 export * from "./members";
 export * from "./membership-requests";
 export * from "./organizations";
+export * from "./passkeys";
 export * from "./platform-admins";
 export * from "./problem-reports";
 export * from "./species";

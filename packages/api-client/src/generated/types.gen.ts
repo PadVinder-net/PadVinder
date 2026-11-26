@@ -215,6 +215,7 @@ export type MeResponseInput = {
         email: string;
         phone: string | null;
         isPlatformAdmin: boolean;
+        hasPasskey: boolean;
     };
     memberships: Array<{
         id: string;
@@ -226,6 +227,7 @@ export type MeResponseInput = {
         name: string;
     }>;
     membershipRequest: MembershipRequestInput | null;
+    adminConfirmedUntil: string | null;
 };
 
 export type UpdateMeRequestInput = {
@@ -286,6 +288,16 @@ export type UpdateOrganizationRequestInput = {
 
 export type AddOrganizationAdminRequestInput = {
     email: string;
+};
+
+export type PasskeyInput = {
+    id: string;
+    createdAt: string;
+    backedUp: boolean;
+};
+
+export type PasskeyListResponseInput = {
+    passkeys: Array<PasskeyInput>;
 };
 
 export type PlatformAdminInput = {
@@ -554,6 +566,7 @@ export type MeResponse = {
         email: string;
         phone: string | null;
         isPlatformAdmin: boolean;
+        hasPasskey: boolean;
     };
     memberships: Array<{
         id: string;
@@ -565,6 +578,7 @@ export type MeResponse = {
         name: string;
     }>;
     membershipRequest: MembershipRequest | null;
+    adminConfirmedUntil: string | null;
 };
 
 export type UpdateMeRequest = {
@@ -625,6 +639,16 @@ export type UpdateOrganizationRequest = {
 
 export type AddOrganizationAdminRequest = {
     email: string;
+};
+
+export type Passkey = {
+    id: string;
+    createdAt: string;
+    backedUp: boolean;
+};
+
+export type PasskeyListResponse = {
+    passkeys: Array<Passkey>;
 };
 
 export type PlatformAdmin = {
@@ -1468,6 +1492,161 @@ export type RemovePlatformAdminResponses = {
 };
 
 export type RemovePlatformAdminResponse = RemovePlatformAdminResponses[keyof RemovePlatformAdminResponses];
+
+export type ListPasskeysData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/passkeys';
+};
+
+export type ListPasskeysErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+};
+
+export type ListPasskeysError = ListPasskeysErrors[keyof ListPasskeysErrors];
+
+export type ListPasskeysResponses = {
+    /**
+     * Default Response
+     */
+    200: PasskeyListResponse;
+};
+
+export type ListPasskeysResponse = ListPasskeysResponses[keyof ListPasskeysResponses];
+
+export type RemovePasskeyData = {
+    body?: never;
+    path: {
+        passkeyId: string;
+    };
+    query?: never;
+    url: '/api/passkeys/{passkeyId}';
+};
+
+export type RemovePasskeyErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type RemovePasskeyError = RemovePasskeyErrors[keyof RemovePasskeyErrors];
+
+export type RemovePasskeyResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type RemovePasskeyResponse = RemovePasskeyResponses[keyof RemovePasskeyResponses];
+
+export type ResetOrganizationAdminPasskeysData = {
+    body?: never;
+    path: {
+        organizationId: string;
+        userId: string;
+    };
+    query?: never;
+    url: '/api/organizations/{organizationId}/admins/{userId}/passkeys';
+};
+
+export type ResetOrganizationAdminPasskeysErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type ResetOrganizationAdminPasskeysError = ResetOrganizationAdminPasskeysErrors[keyof ResetOrganizationAdminPasskeysErrors];
+
+export type ResetOrganizationAdminPasskeysResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type ResetOrganizationAdminPasskeysResponse = ResetOrganizationAdminPasskeysResponses[keyof ResetOrganizationAdminPasskeysResponses];
+
+export type ResetPlatformAdminPasskeysData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/api/platform-admins/{userId}/passkeys';
+};
+
+export type ResetPlatformAdminPasskeysErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type ResetPlatformAdminPasskeysError = ResetPlatformAdminPasskeysErrors[keyof ResetPlatformAdminPasskeysErrors];
+
+export type ResetPlatformAdminPasskeysResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type ResetPlatformAdminPasskeysResponse = ResetPlatformAdminPasskeysResponses[keyof ResetPlatformAdminPasskeysResponses];
 
 export type FindAccountData = {
     body: FindAccountRequestInput;
