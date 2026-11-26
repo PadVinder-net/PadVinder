@@ -647,16 +647,20 @@ test("an unconfirmed platform admin receives no worker-heartbeat and no event of
 
 test("a confirmation that runs out while the stream is open stops the admin events without a reconnect", async () => {
   const admin = cast.members.organizationAdminUnconfirmed;
-  // Confirmed for one more second and a half; the stream's own check is an hour away.
+  // Confirmed for 4 more seconds; the stream's own check is an hour away.
   const window = 24 * 60 * 60 * 1000;
-  await stampSession(ctx, admin.headers.cookie!, new Date(Date.now() - window + 1_500));
+  const stamp = new Date(Date.now() - window + 4_000);
+  await stampSession(ctx, admin.headers.cookie!, stamp);
   const streams = await openForCast(["organizationAdminUnconfirmed"] as const);
   try {
     await sendRequestsChanged(cast.otherGroup);
     await expect(streams.organizationAdminUnconfirmed.nextEvent()).resolves.toEqual(
       requestsChanged(cast.otherGroup),
     );
-    await new Promise((resolve) => setTimeout(resolve, 1_700));
+    // Wait until the window has passed, computed from the stamp.
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, stamp.getTime() + window + 200 - Date.now())),
+    );
     await sendRequestsChanged(cast.otherGroup);
     await expectNothing([streams.organizationAdminUnconfirmed]);
   } finally {
