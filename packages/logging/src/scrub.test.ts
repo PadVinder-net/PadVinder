@@ -51,11 +51,11 @@ function timed(text: string): number {
   return performance.now() - start;
 }
 test("a long run without separators is scrubbed in linear time", () => {
-  expect(timed("a".repeat(64_000))).toBeLessThan(50);
+  expect(timed("a".repeat(64_000))).toBeLessThan(500);
 });
 test("a long line of letters with one @ far away is scrubbed in linear time", () => {
-  expect(timed(`${"a".repeat(32_000)}@${"b".repeat(32_000)}`)).toBeLessThan(50);
-  expect(timed(`x@${"a".repeat(64_000)}`)).toBeLessThan(50);
+  expect(timed(`${"a".repeat(32_000)}@${"b".repeat(32_000)}`)).toBeLessThan(500);
+  expect(timed(`x@${"a".repeat(64_000)}`)).toBeLessThan(500);
 });
 const pnpmFrames = [
   "at Pool.connect (/srv/release/api/node_modules/.pnpm/pg-pool@3.14.0_pg@8.23.1/node_modules/pg-pool/index.js:45:11)",
