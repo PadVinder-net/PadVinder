@@ -19,6 +19,7 @@ export { normalizeCode } from "./lib/code";
 export { isPhoneScreen } from "./lib/is-phone";
 export { isUuid } from "./lib/is-uuid";
 export { capitalizeFirst } from "./lib/text";
+export { auditActionGroupLabels, auditLogPersonName, auditLogSentence } from "./lib/audit-log";
 export { CodeForm, type CodeFormProps } from "./components/login/code-form";
 export { EmailForm, type EmailFormProps } from "./components/login/email-form";
 export { NameForm, type NameFormProps } from "./components/login/name-form";
@@ -109,3 +110,9 @@ export {
   OrganizationAdminsTable,
   type OrganizationAdminsTableProps,
 } from "./components/administration/organization-admins-table";
+export { AuditLogTable, type AuditLogTableProps } from "./components/audit-log/audit-log-table";
+export {
+  AuditLogFilters,
+  type AuditLogFiltersProps,
+  type AuditLogFilterValue,
+} from "./components/audit-log/audit-log-filters";
