@@ -1,50 +1,21 @@
-import { createLogger, installCrashHandlers } from "@padvinder/logging";
-import { loadWorkerEnv, type WorkerEnv } from "./env";
-import { startWorker } from "./start-worker";
+// Sentry starts before anything loads `pg` or `http`, so they are instrumented: this
+// file imports only the monitoring package, and loads the API itself afterwards. The bundle
+// hoists every static import of an external package to the top, so no other import goes here.
+import {
+  readMonitoringSettings,
+  startServerMonitoring,
+  type MonitoringSettings,
+} from "@padvinder/monitoring";
 
-let env: WorkerEnv;
+let settings: MonitoringSettings;
 try {
-  env = loadWorkerEnv(process.env);
+  settings = readMonitoringSettings(process.env);
 } catch (error) {
-  // A configuration mistake: the message names every problem, a stack trace adds nothing.
+  // A configuration mistake: the message names the variable, a stack trace adds nothing.
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 }
-const logger = createLogger({ service: "worker", level: env.LOG_LEVEL });
-installCrashHandlers(logger);
+startServerMonitoring({ service: "worker", settings });
 
-// A terminal Ctrl-C reaches both tsx and the worker, so a repeat within this window is not a force.
-const FORCE_EXIT_AFTER_MS = 1_000;
-let shutdownStartedAt: number | undefined;
-let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
-
-async function shutdown(signal: string): Promise<void> {
-  if (shutdownStartedAt !== undefined) {
-    if (Date.now() - shutdownStartedAt >= FORCE_EXIT_AFTER_MS) {
-      logger.warn(`Received ${signal} again, exiting now`);
-      process.exit(1);
-    }
-    return;
-  }
-  shutdownStartedAt = Date.now();
-  logger.info(`Received ${signal}, shutting down`);
-  try {
-    await worker?.stop();
-    process.exit(0);
-  } catch (error) {
-    logger.error({ err: error }, "Shutdown failed");
-    process.exit(1);
-  }
-}
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
-process.on("SIGINT", () => void shutdown("SIGINT"));
-// Alwaysdata restarts a service by sending SIGTERM and starting it again once it has exited. SIGHUP is handled the same way.
-process.on("SIGHUP", () => void shutdown("SIGHUP"));
-
-try {
-  worker = await startWorker(env, logger);
-  logger.info({ commit: env.GIT_COMMIT }, "Worker started");
-} catch {
-  // startWorker has logged and cleaned up. Exit deliberately so the supervisor restarts us.
-  process.exit(1);
-}
+const { run } = await import("./run");
+await run();

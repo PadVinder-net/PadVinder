@@ -37,6 +37,7 @@ test("logs and rejects when the database is unreachable", async () => {
         DATABASE_URL: "postgres://padvinder:padvinder@127.0.0.1:1/none",
         LOG_LEVEL: "info",
         GIT_COMMIT: "dev",
+        PADVINDER_ENVIRONMENT: "development",
         ...mailSettings,
       },
       logger,
@@ -94,6 +95,7 @@ test("with MAIL_SUBJECT_PREFIX the worker's mails start with it", async () => {
     DATABASE_URL: t!.url,
     LOG_LEVEL: "info",
     GIT_COMMIT: "dev",
+    PADVINDER_ENVIRONMENT: "development",
     ...mailSettings,
     MAIL_SUBJECT_PREFIX: "[STAGING]",
   };

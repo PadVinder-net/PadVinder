@@ -1,4 +1,5 @@
 import { LOG_LEVELS } from "@padvinder/logging";
+import { DEPLOYMENT_ENVIRONMENTS } from "@padvinder/monitoring";
 import { smtpSettingsShape } from "@padvinder/mail";
 import { z } from "zod";
 
@@ -16,6 +17,7 @@ const workerEnvSchema = z.object({
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
   // The commit of the release, from release.env; "dev" outside a release.
   GIT_COMMIT: z.string().min(1).default("dev"),
+  PADVINDER_ENVIRONMENT: z.enum(DEPLOYMENT_ENVIRONMENTS).default("development"),
   // The links in the mails the worker sends: the app is `{origin}/app/`, the portal `{origin}/`.
   PUBLIC_ORIGIN: z.string().refine(isOrigin, {
     error: "is not an origin: use scheme, host and optional port, without a path",

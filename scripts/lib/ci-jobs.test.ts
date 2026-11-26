@@ -127,6 +127,7 @@ describe("jobsFor", () => {
       "apps/api/src/main.ts",
       "apps/api/src/run.ts",
       "apps/worker/src/main.ts",
+      "apps/worker/src/run.ts",
       "packages/db/src/migrate.ts",
     ]) {
       expect(running([path]), path).toEqual(["e2e", "release", "deploy-test"]);
