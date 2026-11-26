@@ -25,7 +25,13 @@ export type InfraConfig = {
 const accountPattern = /^[a-z0-9][a-z0-9_-]*$/;
 
 /** The env file's secrets besides the database password, in the order errors name them. */
-const envFileSecretNames = ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD", "SENTRY_DSN"] as const;
+const envFileSecretNames = [
+  "AUTH_SECRET",
+  "SMTP_USER",
+  "SMTP_PASSWORD",
+  "SENTRY_DSN",
+  "SENTRY_BROWSER_DSN",
+] as const;
 /** The API refuses a shorter AUTH_SECRET (apps/api/src/env.ts). */
 const authSecretMinLength = 32;
 /**
@@ -136,13 +142,21 @@ export function loadInfraConfig(
         "SENTRY_DSN must be the DSN of the Sentry project, https://<key>@<host>/<project ID> (Sentry: Settings, Projects, padvinder, Client Keys), or the services do not start",
       );
     }
+    if (!isHttpsDsn(value("SENTRY_BROWSER_DSN"))) {
+      throw new Error(
+        "SENTRY_BROWSER_DSN must be the DSN of the browser Sentry project, https://<key>@<host>/<project ID> (Sentry: Settings, Projects, padvinder-browser, Client Keys), or the tunnel and the problem reports do not reach Sentry",
+      );
+    }
     config.databasePassword = value("DATABASE_PASSWORD");
     config.login = {
       authSecret: value("AUTH_SECRET"),
       smtpUser: value("SMTP_USER"),
       smtpPassword: value("SMTP_PASSWORD"),
     };
-    config.monitoring = { sentryDsn: value("SENTRY_DSN") };
+    config.monitoring = {
+      sentryDsn: value("SENTRY_DSN"),
+      sentryBrowserDsn: value("SENTRY_BROWSER_DSN"),
+    };
   }
   if (wantSsh) {
     config.ssh = {

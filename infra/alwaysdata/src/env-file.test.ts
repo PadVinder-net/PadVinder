@@ -17,6 +17,7 @@ const login: LoginSecrets = {
 };
 const monitoring: MonitoringSecrets = {
   sentryDsn: "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
+  sentryBrowserDsn: "https://fedcba9876543210@o123456.ingest.de.sentry.io/1234567",
 };
 
 test("renderEnvFile encodes the password in DATABASE_URL", () => {
@@ -51,6 +52,7 @@ test("renderEnvFile writes one KEY=value per line after a header comment", () =>
     "LOG_LEVEL=info",
     "PADVINDER_ENVIRONMENT=production",
     "SENTRY_DSN=https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
+    "SENTRY_BROWSER_DSN=https://fedcba9876543210@o123456.ingest.de.sentry.io/1234567",
     "PUBLIC_ORIGIN=https://padvinder.net",
     `AUTH_SECRET=${"a".repeat(64)}`,
     "SMTP_HOST=smtp-acme.alwaysdata.net",
@@ -145,7 +147,7 @@ test("the API accepts the env file as Node reads it, in every environment", () =
       env,
       databasePassword: "p@ss/w+rd #1",
       login: awkward,
-      monitoring: { sentryDsn: dsn },
+      monitoring: { sentryDsn: dsn, sentryBrowserDsn: dsn },
     });
     const parsed = parseWithNode(content);
     expect(parsed.AUTH_SECRET).toBe(awkward.authSecret);
@@ -153,6 +155,7 @@ test("the API accepts the env file as Node reads it, in every environment", () =
     expect(parsed.SMTP_PASSWORD).toBe(awkward.smtpPassword);
     expect(parsed.MAIL_FROM).toBe("PadVinder <noreply@padvinder.net>");
     expect(parsed.SENTRY_DSN).toBe(dsn);
+    expect(parsed.SENTRY_BROWSER_DSN).toBe(dsn);
     expect(parsed.PADVINDER_ENVIRONMENT).toBe(env);
 
     const apiEnv = loadApiEnv({ ...parsed, GIT_COMMIT: "abc1234" });

@@ -9,6 +9,7 @@ const complete = {
   SMTP_USER: "noreply@padvinder.net",
   SMTP_PASSWORD: "smtp-password-value",
   SENTRY_DSN: "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
+  SENTRY_BROWSER_DSN: "https://fedcba9876543210@o123456.ingest.de.sentry.io/1234567",
   DEPLOY_SSH_AGENT_SOCK: "/tmp/ssh-agent.sock",
   SSH_KNOWN_HOSTS_FILE: "/tmp/known_hosts",
 };
@@ -24,7 +25,10 @@ test("loadInfraConfig reads every variable and derives the SSH host and user", (
       smtpUser: "noreply@padvinder.net",
       smtpPassword: "smtp-password-value",
     },
-    monitoring: { sentryDsn: "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321" },
+    monitoring: {
+      sentryDsn: "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
+      sentryBrowserDsn: "https://fedcba9876543210@o123456.ingest.de.sentry.io/1234567",
+    },
     ssh: {
       host: "ssh-acme.alwaysdata.net",
       user: "acme",
@@ -49,6 +53,7 @@ test("loadInfraConfig names every missing variable without values", () => {
     "SMTP_USER",
     "SMTP_PASSWORD",
     "SENTRY_DSN",
+    "SENTRY_BROWSER_DSN",
     "DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE",
     "SSH_KNOWN_HOSTS_FILE",
   ]) {
@@ -108,7 +113,13 @@ test("loadInfraConfig rejects an account name that is not a plain lowercase name
 });
 
 test("loadInfraConfig names a missing env file secret alone, so the message says what to set", () => {
-  for (const name of ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD", "SENTRY_DSN"]) {
+  for (const name of [
+    "AUTH_SECRET",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "SENTRY_DSN",
+    "SENTRY_BROWSER_DSN",
+  ]) {
     expect(() => loadInfraConfig({ ...complete, [name]: undefined }, "staging")).toThrow(
       `Set these environment variables: ${name}`,
     );
@@ -140,7 +151,13 @@ test("loadInfraConfig refuses secrets the env file cannot carry, naming the vari
     "a\nb",
     "tést",
   ];
-  for (const name of ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD", "SENTRY_DSN"]) {
+  for (const name of [
+    "AUTH_SECRET",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "SENTRY_DSN",
+    "SENTRY_BROWSER_DSN",
+  ]) {
     for (const bad of unsafe) {
       const value = bad.padEnd(40, "x");
       let message = "";
@@ -176,6 +193,19 @@ test("loadInfraConfig refuses a SENTRY_DSN that is not an https DSN, without its
       message = (error as Error).message;
     }
     expect(message).toMatch(/^SENTRY_DSN must be/);
+    expect(message).not.toContain(bad);
+  }
+});
+
+test("loadInfraConfig refuses a SENTRY_BROWSER_DSN that is not an https DSN, without its value", () => {
+  for (const bad of ["not-a-url", "http://key@o1.ingest.de.sentry.io/2", "https://example.com"]) {
+    let message = "";
+    try {
+      loadInfraConfig({ ...complete, SENTRY_BROWSER_DSN: bad }, "staging");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/^SENTRY_BROWSER_DSN must be/);
     expect(message).not.toContain(bad);
   }
 });

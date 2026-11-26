@@ -2,7 +2,7 @@
 // Usage: pnpm infra:provision --environment <staging|production> [--apply [--rotate-password]]
 //        pnpm infra:provision --environment <staging|production> --inspect
 // Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, AUTH_SECRET, SMTP_USER,
-// SMTP_PASSWORD, SENTRY_DSN, SSH_KNOWN_HOSTS_FILE, and DEPLOY_SSH_AGENT_SOCK or
+// SMTP_PASSWORD, SENTRY_DSN, SENTRY_BROWSER_DSN, SSH_KNOWN_HOSTS_FILE, and DEPLOY_SSH_AGENT_SOCK or
 // DEPLOY_SSH_KEY_FILE from the environment (--inspect only the first two). Its output may
 // land in a public log: every line goes through redactForLog(): secrets are hidden, IP
 // addresses show as <ip> and the account name as <account>.
@@ -232,7 +232,7 @@ function secretsOf(config: InfraConfig): string[] {
     config.apiKey,
     config.databasePassword ?? "",
     ...(login ? [login.authSecret, login.smtpUser, login.smtpPassword] : []),
-    ...(monitoring ? [monitoring.sentryDsn] : []),
+    ...(monitoring ? [monitoring.sentryDsn, monitoring.sentryBrowserDsn] : []),
   ];
 }
 
@@ -270,7 +270,7 @@ export async function runProvision(input: {
       throw new Error("AUTH_SECRET, SMTP_USER and SMTP_PASSWORD are not set");
     }
     const monitoring = config.monitoring;
-    if (monitoring === undefined) throw new Error("SENTRY_DSN is not set");
+    if (monitoring === undefined) throw new Error("SENTRY_DSN and SENTRY_BROWSER_DSN are not set");
     const env = args.environment;
     // Read-only, and before anything is written: the services must name the main SSH user.
     const mainSshUserId = await findMainSshUserId(api, config.account);

@@ -63,6 +63,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_BROWSER_DSN: ${{ secrets.SENTRY_BROWSER_DSN }}
           ENVIRONMENT: ${{ inputs.environment }}
           APPLY: ${{ inputs.apply }}
           ROTATE_PASSWORD: ${{ inputs.rotate-password }}
