@@ -31,6 +31,8 @@ const apiErrorMessages: Record<string, string> = {
   own_account: "Dit is je eigen account. Dat verwijder je in de app, onder Meer > Profiel.",
   not_allowed: "Dit mag je niet doen.",
   not_found: "Dit bestaat niet meer.",
+  passkey_required: "Bevestig eerst met je toegangssleutel.",
+  too_many_passkeys: "Je hebt al tien toegangssleutels. Verwijder er eerst een.",
   membership_changed: "Deze persoon heeft intussen een andere rol. Kijk opnieuw.",
   name_taken: "Deze naam bestaat al.",
   last_organization_admin:

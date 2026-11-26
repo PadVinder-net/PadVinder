@@ -8,10 +8,14 @@ function m(workingGroupId: string, organizationId: string, as: "volunteer" | "co
   return { membershipId: `m-${workingGroupId}`, workingGroupId, organizationId, isCoordinator };
 }
 
+const NOW = new Date("2026-11-26T12:00:00Z");
+
 function actor(userId: string, parts: Partial<Omit<Actor, "userId" | "user">>): Actor {
   return {
     userId,
     user: { id: userId, name: "Test", email: "test@example.test", phone: null },
+    passkeyVerifiedAt: null,
+    now: NOW,
     isPlatformAdmin: false,
     memberships: [],
     adminOfOrganizationIds: [],

@@ -2,6 +2,7 @@ import type { Db } from "@padvinder/db";
 import type { FastifyRequest } from "fastify";
 import { expect, test, vi } from "vitest";
 import { createTestApp, loginAs } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 import { loadActor } from "./actor";
 
 test("a database failure while loading the actor is 500, not 401", async () => {
@@ -43,6 +44,8 @@ test("the actor carries the profile, memberships, admin rows and the platform fl
     expect(actor).toEqual({
       userId: noor.userId,
       user: { id: noor.userId, name: "Test Persoon", email: "noor@example.test", phone: null },
+      passkeyVerifiedAt: null,
+      now: expect.any(Date),
       isPlatformAdmin: false,
       memberships: [],
       adminOfOrganizationIds: [],
@@ -93,6 +96,24 @@ test("a database failure while loading access is 500, not 401 or 403", async () 
     expect(res.json()).toMatchObject({ code: "internal_error" });
   } finally {
     vi.restoreAllMocks();
+    await ctx.close();
+  }
+});
+
+test("the actor carries the session's passkeyVerifiedAt, and null for a code session", async () => {
+  const ctx = await createTestApp();
+  try {
+    const noor = await loginAs(ctx, "noor@example.test");
+    const load = () => loadActor(ctx.app, ctx.t.db, { headers: noor.headers } as FastifyRequest);
+    expect((await load())?.passkeyVerifiedAt).toBeNull();
+    const at = new Date("2026-11-26T10:00:00.000Z");
+    await stampSession(ctx, noor.headers.cookie, at);
+    const actor = await load();
+    expect(actor?.passkeyVerifiedAt).toEqual(at);
+    expect(actor?.now).toBeInstanceOf(Date);
+    await stampSession(ctx, noor.headers.cookie, null);
+    expect((await load())?.passkeyVerifiedAt).toBeNull();
+  } finally {
     await ctx.close();
   }
 });

@@ -1,16 +1,20 @@
 import { expect, test } from "vitest";
 import type { Actor } from "./actor";
-import { authorize, decide, organizationRelationTo, relationTo } from "./rules";
+import { authorize, decide, organizationRelationTo, type Permission, relationTo } from "./rules";
 
 function m(workingGroupId: string, organizationId: string, as: "volunteer" | "coordinator") {
   const isCoordinator = as === "coordinator";
   return { membershipId: `m-${workingGroupId}`, workingGroupId, organizationId, isCoordinator };
 }
 
+const NOW = new Date("2026-11-26T12:00:00Z");
+
 function actor(parts: Partial<Omit<Actor, "userId" | "user">>): Actor {
   return {
     userId: "u-1",
     user: { id: "u-1", name: "Test", email: "test@example.test", phone: null },
+    passkeyVerifiedAt: null,
+    now: NOW,
     isPlatformAdmin: false,
     memberships: [],
     adminOfOrganizationIds: [],
@@ -245,4 +249,138 @@ test("a member of a working group is an outsider to its organization", () => {
   expect(organizationRelationTo(actors.adminOtherOrganization, organizationTarget)).toBe(
     "outsider",
   );
+});
+
+const confirmedAt = {
+  recent: new Date(NOW.getTime() - 60 * 1000),
+  confirmed: new Date(NOW.getTime() - 60 * 60 * 1000),
+  none: null,
+};
+const withConfirmation = (a: Actor, c: keyof typeof confirmedAt): Actor => ({
+  ...a,
+  passkeyVerifiedAt: confirmedAt[c],
+});
+
+const newActions = [
+  "passkeys.listOwn",
+  "passkeys.removeOwn",
+  "passkeys.add",
+  "organization.resetAdminPasskeys",
+  "platform.resetPlatformAdminPasskeys",
+] as const;
+
+// One permission per existing action; a new action outside `newActions` is a type error here.
+const existingPermissions = {
+  "system.viewDatabaseDetails": { action: "system.viewDatabaseDetails" },
+  "platform.manageSpecies": { action: "platform.manageSpecies" },
+  "platform.manageOrganizations": { action: "platform.manageOrganizations" },
+  "platform.managePlatformAdmins": { action: "platform.managePlatformAdmins" },
+  "platform.deleteAccounts": { action: "platform.deleteAccounts" },
+  "organization.view": { action: "organization.view", target: organizationTarget },
+  "organization.readAuditLog": { action: "organization.readAuditLog", target: organizationTarget },
+  "organization.changeContact": {
+    action: "organization.changeContact",
+    target: organizationTarget,
+  },
+  "organization.rename": { action: "organization.rename", target: organizationTarget },
+  "organization.manageAdmins": { action: "organization.manageAdmins", target: organizationTarget },
+  "organization.createWorkingGroup": {
+    action: "organization.createWorkingGroup",
+    target: organizationTarget,
+  },
+  "workingGroup.manage": { action: "workingGroup.manage", target },
+  "workingGroup.setCoordinator": { action: "workingGroup.setCoordinator", target },
+  "workingGroup.listMembers": { action: "workingGroup.listMembers", target },
+  "workingGroup.viewMemberContact": { action: "workingGroup.viewMemberContact", target },
+  "workingGroup.reviewRequests": { action: "workingGroup.reviewRequests", target },
+  "workingGroup.addMembers": { action: "workingGroup.addMembers", target },
+  "workingGroup.removeMember": {
+    action: "workingGroup.removeMember",
+    target,
+    memberIsCoordinator: false,
+  },
+} satisfies Record<Exclude<Permission["action"], (typeof newActions)[number]>, Permission>;
+
+test("every existing action decides the same with and without a confirmation", () => {
+  for (const permission of Object.values(existingPermissions) as Permission[]) {
+    for (const [who, a] of Object.entries(actors)) {
+      const unconfirmed = decide(withConfirmation(a, "none"), permission);
+      expect(decide(withConfirmation(a, "recent"), permission), `${permission.action} ${who}`).toBe(
+        unconfirmed,
+      );
+      expect(decide(withConfirmation(a, "confirmed"), permission)).toBe(unconfirmed);
+      expect(unconfirmed).not.toBe("confirm");
+    }
+  }
+});
+
+test.each([
+  ["passkeys.listOwn", "confirmed"],
+  ["passkeys.removeOwn", "recent"],
+  ["platform.resetPlatformAdminPasskeys", "recent"],
+] as const)("%s: per the table, and confirm outside its window", (action, window) => {
+  const permission = { action } as Permission;
+  const isPlatformOnly = action === "platform.resetPlatformAdminPasskeys";
+  const states = ["recent", "confirmed", "none"] as const;
+  for (const c of states) {
+    const expectedAdmin =
+      window === "recent" && c !== "recent" ? "confirm" : c === "none" ? "confirm" : "allowed";
+    expect(
+      decide(withConfirmation(actors.platformAdmin, c), permission),
+      `platformAdmin ${c}`,
+    ).toBe(expectedAdmin);
+    expect(decide(withConfirmation(actors.organizationAdmin, c), permission)).toBe(
+      isPlatformOnly ? "forbidden" : expectedAdmin,
+    );
+    for (const who of ["coordinator", "volunteer", "applicant"] as const) {
+      expect(decide(withConfirmation(actors[who], c), permission), who).toBe("forbidden");
+    }
+  }
+});
+
+test("passkeys.add: allowed without a passkey from any session; with one, confirm unless recently confirmed; forbidden without an admin role", () => {
+  for (const c of ["recent", "confirmed", "none"] as const) {
+    for (const who of ["platformAdmin", "organizationAdmin"] as const) {
+      expect(
+        decide(withConfirmation(actors[who], c), { action: "passkeys.add", hasPasskey: false }),
+      ).toBe("allowed");
+      expect(
+        decide(withConfirmation(actors[who], c), { action: "passkeys.add", hasPasskey: true }),
+      ).toBe(c === "recent" ? "allowed" : "confirm");
+    }
+    for (const hasPasskey of [false, true]) {
+      expect(
+        decide(withConfirmation(actors.coordinator, c), { action: "passkeys.add", hasPasskey }),
+      ).toBe("forbidden");
+    }
+  }
+});
+
+test("organization.resetAdminPasskeys: an admin of another organization and a coordinator of its group get hidden; an organization admin gets forbidden for a platform admin", () => {
+  const reset = (subjectIsPlatformAdmin: boolean): Permission => ({
+    action: "organization.resetAdminPasskeys",
+    target: organizationTarget,
+    subjectIsPlatformAdmin,
+  });
+  const recent = (who: Who) => withConfirmation(actors[who], "recent");
+  expect(decide(recent("platformAdmin"), reset(true))).toBe("allowed");
+  expect(decide(recent("platformAdmin"), reset(false))).toBe("allowed");
+  expect(decide(recent("organizationAdmin"), reset(false))).toBe("allowed");
+  expect(decide(recent("organizationAdmin"), reset(true))).toBe("forbidden");
+  expect(decide(withConfirmation(actors.organizationAdmin, "confirmed"), reset(false))).toBe(
+    "confirm",
+  );
+  expect(decide(withConfirmation(actors.platformAdmin, "none"), reset(false))).toBe("confirm");
+  for (const who of ["adminOtherOrganization", "coordinator", "volunteer", "applicant"] as const) {
+    expect(decide(recent(who), reset(false)), who).toBe("hidden");
+  }
+});
+
+test("authorize throws 403 passkey_required for confirm", () => {
+  expect(() =>
+    authorize(withConfirmation(actors.platformAdmin, "none"), { action: "passkeys.listOwn" }),
+  ).toThrowError(expect.objectContaining({ statusCode: 403, code: "passkey_required" }));
+  expect(() =>
+    authorize(withConfirmation(actors.platformAdmin, "recent"), { action: "passkeys.listOwn" }),
+  ).not.toThrow();
 });

@@ -120,3 +120,19 @@ test("expectStatuses names the members whose status differs", async () => {
   expect(error?.message).toContain("anonymous: expected 200, got 401");
   expect(error?.message).not.toContain("coordinator:");
 });
+
+test("the cast's three admins are recently confirmed; nobody else is stamped", async () => {
+  const { rows } = await ctx.t.pool.query<{ user_id: string; passkey_verified_at: Date | null }>(
+    "select user_id, passkey_verified_at from sessions",
+  );
+  const stamped = new Set(rows.filter((r) => r.passkey_verified_at).map((r) => r.user_id));
+  const admins: CastMember[] = [
+    "platformAdmin",
+    "organizationAdmin",
+    "organizationAdminOtherOrganization",
+  ];
+  expect(stamped).toEqual(new Set(admins.map((who) => cast.members[who].userId)));
+  for (const r of rows.filter((r) => r.passkey_verified_at)) {
+    expect(Date.now() - r.passkey_verified_at!.getTime()).toBeLessThan(10 * 60 * 1000);
+  }
+});

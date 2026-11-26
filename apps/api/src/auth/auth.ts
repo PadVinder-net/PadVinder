@@ -95,6 +95,10 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
     session: {
       expiresIn: 180 * DAY_SECONDS,
       updateAge: DAY_SECONDS,
+      additionalFields: {
+        // Ours: when a passkey last confirmed this session. Read with the session, never set by a client.
+        passkeyVerifiedAt: { type: "date", required: false, input: false },
+      },
     },
     // Per IP address, counted in `rate_limits`. Explicitly off otherwise: Better Auth's default is
     // "on when NODE_ENV is production", in memory. The custom rules replace Better Auth's own,

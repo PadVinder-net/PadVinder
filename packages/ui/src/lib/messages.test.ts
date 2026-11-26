@@ -172,3 +172,10 @@ test("the platform admin texts", () => {
   );
   expect(noAccountMessage).toBe("Geen account met dit adres.");
 });
+
+test.each([
+  ["passkey_required", "Bevestig eerst met je toegangssleutel."],
+  ["too_many_passkeys", "Je hebt al tien toegangssleutels. Verwijder er eerst een."],
+])("the API error %s has its Dutch text", (code, text) => {
+  expect(apiErrorMessage(code)).toBe(text);
+});
