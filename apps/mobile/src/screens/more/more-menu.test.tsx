@@ -8,7 +8,7 @@ import {
   workingGroupsFixture,
 } from "@padvinder/contracts/fixtures";
 import type { MeResponse } from "@padvinder/contracts";
-import { listMembershipRequestsQueryKey } from "@padvinder/api-client";
+import { backgroundRequestMeta, listMembershipRequestsQueryKey } from "@padvinder/api-client";
 import { mockFetch } from "@padvinder/api-client/testing";
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
@@ -80,8 +80,14 @@ test("the count is left out when there are no open requests", async () => {
   expect(link.textContent).toBe("Aanmeldingen");
 });
 
+const inAnHour = () => new Date(Date.now() + 3_600_000).toISOString();
+
 test("an organization admin without a membership sees Aanmeldingen and Leden for the organization's groups", async () => {
-  const admin: MeResponse = { ...applicantMeFixture, organizationAdminOf: [noord.organization] };
+  const admin: MeResponse = {
+    ...applicantMeFixture,
+    organizationAdminOf: [noord.organization],
+    adminConfirmedUntil: inAnHour(),
+  };
   const { calls } = mockFetch({
     "/api/me": admin,
     "/api/working-groups": directory,
@@ -134,4 +140,26 @@ test("the system status screen shows the load error", async () => {
   });
   renderApp("/app/more/system");
   expect(await screen.findByText(/De server is niet bereikbaar/)).toBeVisible();
+});
+
+test("an unconfirmed admin's menu keeps its items, asks for no hidden group and counts nothing", async () => {
+  const admin: MeResponse = { ...applicantMeFixture, organizationAdminOf: [noord.organization] };
+  const { calls } = mockFetch({ "/api/me": admin, "/api/working-groups": directory });
+  renderApp("/app/more");
+  await waitFor(async () =>
+    expect(await menuLinks()).toEqual(["Profiel", "Aanmeldingen", "Leden", "Meld een probleem"]),
+  );
+  expect(calls.some((path) => path.endsWith("/membership-requests"))).toBe(false);
+});
+
+test("the menu's count queries are background requests", async () => {
+  mockFetch({
+    "/api/me": coordinatorMeFixture,
+    "/api/working-groups": directory,
+    [requestsOf(noord.id)]: noordRequests,
+  });
+  const { client } = renderApp("/app/more");
+  const key = listMembershipRequestsQueryKey({ path: { workingGroupId: noord.id } });
+  await waitFor(() => expect(client.getQueryState(key)?.status).toBe("success"));
+  expect(client.getQueryCache().find({ queryKey: key })?.meta).toEqual(backgroundRequestMeta);
 });

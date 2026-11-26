@@ -46,7 +46,7 @@ function MemberOfGroup({ me, membershipId }: { me: MeResponse; membershipId: str
       member={member}
       workingGroupName={workingGroup.name}
       // For convenience only: the API decides, and a refusal shows its text.
-      canRemove={mayRemoveMember(me, workingGroup, member.isCoordinator)}
+      canRemove={mayRemoveMember(me, workingGroup, member.isCoordinator, { now: new Date() })}
       pending={remove.isPending}
       error={remove.isError ? apiErrorMessage(apiErrorCode(remove.error)) : undefined}
       onRemove={() =>

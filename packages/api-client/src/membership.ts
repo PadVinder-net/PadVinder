@@ -202,6 +202,38 @@ export function memberListWorkingGroups(
   return withAdministered(me, directory, memberOf);
 }
 
+/** Whether the user's admin power is confirmed by a passkey at `now` (`adminConfirmedUntil` lies after it). */
+export function isAdminConfirmed(me: MeResponse, now: Date): boolean {
+  return (
+    me.adminConfirmedUntil !== null && new Date(me.adminConfirmedUntil).getTime() > now.getTime()
+  );
+}
+
+/**
+ * Splits working groups into those the app loads and those it only names. A group is `hidden`
+ * while the user is not confirmed and the group is in the list only through an organization admin
+ * role: the user is no member of it (`through: "membership"`, for member lists) or does not
+ * coordinate it (`through: "coordination"`, for request lists). Every other group is `loaded`.
+ * The order is kept.
+ */
+export function splitByConfirmation(
+  me: MeResponse,
+  groups: WorkingGroupSummary[],
+  now: Date,
+  through: "membership" | "coordination" = "membership",
+): { loaded: WorkingGroupSummary[]; hidden: WorkingGroupSummary[] } {
+  const loaded: WorkingGroupSummary[] = [];
+  const hidden: WorkingGroupSummary[] = [];
+  const confirmed = isAdminConfirmed(me, now);
+  const own = new Set(
+    me.memberships
+      .filter((membership) => through === "membership" || membership.isCoordinator)
+      .map((membership) => membership.workingGroup.id),
+  );
+  for (const group of groups) (!confirmed && !own.has(group.id) ? hidden : loaded).push(group);
+  return { loaded, hidden };
+}
+
 function withAdministered(
   me: MeResponse,
   directory: WorkingGroupSummary[],
@@ -228,9 +260,15 @@ export type WorkingGroupRelation =
 export function relationToWorkingGroup(
   me: MeResponse,
   group: WorkingGroupSummary,
+  options?: { now: Date },
 ): WorkingGroupRelation {
-  if (me.user.isPlatformAdmin) return "platformAdmin";
-  if (me.organizationAdminOf.some((organization) => organization.id === group.organization.id))
+  // With `now`, an admin relation counts only while the admin power is confirmed.
+  const adminPower = options === undefined || isAdminConfirmed(me, options.now);
+  if (adminPower && me.user.isPlatformAdmin) return "platformAdmin";
+  if (
+    adminPower &&
+    me.organizationAdminOf.some((organization) => organization.id === group.organization.id)
+  )
     return "organizationAdmin";
   const membership = me.memberships.find((m) => m.workingGroup.id === group.id);
   if (!membership) return "outsider";
@@ -244,8 +282,12 @@ const staff: readonly WorkingGroupRelation[] = [
 ];
 
 /** Coordinators and admins open a member to see the contact details. */
-export function mayOpenMembers(me: MeResponse, group: WorkingGroupSummary): boolean {
-  return staff.includes(relationToWorkingGroup(me, group));
+export function mayOpenMembers(
+  me: MeResponse,
+  group: WorkingGroupSummary,
+  options?: { now: Date },
+): boolean {
+  return staff.includes(relationToWorkingGroup(me, group, options));
 }
 
 /** A coordinator removes volunteers of their group; admins remove anyone. */
@@ -253,8 +295,9 @@ export function mayRemoveMember(
   me: MeResponse,
   group: WorkingGroupSummary,
   memberIsCoordinator: boolean,
+  options?: { now: Date },
 ): boolean {
-  const relation = relationToWorkingGroup(me, group);
+  const relation = relationToWorkingGroup(me, group, options);
   if (relation === "coordinator") return !memberIsCoordinator;
   return staff.includes(relation);
 }

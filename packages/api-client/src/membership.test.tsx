@@ -23,6 +23,8 @@ import {
   otherWorkingGroups,
   relationToWorkingGroup,
   reviewableWorkingGroups,
+  isAdminConfirmed,
+  splitByConfirmation,
   useApproveMembershipRequest,
   useCreateMembershipRequest,
   useDeleteAccount,
@@ -369,5 +371,63 @@ describe("otherWorkingGroups", () => {
       membershipRequest: { ...pendingRequestFixture, status: "rejected" as const },
     };
     expect(otherWorkingGroups(rejected, workingGroupsFixture)).toEqual(workingGroupsFixture);
+  });
+});
+
+describe("the confirmation of admin power", () => {
+  const now = new Date("2026-11-26T12:00:00Z");
+  const later = "2026-11-26T13:00:00Z";
+  const coordinatorAdmin: MeResponse = {
+    ...meFixture,
+    memberships: [
+      { id: "0192f3c0-0000-7000-8000-0000000000c1", isCoordinator: true, workingGroup: noord },
+    ],
+    organizationAdminOf: [noord.organization],
+    adminConfirmedUntil: null,
+  };
+  const volunteerAdmin: MeResponse = {
+    ...coordinatorAdmin,
+    memberships: [
+      { id: "0192f3c0-0000-7000-8000-0000000000c1", isCoordinator: false, workingGroup: noord },
+    ],
+  };
+  const all = reviewableWorkingGroups(coordinatorAdmin, workingGroupsFixture);
+
+  test("splitByConfirmation: an unconfirmed organization admin who coordinates Noord loads Noord and hides the rest", () => {
+    const { loaded, hidden } = splitByConfirmation(coordinatorAdmin, all, now);
+    expect(loaded).toEqual([noord]);
+    expect(hidden).toEqual(all.filter((g) => g.id !== noord.id));
+    expect(hidden.length).toBeGreaterThan(0);
+  });
+
+  test("a confirmed admin loads all; a coordinator without an admin role has nothing hidden", () => {
+    const confirmed = { ...coordinatorAdmin, adminConfirmedUntil: later };
+    expect(splitByConfirmation(confirmed, all, now)).toEqual({ loaded: all, hidden: [] });
+    const plain = { ...coordinatorAdmin, organizationAdminOf: [] };
+    const own = reviewableWorkingGroups(plain, workingGroupsFixture);
+    expect(splitByConfirmation(plain, own, now)).toEqual({ loaded: own, hidden: [] });
+  });
+
+  test("at adminConfirmedUntil exactly the admin's groups are hidden", () => {
+    const edge = { ...coordinatorAdmin, adminConfirmedUntil: now.toISOString() };
+    expect(isAdminConfirmed(edge, now)).toBe(false);
+    expect(splitByConfirmation(edge, all, now).hidden.length).toBe(all.length - 1);
+  });
+
+  test("for request lists a volunteer-admin's own group is hidden too: they do not coordinate it", () => {
+    const groups = reviewableWorkingGroups(volunteerAdmin, workingGroupsFixture);
+    expect(splitByConfirmation(volunteerAdmin, groups, now).loaded).toEqual([noord]);
+    expect(splitByConfirmation(volunteerAdmin, groups, now, "coordination").loaded).toEqual([]);
+  });
+
+  test("mayOpenMembers with now: a volunteer-admin unconfirmed cannot open, confirmed can; without now as before", () => {
+    expect(mayOpenMembers(volunteerAdmin, noord, { now })).toBe(false);
+    expect(mayOpenMembers({ ...volunteerAdmin, adminConfirmedUntil: later }, noord, { now })).toBe(
+      true,
+    );
+    expect(mayOpenMembers(volunteerAdmin, noord)).toBe(true);
+    expect(relationToWorkingGroup(volunteerAdmin, noord, { now })).toBe("volunteer");
+    expect(mayRemoveMember(coordinatorAdmin, noord, true, { now })).toBe(false);
+    expect(mayRemoveMember(coordinatorAdmin, noord, true)).toBe(true);
   });
 });

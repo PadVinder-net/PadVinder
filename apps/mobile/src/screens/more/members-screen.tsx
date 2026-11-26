@@ -25,7 +25,7 @@ function Members({ me }: { me: MeResponse }) {
   if (lists.groups.length === 0) return <p className="text-lg">{apiErrorMessage("not_allowed")}</p>;
   const openable = new Set(
     lists.groups
-      .filter(({ workingGroup }) => mayOpenMembers(me, workingGroup))
+      .filter(({ workingGroup }) => mayOpenMembers(me, workingGroup, { now: new Date() }))
       .map(({ workingGroup }) => workingGroup.id),
   );
   return (
