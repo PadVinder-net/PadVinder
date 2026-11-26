@@ -294,6 +294,7 @@ const existingPermissions = {
   "workingGroup.viewMemberContact": { action: "workingGroup.viewMemberContact", target },
   "workingGroup.reviewRequests": { action: "workingGroup.reviewRequests", target },
   "workingGroup.addMembers": { action: "workingGroup.addMembers", target },
+  "system.triggerTestError": { action: "system.triggerTestError" },
   "workingGroup.removeMember": {
     action: "workingGroup.removeMember",
     target,

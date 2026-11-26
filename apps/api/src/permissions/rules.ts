@@ -78,6 +78,7 @@ export function requiredConfirmation(permission: Permission): "none" | "confirme
     case "platform.manageOrganizations":
     case "platform.managePlatformAdmins":
     case "platform.deleteAccounts":
+    case "system.triggerTestError":
     case "organization.view":
     case "organization.readAuditLog":
     case "organization.changeContact":
