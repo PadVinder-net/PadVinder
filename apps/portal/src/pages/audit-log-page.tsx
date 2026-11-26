@@ -15,10 +15,11 @@ import { NotFoundPage } from "./not-found-page";
 
 type Organization = { id: string; name: string };
 
-/** Entries without an organization (accounts, species) are for platform admins only. */
-const organizationAdminActionGroups = auditActionGroups.filter(
-  (group) => group !== "account" && group !== "species",
-);
+/**
+ * Species entries have no organization, so they are for platform admins only. Accounts stay: an
+ * admin reads the `passkey.reset` entries of their organization there.
+ */
+const organizationAdminActionGroups = auditActionGroups.filter((group) => group !== "species");
 
 /**
  * The audit log (`/audit-log`), newest first, with "Laad meer", for platform admins and the admins

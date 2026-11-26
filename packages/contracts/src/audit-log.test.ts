@@ -17,8 +17,14 @@ const groupsOf = (action: string) =>
   );
 
 test("every action falls in exactly one group", () => {
-  expect(auditActions).toHaveLength(22);
+  expect(auditActions).toHaveLength(25);
   for (const action of auditActions) expect(groupsOf(action)).toHaveLength(1);
+});
+
+test("passkey.added, passkey.removed and passkey.reset fall in the group account", () => {
+  for (const action of ["passkey.added", "passkey.removed", "passkey.reset"]) {
+    expect(groupsOf(action), action).toEqual(["account"]);
+  }
 });
 
 test("a later action falls into its group by prefix", () => {

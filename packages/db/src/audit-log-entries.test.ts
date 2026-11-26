@@ -249,6 +249,29 @@ test("an organization admin gets the entries of their organization and none with
   expect(all.entries.some((entry) => entry.organization === null)).toBe(true);
 });
 
+test("an organization admin reads a passkey.reset of their organization, and no passkey entry without one", async () => {
+  const mine = await organization();
+  const subject = await user();
+  const actor = await user();
+  await audit({
+    actor: byUser(actor.id),
+    organizationId: mine.id,
+    action: "passkey.reset",
+    subject: aboutUser(subject.id),
+  });
+  await audit({
+    actor: byUser(subject.id),
+    organizationId: null,
+    action: "passkey.added",
+    subject: aboutUser(subject.id),
+  });
+  const entries = (
+    await listAuditLogEntries(db(), adminOf(mine.id), { actionGroup: "account", limit: 1000 })
+  ).entries;
+  expect(entries.map((entry) => entry.action)).toEqual(["passkey.reset"]);
+  expect(entries[0]!.organization).toEqual({ id: mine.id, name: mine.name });
+});
+
 test("an organizationId outside the scope gives an empty page", async () => {
   const mine = await organization();
   const other = await organization();

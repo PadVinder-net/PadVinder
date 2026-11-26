@@ -41,8 +41,21 @@ describe("auditLogSentence", () => {
     ["membership.removed", "Lid verwijderd: Voormalig lid uit Noord"],
     ["role.platform_admin_granted", "Hoofdbeheerder gemaakt: (nog niet ingelogd)"],
     ["account.deleted", "Account verwijderd"],
+    ["passkey.added", "Toegangssleutel toegevoegd: Noor de Vries"],
+    ["passkey.removed", "Toegangssleutel verwijderd: Noor de Vries"],
+    ["passkey.reset", "Alle toegangssleutels verwijderd: Noor de Vries"],
   ])("%s reads %j", (action, sentence) => {
+    const passkey = (action: string): AuditLogEntry => ({
+      ...entry,
+      action,
+      organization: null,
+      workingGroup: null,
+      details: {},
+    });
     const cases: Record<string, AuditLogEntry> = {
+      "passkey.added": passkey("passkey.added"),
+      "passkey.removed": passkey("passkey.removed"),
+      "passkey.reset": passkey("passkey.reset"),
       "membership_request.approved": entry,
       "species.updated": {
         ...entry,
@@ -261,6 +274,9 @@ describe("auditLogSentence", () => {
       "Niet langer coördinator: Vrijwilliger Noord bij Noord",
       "Niet langer beheerder: Voormalig lid bij Paddentrek Voorbeeldstad",
       "Account verwijderd",
+      "Toegangssleutel toegevoegd: Beheerder Voorbeeld",
+      "Toegangssleutel verwijderd: Beheerder Voorbeeld",
+      "Alle toegangssleutels verwijderd: Beheerder Voorbeeld",
       "Hoofdbeheerder gemaakt: Beheerder Voorbeeld",
       "Niet langer hoofdbeheerder: Beheerder Voorbeeld",
       "Soort toegevoegd: gewone pad",

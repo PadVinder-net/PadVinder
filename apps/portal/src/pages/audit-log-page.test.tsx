@@ -143,7 +143,7 @@ test("a failed load shows the connection text, and Probeer opnieuw loads again",
   expect(await screen.findByRole("cell", { name: "safety_test.published" })).toBeVisible();
 });
 
-test("an admin of one organization sees no organization filter, no Organisatie column, and no Accounts or Soorten among the actions", async () => {
+test("an admin of one organization sees no organization filter, no Organisatie column, and Accounts but no Soorten among the actions", async () => {
   const requests = recordRequests();
   const { client } = mockLog(organizationAdminMe, () => page(auditLogFixture));
   renderPortal("/audit-log", client);
@@ -156,6 +156,7 @@ test("an admin of one organization sees no organization filter, no Organisatie c
     "Werkgroepen",
     "Rollen",
     "Leden en aanmeldingen",
+    "Accounts",
   ]);
   // Its organizations come from me, not from the platform admins' list.
   expect(requestsTo(requests, "GET", "/api/organizations")).toEqual([]);

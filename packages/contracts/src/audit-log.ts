@@ -25,6 +25,9 @@ export const auditActions = [
   "membership.invited",
   "membership.removed",
   "account.deleted",
+  "passkey.added",
+  "passkey.removed",
+  "passkey.reset",
   "species.created",
   "species.updated",
   "species.deactivated",
@@ -50,7 +53,7 @@ export const auditActionPrefixes: Record<AuditActionGroup, readonly string[]> = 
   workingGroup: ["working_group."],
   role: ["role."],
   membership: ["membership.", "membership_request."],
-  account: ["account."],
+  account: ["account.", "passkey."],
   species: ["species."],
 };
 

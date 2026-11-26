@@ -135,6 +135,9 @@ const entries: Entry[] = [
     details: {},
   },
   { action: "account.deleted", actor: deletedAccount, person: deletedAccount, details: {} },
+  { action: "passkey.added", actor: admin, person: admin, details: {} },
+  { action: "passkey.removed", actor: admin, person: admin, details: {} },
+  { action: "passkey.reset", actor: platformAdmin, person: admin, organization, details: {} },
   { action: "role.platform_admin_granted", actor: system, person: admin, details: {} },
   { action: "role.platform_admin_revoked", actor: admin, person: admin, details: {} },
   {

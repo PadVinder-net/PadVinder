@@ -99,6 +99,9 @@ const sentences: Record<AuditAction, (entry: AuditLogEntry) => string> = {
     `Uitgenodigd om zich aan te melden: ${person(entry)} bij ${workingGroup(entry)}`,
   "membership.removed": (entry) => `Lid verwijderd: ${person(entry)} uit ${workingGroup(entry)}`,
   "account.deleted": () => "Account verwijderd",
+  "passkey.added": (entry) => `Toegangssleutel toegevoegd: ${person(entry)}`,
+  "passkey.removed": (entry) => `Toegangssleutel verwijderd: ${person(entry)}`,
+  "passkey.reset": (entry) => `Alle toegangssleutels verwijderd: ${person(entry)}`,
   "species.created": (entry) => `Soort toegevoegd: ${species(entry)}`,
   "species.updated": (entry) =>
     `Soort gewijzigd: ${parts(
