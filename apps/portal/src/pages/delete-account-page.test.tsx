@@ -9,7 +9,13 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { renderPortal } from "../testing/render-portal";
-import { errorResponse, holdRequests, recordRequests, requestsTo } from "../testing/requests";
+import {
+  errorResponse,
+  holdRequests,
+  recordRequestAddresses,
+  recordRequests,
+  requestsTo,
+} from "../testing/requests";
 
 const lookupPath = "/api/users/lookup";
 const sanne = accountSummaryFixture;
@@ -63,6 +69,7 @@ test("the page explains itself and offers the search", async () => {
 
 test("a search shows whose account it is, with its working groups", async () => {
   const requests = recordRequests();
+  const addresses = recordRequestAddresses();
   mockFetch(routesFor({ [`POST ${lookupPath}`]: sanne }));
   renderPortal("/delete-account");
   await search(sanne.email);
@@ -75,7 +82,8 @@ test("a search shows whose account it is, with its working groups", async () => 
     { method: "POST", path: lookupPath, body: { email: sanne.email } },
   ]);
   // The address goes in the body only, never in a path or a query.
-  for (const request of requests) expect(request.path).not.toContain("@");
+  expect(addresses.length).toBeGreaterThan(0);
+  for (const address of addresses) expect(address).not.toContain("@");
 });
 
 test("an unknown address shows Geen account met dit adres. and no button", async () => {

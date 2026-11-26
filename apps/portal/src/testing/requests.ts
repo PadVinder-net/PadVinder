@@ -31,6 +31,23 @@ export function recordRequests() {
 }
 
 /**
+ * Records the whole address of every request, path and query, decoded, so a test can check that
+ * something (an email address) never reaches one: `recordRequests` keeps the path only.
+ */
+export function recordRequestAddresses() {
+  const addresses: string[] = [];
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init);
+    // Decoded, so "%40" in a query counts as the "@" it stands for.
+    addresses.push(decodeURIComponent(request.url));
+    return inner(request);
+  };
+  restorers.push(() => (globalThis.fetch = inner));
+  return addresses;
+}
+
+/**
  * Holds back every request that `match` picks until the test calls `release`, so the test can act
  * while a save runs.
  */

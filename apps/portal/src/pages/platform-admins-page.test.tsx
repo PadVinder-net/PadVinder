@@ -13,6 +13,7 @@ import {
   errorResponse,
   holdRequests,
   neverAnswer,
+  recordRequestAddresses,
   recordRequests,
   requestsTo,
 } from "../testing/requests";
@@ -82,6 +83,7 @@ test("a failed load shows the connection text, and Probeer opnieuw loads again",
 
 test("Ga verder sends nothing; the second step shows the address; Maak hoofdbeheerder posts it and shows the toast", async () => {
   const requests = recordRequests();
+  const addresses = recordRequestAddresses();
   mockFetch(routesFor({ [`POST ${listPath}`]: list }));
   renderPortal("/platform-admins");
   const dialog = await openAdd();
@@ -98,6 +100,9 @@ test("Ga verder sends nothing; the second step shows the address; Maak hoofdbehe
   expect(requestsTo(requests, "POST", listPath)).toEqual([
     { method: "POST", path: listPath, body: { email: "extra@example.test" } },
   ]);
+  // The address goes in the body only, never in a path or a query.
+  expect(addresses.length).toBeGreaterThan(0);
+  for (const address of addresses) expect(address).not.toContain("@");
 });
 
 test("Terug returns to the field with the address still in it, and nothing was sent", async () => {
