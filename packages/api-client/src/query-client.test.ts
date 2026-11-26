@@ -74,3 +74,18 @@ test("a me query that finds a user keeps the other data", async () => {
   });
   expect(client.getQueryData(["other"])).toBe("data");
 });
+
+test("other errors are still retried three times; passkey_required is not retried", async () => {
+  const client = createQueryClient();
+  const failing = (error: unknown) => vi.fn(() => Promise.reject(error));
+  const internal = failing({ code: "internal_error" });
+  await client
+    .fetchQuery({ queryKey: ["internal"], queryFn: internal, retryDelay: 0 })
+    .catch(() => {});
+  expect(internal).toHaveBeenCalledTimes(4);
+  const required = failing({ statusCode: 403, error: "x", message: "x", code: "passkey_required" });
+  await client
+    .fetchQuery({ queryKey: ["required"], queryFn: required, retryDelay: 0 })
+    .catch(() => {});
+  expect(required).toHaveBeenCalledOnce();
+});

@@ -23,6 +23,8 @@ import {
 } from "./passkeys";
 import { usePlatformAdmins } from "./platform-administration";
 import { createQueryClient } from "./query-client";
+import { subscribeToServerEvents } from "./server-events";
+import { FakeEventSource } from "./testing";
 
 vi.mock("./passkey-client", () => ({
   authenticateWithPasskey: vi.fn(),
@@ -71,12 +73,16 @@ const passkeyId = passkeysFixture.passkeys[0]!.id;
 const platformAdminId = platformAdminsFixture[0]!.userId;
 
 test("useCreatePasskey asks for a confirmation on confirmation_required and shows no error", async () => {
-  mockFetch({ "GET /api/me": platformAdminMeFixture, "GET /api/passkeys": passkeysFixture });
+  const m = mockFetch({
+    "GET /api/me": platformAdminMeFixture,
+    "GET /api/passkeys": passkeysFixture,
+  });
   vi.mocked(createPasskey).mockResolvedValue({ ok: false, error: "confirmation_required" });
   const { result } = setup(() => ({
     confirmation: usePasskeyConfirmation(),
     create: useCreatePasskey(),
   }));
+  await waitFor(() => expect(m.count("GET /api/me")).toBe(1));
   await waitFor(() => expect(result.current.confirmation.hasPasskey).toBe(false));
 
   await act(async () => result.current.create.create());
@@ -176,4 +182,22 @@ test("removing and resetting refetch the lists and me, also after an error", asy
 
   await act(async () => result.current.resetPlatformAdmin.mutateAsync(platformAdminId));
   await expectFetched(4);
+});
+
+test("useCreatePasskey reopens the event stream on success: the server replaced the session", async () => {
+  mockFetch({ "GET /api/me": platformAdminMeFixture, "GET /api/passkeys": passkeysFixture });
+  vi.mocked(createPasskey).mockResolvedValue({ ok: true });
+  FakeEventSource.instances = [];
+  const close = subscribeToServerEvents(
+    {},
+    { EventSourceImpl: FakeEventSource as unknown as typeof EventSource },
+  );
+  const { result } = setup(() => useCreatePasskey());
+
+  await act(async () => result.current.create());
+
+  const [old, reopened] = FakeEventSource.instances;
+  expect(old!.closed).toBe(true);
+  expect(reopened?.closed).toBe(false);
+  close();
 });

@@ -1,4 +1,5 @@
 import {
+  focusManager,
   QueryClientProvider,
   useMutation,
   useQuery,
@@ -10,7 +11,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { client } from "./generated/client.gen";
-import { listPasskeysOptions } from "./generated/@tanstack/react-query.gen";
+import { getMeQueryKey, listPasskeysOptions } from "./generated/@tanstack/react-query.gen";
 import { authenticateWithPasskey, createPasskey } from "./passkey-client";
 import {
   backgroundRequestMeta,
@@ -359,4 +360,56 @@ test("logInAgain logs out and closes the modal", async () => {
   expect(result.current.open).toBe(false);
   await waitFor(() => expect(count("POST /api/auth/sign-out")).toBe(1));
   await waitFor(() => expect(count("GET /api/me")).toBe(2));
+});
+
+test("after cancel, a window focus does not reopen the modal; an explicit refetch does", async () => {
+  const queryFn = guarded("de leden");
+  const { result } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    members: useQuery({ queryKey: ["members"], queryFn }),
+  }));
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+  act(() => result.current.confirmation.cancel());
+
+  try {
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    // Give a refetch the time to start and fail.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(queryFn).toHaveBeenCalledOnce();
+    expect(result.current.confirmation.open).toBe(false);
+    expect(result.current.members.error).toEqual(required);
+  } finally {
+    focusManager.setFocused(undefined);
+  }
+
+  // "Probeer opnieuw": the person asks again, so the modal opens again.
+  await act(async () => void (await result.current.members.refetch()));
+  expect(queryFn).toHaveBeenCalledTimes(2);
+  expect(result.current.confirmation.open).toBe(true);
+});
+
+test("when the me query finds the session gone, an open confirmation is cancelled", async () => {
+  const mutationFn = vi.fn(async () => {
+    if (!confirmed) throw required;
+    return "toegevoegd";
+  });
+  const { result, queryClient } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    add: useMutation({ mutationFn }),
+  }));
+  act(() => result.current.add.mutate());
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+
+  await act(async () => {
+    await queryClient.fetchQuery({ queryKey: getMeQueryKey(), queryFn: async () => null });
+  });
+
+  expect(result.current.confirmation.open).toBe(false);
+  // What waited is forgotten: a later confirmation does not send it again.
+  act(() => requestPasskeyConfirmation(queryClient));
+  await act(async () => result.current.confirmation.confirm());
+  expect(mutationFn).toHaveBeenCalledOnce();
 });
