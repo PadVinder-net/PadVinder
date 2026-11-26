@@ -1,3 +1,4 @@
+import { createTestLogger } from "@padvinder/logging/testing";
 import {
   grantCoordinator,
   grantPlatformAdmin,
@@ -57,7 +58,12 @@ let steadyUrl = "";
 let mailer: ReturnType<typeof createMemoryMailer>;
 let cast: Cast;
 let admin: Record<string, string> = {};
-const lines: string[] = [];
+const log = createTestLogger("info");
+let mark = 0;
+const lines = () => log.text().split("\n").filter(Boolean).slice(mark);
+const clearLog = () => {
+  mark = log.text().split("\n").filter(Boolean).length;
+};
 
 beforeAll(async () => {
   t = await createTestDatabase();
@@ -76,8 +82,7 @@ beforeAll(async () => {
     mailer,
     queueMail: mailQueue.queueMail,
     sessionRecheckMs: RECHECK_MS,
-    logger: true,
-    logStream: { write: (line) => lines.push(line) },
+    logger: log.logger,
   });
   ctx = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
@@ -91,8 +96,7 @@ beforeAll(async () => {
     mailer,
     queueMail: mailQueue.queueMail,
     sessionRecheckMs: STEADY_RECHECK_MS,
-    logger: true,
-    logStream: { write: (line) => lines.push(line) },
+    logger: log.logger,
   });
   steadyUrl = await steadyApp.listen({ port: 0, host: "127.0.0.1" });
 });
@@ -310,12 +314,12 @@ test("a database failure during a check keeps the stream and the old actor, and 
   const login = await newPlatformAdmin(email);
   const stream = await openSubscribed(login.headers);
   const before = recheck.calls;
-  lines.length = 0;
+  clearLog();
   recheck.failing = true;
   try {
     // Two failed checks in a row, so the stream survives more than one.
     await expect.poll(() => recheck.calls - before, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
-    await expect.poll(() => lines.join("")).toContain("Live events session check failed");
+    await expect.poll(() => lines().join("")).toContain("Live events session check failed");
     const at = await recordHeartbeat(t!.db);
     await expect(stream.nextEvent()).resolves.toEqual({
       event: "worker-heartbeat",
@@ -324,8 +328,8 @@ test("a database failure during a check keeps the stream and the old actor, and 
   } finally {
     recheck.failing = false;
   }
-  const warning = lines.find((line) => line.includes("Live events session check failed"))!;
-  expect(JSON.parse(warning)).toMatchObject({ level: 40 });
+  const warning = lines().find((line) => line.includes("Live events session check failed"))!;
+  expect(JSON.parse(warning)).toMatchObject({ level: "warn" });
   expect(warning).not.toContain(email);
   expect(warning).not.toContain(login.userId);
   stream.close();
@@ -505,7 +509,7 @@ test("a database failure while reloading keeps the stream and the old actor, and
   const login = await newPlatformAdmin(email);
   const stream = await openSubscribed(login.headers, steadyUrl);
   const before = recheck.calls;
-  lines.length = 0;
+  clearLog();
   recheck.failing = true;
   try {
     await t!.db.transaction((tx) => notifyAccessChanged(tx, login.userId));
@@ -517,7 +521,7 @@ test("a database failure while reloading keeps the stream and the old actor, and
   } finally {
     recheck.failing = false;
   }
-  expect(lines.join("")).toContain("Live events session check failed");
+  expect(lines().join("")).toContain("Live events session check failed");
   // Still a platform admin on this stream.
   const at = await recordHeartbeat(t!.db);
   await expect(stream.nextEvent()).resolves.toEqual({

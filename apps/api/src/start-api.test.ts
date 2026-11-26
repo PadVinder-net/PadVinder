@@ -1,10 +1,12 @@
 import { createServer } from "node:net";
 import { createTestDatabase, startStallingProxy, type TestDatabase } from "@padvinder/db/testing";
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, expect, test, vi } from "vitest";
+import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "./test-env";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { startApi } from "./start-api";
 
+const quiet = createTestLogger("error");
 let t: TestDatabase | undefined;
 // A clone, not the template: the hub holds a LISTEN connection, and CREATE DATABASE ... TEMPLATE
 // in other test files fails while the template has a connection.
@@ -27,38 +29,37 @@ test("rejects and cleans up when the port is taken", async () => {
   const blocker = createServer();
   await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
   const { port } = blocker.address() as { port: number };
-  // Pino writes to stdout; capture it so the test output stays clean and we can check the log.
-  const written: string[] = [];
-  const stdout = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
-    written.push(String(chunk));
-    return true;
-  });
   try {
     await expect(
-      startApi({
-        ...testEnv,
-        DATABASE_URL: t!.url,
-        API_HOST: "127.0.0.1",
-        API_PORT: port,
-        LOG_LEVEL: "error",
-      }),
+      startApi(
+        {
+          ...testEnv,
+          DATABASE_URL: t!.url,
+          API_HOST: "127.0.0.1",
+          API_PORT: port,
+          LOG_LEVEL: "error",
+        },
+        quiet.logger,
+      ),
     ).rejects.toThrow(/EADDRINUSE/);
-    expect(written.join("")).toContain("API failed to start");
+    expect(quiet.text()).toContain("API failed to start");
   } finally {
-    stdout.mockRestore();
     await new Promise((resolve) => blocker.close(resolve));
   }
 });
 
 test("serves requests and stops cleanly", async () => {
   const port = await freePort();
-  const api = await startApi({
-    ...testEnv,
-    DATABASE_URL: t!.url,
-    API_HOST: "127.0.0.1",
-    API_PORT: port,
-    LOG_LEVEL: "error",
-  });
+  const api = await startApi(
+    {
+      ...testEnv,
+      DATABASE_URL: t!.url,
+      API_HOST: "127.0.0.1",
+      API_PORT: port,
+      LOG_LEVEL: "error",
+    },
+    quiet.logger,
+  );
   const res = await fetch(`http://127.0.0.1:${port}/api/version`);
   expect(res.status).toBe(200);
   await api.stop();
@@ -67,13 +68,16 @@ test("serves requests and stops cleanly", async () => {
 
 test("touches no mail queue at boot: pg-boss connects on the first mail", async () => {
   const port = await freePort();
-  const api = await startApi({
-    ...testEnv,
-    DATABASE_URL: t!.url,
-    API_HOST: "127.0.0.1",
-    API_PORT: port,
-    LOG_LEVEL: "error",
-  });
+  const api = await startApi(
+    {
+      ...testEnv,
+      DATABASE_URL: t!.url,
+      API_HOST: "127.0.0.1",
+      API_PORT: port,
+      LOG_LEVEL: "error",
+    },
+    quiet.logger,
+  );
   try {
     expect((await fetch(`http://127.0.0.1:${port}/api/version`)).status).toBe(200);
     const {
@@ -89,13 +93,16 @@ test("touches no mail queue at boot: pg-boss connects on the first mail", async 
 
 test("starts while the database is down and reports it in /api/health", async () => {
   const port = await freePort();
-  const api = await startApi({
-    ...testEnv,
-    DATABASE_URL: "postgres://padvinder:padvinder@127.0.0.1:1/none",
-    API_HOST: "127.0.0.1",
-    API_PORT: port,
-    LOG_LEVEL: "error",
-  });
+  const api = await startApi(
+    {
+      ...testEnv,
+      DATABASE_URL: "postgres://padvinder:padvinder@127.0.0.1:1/none",
+      API_HOST: "127.0.0.1",
+      API_PORT: port,
+      LOG_LEVEL: "error",
+    },
+    quiet.logger,
+  );
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`);
     expect(res.status).toBe(503);
@@ -110,13 +117,16 @@ test("listens within 5 s while the database hangs", async () => {
   proxy.stall();
   const port = await freePort();
   const started = Date.now();
-  const api = await startApi({
-    ...testEnv,
-    DATABASE_URL: proxy.url,
-    API_HOST: "127.0.0.1",
-    API_PORT: port,
-    LOG_LEVEL: "error",
-  });
+  const api = await startApi(
+    {
+      ...testEnv,
+      DATABASE_URL: proxy.url,
+      API_HOST: "127.0.0.1",
+      API_PORT: port,
+      LOG_LEVEL: "error",
+    },
+    quiet.logger,
+  );
   try {
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(api.app.server.listening).toBe(true);

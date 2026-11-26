@@ -9,6 +9,7 @@ import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { createCast, type Cast } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 import { testEnv } from "../test-env";
+import { createTestLogger } from "@padvinder/logging/testing";
 
 let ctx: TestApp | undefined;
 let t: TestDatabase | undefined;
@@ -213,3 +214,42 @@ test("503 with reachable:false when the database hangs, within 5 s", async () =>
     await hung?.pool.end();
   }
 });
+
+test("a health check with a working database writes no line at info", async () => {
+  const log = createTestLogger("info");
+  const quiet = await buildApp({
+    env: testEnv,
+    db: t!.db,
+    notifications: createNoopNotificationHub(),
+    mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
+    logger: log.logger,
+  });
+  try {
+    await recordHeartbeat(t!.db);
+    expect((await quiet.inject("/api/health")).statusCode).toBe(200);
+    expect(log.entries()).toEqual([]);
+  } finally {
+    await quiet.close();
+  }
+});
+
+test("a health check with the database down still logs the warning", async () => {
+  const log = createTestLogger("info");
+  const down = createDb("postgres://padvinder:padvinder@127.0.0.1:1/none");
+  const loud = await buildApp({
+    env: testEnv,
+    db: down.db,
+    notifications: createNoopNotificationHub(),
+    mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
+    logger: log.logger,
+  });
+  try {
+    expect((await loud.inject("/api/health")).statusCode).toBe(503);
+    expect(log.entries().map((e) => e.msg)).toContain("Health check could not reach the database");
+  } finally {
+    await loud.close();
+    await down.pool.end();
+  }
+}, 15_000);

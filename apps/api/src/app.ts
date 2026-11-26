@@ -1,6 +1,7 @@
 import swagger from "@fastify/swagger";
 import type { Db, QueueMail } from "@padvinder/db";
-import Fastify, { type FastifyInstance } from "fastify";
+import type { Logger } from "@padvinder/logging";
+import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import {
   jsonSchemaTransform,
   jsonSchemaTransformObject,
@@ -40,10 +41,8 @@ export type AppDeps = {
    * pass the memory queue.
    */
   queueMail: QueueMail;
-  /** Turns on Fastify's request logging at `env.LOG_LEVEL`. Off by default (tests). */
-  logger?: boolean;
-  /** Where the log goes instead of stdout, when `logger` is on (tests that read the log). */
-  logStream?: { write(line: string): void };
+  /** The logger of the app and its requests. Absent means no logging (most tests). */
+  logger?: Logger;
   /** How often an open event stream checks its session; default `SESSION_RECHECK_MS`. Tests. */
   sessionRecheckMs?: number;
 };
@@ -61,11 +60,9 @@ declare module "fastify" {
  */
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { env } = deps;
-  const app = Fastify({
-    logger: deps.logger
-      ? { level: env.LOG_LEVEL, ...(deps.logStream && { stream: deps.logStream }) }
-      : false,
-  });
+  const app = Fastify(
+    deps.logger ? { loggerInstance: deps.logger as FastifyBaseLogger } : { logger: false },
+  );
 
   // Zod schemas validate requests and serialize responses (also for 503).
   app.setValidatorCompiler(validatorCompiler);
