@@ -111,6 +111,8 @@ describe("jobsFor", () => {
       "infra/alwaysdata/src/deploy.ts",
       "infra/container/Dockerfile",
       "scripts/build-release.sh",
+      "scripts/sentry-cli.sh",
+      "scripts/upload-sourcemaps.sh",
       ".github/workflows/deploy.yml",
       ".github/workflows/build-release.yml",
       ".github/actions/alwaysdata-credentials/action.yml",
@@ -125,7 +127,9 @@ describe("jobsFor", () => {
     for (const path of [
       "apps/api/src/migrate.ts",
       "apps/api/src/main.ts",
+      "apps/api/src/run.ts",
       "apps/worker/src/main.ts",
+      "apps/worker/src/run.ts",
       "packages/db/src/migrate.ts",
     ]) {
       expect(running([path]), path).toEqual(["e2e", "release", "deploy-test"]);

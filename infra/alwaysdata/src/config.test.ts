@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { loadInfraConfig, senderDiffersFromMailbox } from "./config.ts";
+import { isHttpsDsn, loadInfraConfig, senderDiffersFromMailbox } from "./config.ts";
 
 const complete = {
   ALWAYSDATA_ACCOUNT: "acme",
@@ -8,6 +8,7 @@ const complete = {
   AUTH_SECRET: "auth-secret-value-auth-secret-value-0000",
   SMTP_USER: "noreply@padvinder.net",
   SMTP_PASSWORD: "smtp-password-value",
+  SENTRY_DSN: "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
   DEPLOY_SSH_AGENT_SOCK: "/tmp/ssh-agent.sock",
   SSH_KNOWN_HOSTS_FILE: "/tmp/known_hosts",
 };
@@ -23,6 +24,7 @@ test("loadInfraConfig reads every variable and derives the SSH host and user", (
       smtpUser: "noreply@padvinder.net",
       smtpPassword: "smtp-password-value",
     },
+    monitoring: { sentryDsn: "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321" },
     ssh: {
       host: "ssh-acme.alwaysdata.net",
       user: "acme",
@@ -46,6 +48,7 @@ test("loadInfraConfig names every missing variable without values", () => {
     "AUTH_SECRET",
     "SMTP_USER",
     "SMTP_PASSWORD",
+    "SENTRY_DSN",
     "DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE",
     "SSH_KNOWN_HOSTS_FILE",
   ]) {
@@ -104,8 +107,8 @@ test("loadInfraConfig rejects an account name that is not a plain lowercase name
   }
 });
 
-test("loadInfraConfig names a missing login secret alone, so the message says what to set", () => {
-  for (const name of ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD"]) {
+test("loadInfraConfig names a missing env file secret alone, so the message says what to set", () => {
+  for (const name of ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD", "SENTRY_DSN"]) {
     expect(() => loadInfraConfig({ ...complete, [name]: undefined }, "staging")).toThrow(
       `Set these environment variables: ${name}`,
     );
@@ -137,7 +140,7 @@ test("loadInfraConfig refuses secrets the env file cannot carry, naming the vari
     "a\nb",
     "tést",
   ];
-  for (const name of ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD"]) {
+  for (const name of ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD", "SENTRY_DSN"]) {
     for (const bad of unsafe) {
       const value = bad.padEnd(40, "x");
       let message = "";
@@ -149,6 +152,31 @@ test("loadInfraConfig refuses secrets the env file cannot carry, naming the vari
       expect(message).toMatch(new RegExp(`^${name} `));
       expect(message).not.toContain(value);
     }
+  }
+});
+
+test("loadInfraConfig refuses a SENTRY_DSN that is not an https DSN, without its value", () => {
+  // The API and the worker refuse to start on a DSN that is not a URL.
+  for (const bad of [
+    "not-a-url",
+    "ftp://key@o1.ingest.de.sentry.io/2",
+    "key@o1.ingest/2",
+    "http://key@o1.ingest.de.sentry.io/2",
+    // URLs, but not DSNs: no public key, no project ID, a project ID that is no number.
+    "https://example.com",
+    "https://o1.ingest.de.sentry.io/2",
+    "https://key@o1.ingest.de.sentry.io",
+    "https://key@o1.ingest.de.sentry.io/project",
+    "https://key@o1.ingest.de.sentry.io/2?x=1",
+  ]) {
+    let message = "";
+    try {
+      loadInfraConfig({ ...complete, SENTRY_DSN: bad }, "staging");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/^SENTRY_DSN must be/);
+    expect(message).not.toContain(bad);
   }
 });
 
@@ -174,4 +202,28 @@ test("senderDiffersFromMailbox checks only Alwaysdata's SMTP server", () => {
   expect(senderDiffersFromMailbox("smtp-acme.alwaysdata.net", "noreply@padvinder.net")).toBe(false);
   // Another mail service's login need not be an address.
   expect(senderDiffersFromMailbox("smtp.mail-service.example", "api-login-id")).toBe(false);
+});
+
+test("isHttpsDsn: the rule of parseDsn in packages/monitoring, https only", () => {
+  for (const good of [
+    "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
+    "https://key@sentry.example.org:8443/sub/42",
+  ]) {
+    expect(isHttpsDsn(good)).toBe(true);
+  }
+  for (const bad of [
+    "https://example.com",
+    "https://example.com/1",
+    "https://:key@example.com/1",
+    "https://key-with-dash@example.com/1",
+    "https://key@example.com",
+    "https://key@example.com/",
+    "https://key@example.com/1/",
+    "https://key@example.com/abc",
+    "https://key@example.com/1?x=1",
+    "https://key@example.com/1#x",
+    "http://key@example.com/1",
+  ]) {
+    expect(isHttpsDsn(bad)).toBe(false);
+  }
 });

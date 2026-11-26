@@ -1,5 +1,6 @@
 import { apiErrorCodes } from "@padvinder/contracts";
 import { type Access, type Db, getAccess, type UserProfile } from "@padvinder/db";
+import { setMonitoringUser } from "@padvinder/monitoring";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { toFetchHeaders } from "../auth/fetch-headers";
 import { apiError } from "../errors";
@@ -48,22 +49,35 @@ async function readSession(
 }
 
 /**
+ * Makes the actor's account ID (only that) the Sentry user of the current request. Called only by
+ * `requireActor`, on a request's own path: elsewhere (a notification callback, a timer) the
+ * current isolation scope is the process's, and every later request would inherit the user.
+ */
+function identify(actor: Actor | null): void {
+  setMonitoringUser(actor?.userId ?? null);
+}
+
+/**
  * The actor of the session cookie, or `null` when there is no valid session, for a request that
  * cannot pass on a cookie (an open event stream) or does not need a login (health). It never
- * renews the session: that is left to `requireActor`, which sets the refreshed cookie.
+ * renews the session: that is left to `requireActor`, which sets the refreshed cookie. It never
+ * makes the actor the Sentry user either: the event stream's reloads run outside the request
+ * (see `identify`).
  */
 export async function loadActor(
   app: FastifyInstance,
   db: Db,
   request: FastifyRequest,
 ): Promise<Actor | null> {
-  return (await readSession(app, db, request, { renew: false })).actor;
+  const { actor } = await readSession(app, db, request, { renew: false });
+  return actor;
 }
 
 export function addActorLoading(app: FastifyInstance, db: Db): void {
   app.decorateRequest("actor", undefined);
   app.decorate("requireActor", async (request: FastifyRequest, reply: FastifyReply) => {
     const { actor, headers } = await readSession(app, db, request, { renew: true });
+    identify(actor);
     // A renewed session sets a fresh cookie, so an active user stays logged in.
     const setCookies = headers.getSetCookie();
     if (actor && setCookies.length > 0) void reply.header("set-cookie", setCookies);

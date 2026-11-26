@@ -1,4 +1,4 @@
-import type { LoginSecrets } from "./env-file.ts";
+import type { LoginSecrets, MonitoringSecrets } from "./env-file.ts";
 import {
   mailFromAddress,
   smtpHost,
@@ -16,14 +16,16 @@ export type InfraConfig = {
   databasePassword?: string;
   /** Only when requested, like the database password. */
   login?: LoginSecrets;
+  /** Only when requested, like the database password. */
+  monitoring?: MonitoringSecrets;
   /** Only when requested. */
   ssh?: { host: string; user: string; identity: SshIdentity; knownHostsFile: string };
 };
 
 const accountPattern = /^[a-z0-9][a-z0-9_-]*$/;
 
-/** The env file's secrets, in the order errors name them. */
-const loginSecretNames = ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD"] as const;
+/** The env file's secrets besides the database password, in the order errors name them. */
+const envFileSecretNames = ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD", "SENTRY_DSN"] as const;
 /** The API refuses a shorter AUTH_SECRET (apps/api/src/env.ts). */
 const authSecretMinLength = 32;
 /**
@@ -32,6 +34,31 @@ const authSecretMinLength = 32;
  */
 const envFileValuePattern = /^[\x21-\x7e]+$/;
 const envFileUnsafePattern = /["#'\\`]/;
+
+/**
+ * Whether a value is an https Sentry DSN: a public key (the user name), a host and a numeric
+ * project ID as the last path segment, without a query or fragment. The same rule as `parseDsn`
+ * in packages/monitoring/src/dsn.ts, which the services apply at start (a URL that is no DSN would
+ * leave them without error tracking); duplicated because this code runs with plain node and
+ * cannot load that package. Keep the two in step.
+ */
+export function isHttpsDsn(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === "https:" &&
+    url.search === "" &&
+    url.hash === "" &&
+    !value.includes("?") &&
+    !value.includes("#") &&
+    /^\w+$/.test(url.username) &&
+    /^\d+$/.test(url.pathname.split("/").pop() ?? "")
+  );
+}
 
 /**
  * Whether SMTP_USER cannot send as `mailFrom`: Alwaysdata's SMTP server sends only as the
@@ -52,14 +79,15 @@ export function loadInfraConfig(
   environment: EnvironmentName,
   options: { envFileSecrets?: boolean; ssh?: boolean } = {},
 ): InfraConfig {
-  // The database password and the login secrets go into the env file together: provisioning
-  // never writes a file without them, because the API refuses to start on it.
+  // The database password, the login secrets and the Sentry DSN go into the env file together:
+  // provisioning never writes a file without them, because the API refuses to start without
+  // the login secrets, and the services would run without error tracking without the DSN.
   const wantSecrets = options.envFileSecrets ?? true;
   const wantSsh = options.ssh ?? true;
   const required = [
     "ALWAYSDATA_ACCOUNT",
     "ALWAYSDATA_API_KEY",
-    ...(wantSecrets ? ["DATABASE_PASSWORD", ...loginSecretNames] : []),
+    ...(wantSecrets ? ["DATABASE_PASSWORD", ...envFileSecretNames] : []),
     ...(wantSsh ? ["SSH_KNOWN_HOSTS_FILE"] : []),
   ];
   const value = (name: string) => source[name] ?? "";
@@ -85,7 +113,7 @@ export function loadInfraConfig(
 
   const config: InfraConfig = { environment, account, apiKey: value("ALWAYSDATA_API_KEY") };
   if (wantSecrets) {
-    for (const name of loginSecretNames) {
+    for (const name of envFileSecretNames) {
       const secret = value(name);
       if (!envFileValuePattern.test(secret) || envFileUnsafePattern.test(secret)) {
         throw new Error(
@@ -103,12 +131,18 @@ export function loadInfraConfig(
         "SMTP_USER must be the mailbox address in mailFrom (src/environments.ts): Alwaysdata's SMTP server sends only as the mailbox it logs in as",
       );
     }
+    if (!isHttpsDsn(value("SENTRY_DSN"))) {
+      throw new Error(
+        "SENTRY_DSN must be the DSN of the Sentry project, https://<key>@<host>/<project ID> (Sentry: Settings, Projects, padvinder, Client Keys), or the services do not start",
+      );
+    }
     config.databasePassword = value("DATABASE_PASSWORD");
     config.login = {
       authSecret: value("AUTH_SECRET"),
       smtpUser: value("SMTP_USER"),
       smtpPassword: value("SMTP_PASSWORD"),
     };
+    config.monitoring = { sentryDsn: value("SENTRY_DSN") };
   }
   if (wantSsh) {
     config.ssh = {

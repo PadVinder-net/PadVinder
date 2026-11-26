@@ -1667,6 +1667,30 @@ export type ListAuditLogEntriesResponses = {
 
 export type ListAuditLogEntriesResponse = ListAuditLogEntriesResponses[keyof ListAuditLogEntriesResponses];
 
+export type TriggerTestErrorData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/test-error';
+};
+
+export type TriggerTestErrorErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    500: ApiError;
+};
+
+export type TriggerTestErrorError = TriggerTestErrorErrors[keyof TriggerTestErrorErrors];
+
 export type ListReviewableMembershipRequestsData = {
     body?: never;
     path?: never;

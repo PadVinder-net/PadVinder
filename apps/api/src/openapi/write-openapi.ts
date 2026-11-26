@@ -23,6 +23,7 @@ const env: ApiEnv = {
   SMTP_PORT: 54325,
   MAIL_FROM: "PadVinder <noreply@padvinder.test>",
   LOGIN_RATE_LIMITS: "off",
+  PADVINDER_ENVIRONMENT: "development",
 };
 
 const outputPath = resolve(

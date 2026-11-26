@@ -16,6 +16,7 @@ test("parses a valid environment and defaults LOG_LEVEL to info", () =>
     DATABASE_URL: "postgres://x",
     GIT_COMMIT: "dev",
     LOG_LEVEL: "info",
+    PADVINDER_ENVIRONMENT: "development",
     PUBLIC_ORIGIN: "http://localhost:4101",
     SMTP_HOST: "localhost",
     SMTP_PORT: 54325,
@@ -75,3 +76,17 @@ test("an empty value counts as not set", () => {
   expect(loadWorkerEnv({ ...valid, LOG_LEVEL: "" }).LOG_LEVEL).toBe("info");
   expect(loadWorkerEnv({ ...valid, MAIL_SUBJECT_PREFIX: "" }).MAIL_SUBJECT_PREFIX).toBeUndefined();
 });
+
+test("reads PADVINDER_ENVIRONMENT; an empty one is the default, development", () => {
+  expect(loadWorkerEnv({ ...valid, PADVINDER_ENVIRONMENT: "staging" }).PADVINDER_ENVIRONMENT).toBe(
+    "staging",
+  );
+  expect(loadWorkerEnv({ ...valid, PADVINDER_ENVIRONMENT: "" }).PADVINDER_ENVIRONMENT).toBe(
+    "development",
+  );
+});
+
+test("rejects an unknown PADVINDER_ENVIRONMENT", () =>
+  expect(() => loadWorkerEnv({ ...valid, PADVINDER_ENVIRONMENT: "prod" })).toThrow(
+    /PADVINDER_ENVIRONMENT/,
+  ));

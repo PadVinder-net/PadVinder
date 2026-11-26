@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import type { ApiEnv } from "./env";
 import { createSmtpMailer } from "@padvinder/mail";
+import { closeMonitoring } from "@padvinder/monitoring";
 import { startMailQueue } from "./mail/mail-queue";
 import { startNotificationHub, type NotificationHub } from "./realtime/notification-hub";
 
@@ -35,6 +36,8 @@ export async function startApi(env: ApiEnv, logger: Logger): Promise<RunningApi>
     // A login code mail still in flight (sent without waiting) can be lost; no retries by design.
     mailer.close();
     await pool.end();
+    // Last, so an error while stopping (or the failed start) is still sent.
+    await closeMonitoring();
   };
 
   try {
@@ -52,7 +55,7 @@ export async function startApi(env: ApiEnv, logger: Logger): Promise<RunningApi>
       logger,
     });
     await app.listen({ host: env.API_HOST, port: env.API_PORT });
-    logger.info({ commit: env.GIT_COMMIT }, "API started");
+    logger.info({ commit: env.GIT_COMMIT, environment: env.PADVINDER_ENVIRONMENT }, "API started");
   } catch (error) {
     logger.error({ err: error }, "API failed to start");
     await stop().catch((stopError) =>

@@ -8,6 +8,7 @@ import {
   MAIL_QUEUE_OPTIONS,
   type Mailer,
 } from "@padvinder/mail";
+import { runJobInSpan, withSpan } from "@padvinder/monitoring";
 import type { Logger } from "@padvinder/logging";
 import type { JobWithMetadata, PgBoss } from "pg-boss";
 
@@ -67,7 +68,10 @@ export async function registerMailJob(boss: PgBoss, deps: MailJobDeps): Promise<
     if (lastSendAt !== undefined) await waitUntilElapsed(lastSendAt, pauseMs);
   };
 
-  const handle = async (job: JobWithMetadata<unknown>) => {
+  const handle = (job: JobWithMetadata<unknown>) =>
+    runJobInSpan({ name: job.name, id: job.id }, () => handleJob(job));
+
+  const handleJob = async (job: JobWithMetadata<unknown>) => {
     const jobLogger = logger.child({ job: { name: job.name, id: job.id } });
     const parsed = mailJobSchema.safeParse(job.data);
     if (!parsed.success) {
@@ -85,7 +89,7 @@ export async function registerMailJob(boss: PgBoss, deps: MailJobDeps): Promise<
       const mail = buildMailForJob(data, { publicOrigin });
       await waitForPause();
       try {
-        await mailer.send(mail);
+        await withSpan("mail.send", "mail", { "mail.kind": kind }, () => mailer.send(mail));
       } finally {
         lastSendAt = Date.now();
       }
