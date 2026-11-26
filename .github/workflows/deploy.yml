@@ -13,6 +13,9 @@ on:
     # A merge that changes only these cannot change the release, so it deploys nothing and
     # asks for no approval; staging and production keep the release they have. Every pattern
     # must be one that CI's release rule skips too (scripts/lib/ci-jobs.test.ts checks this).
+    # The production job's check (scripts/deploy-current.ts) reads this list as well, so keep
+    # each pattern a double-quoted item on its own line, using only "**", "*" and literal
+    # characters.
     paths-ignore:
       - "docs/**"
       - "**.md"
@@ -100,38 +103,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The check below needs the history of main.
+          fetch-depth: 0
       - uses: ./.github/actions/setup
-      # The approval may come long after the push. If main has moved on since, a newer run
-      # deploys a newer commit: do not put this older one live in between.
-      - name: Check that this is still the head of main
-        id: head
+      # The approval may come long after the push. If main has since gained a commit that
+      # changes the release, that commit's own run deploys it: do not put this older one live,
+      # and fail, so a production job that deployed nothing never looks green. Commits that
+      # change only paths in paths-ignore start no run, so this release is still the current
+      # one: deploy it.
+      - name: Check that this is still the current release of main
         env:
           COMMIT: ${{ github.sha }}
-          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
-          head="$(git ls-remote "$REPOSITORY_URL" refs/heads/main | cut -f1)"
-          if [[ -z "$head" ]]; then
-            echo "::error::Could not read the head of main."
-            exit 1
-          fi
-          if [[ "$head" == "$COMMIT" ]]; then
-            echo "current=true" >>"$GITHUB_OUTPUT"
-          else
-            echo "::notice::Skipped: main has moved on to $head since $COMMIT. Its own run deploys it."
-            echo "current=false" >>"$GITHUB_OUTPUT"
-          fi
-      - if: steps.head.outputs.current == 'true'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          node scripts/deploy-current.ts "$COMMIT" origin/main
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.release.outputs.artifact-name }}
       # After the dependencies are installed, so no install script can use the key.
-      - if: steps.head.outputs.current == 'true'
-        uses: ./.github/actions/alwaysdata-credentials
+      - uses: ./.github/actions/alwaysdata-credentials
         with:
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: Deploy
-        if: steps.head.outputs.current == 'true'
         env:
           ALWAYSDATA_ACCOUNT: ${{ secrets.ALWAYSDATA_ACCOUNT }}
           ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}

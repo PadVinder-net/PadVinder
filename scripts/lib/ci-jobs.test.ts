@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { deployPathsIgnore } from "./deploy-current.ts";
 import { CI_JOBS, JOB_RULES, jobsFor, matches } from "./ci-jobs.ts";
 
 const root = join(import.meta.dirname, "../..");
@@ -113,6 +114,8 @@ describe("jobsFor", () => {
       ".github/workflows/deploy.yml",
       ".github/workflows/build-release.yml",
       ".github/actions/alwaysdata-credentials/action.yml",
+      "scripts/deploy-current.ts",
+      "scripts/lib/deploy-current.ts",
     ]) {
       expect(running([path]), path).toEqual(["release", "deploy-test"]);
     }
@@ -172,10 +175,7 @@ test("the visual tests run for every workspace package that packages/ui depends 
 
 test("Deploy ignores only paths that cannot change the release", async () => {
   const workflow = await readFile(join(root, ".github/workflows/deploy.yml"), "utf8");
-  const items = /^ {4}paths-ignore:\n((?: {6}- .*\n)+)/m.exec(workflow)?.[1];
-  if (!items) throw new Error("deploy.yml has no paths-ignore under push.");
-  const patterns = [...items.matchAll(/- "([^"]+)"/g)].map((m) => m[1] ?? "");
-  expect(patterns.length).toBeGreaterThan(0);
+  const patterns = deployPathsIgnore(workflow);
   for (const pattern of patterns) {
     // A made-up path that the GitHub pattern matches, in a subdirectory where it can be.
     const example = pattern.replace("/**", "/a/b.ts").replace("**", "apps/api/src/x");
