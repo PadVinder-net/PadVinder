@@ -4368,6 +4368,44 @@
         }
       }
     },
+    "/api/system/test-error": {
+      "post": {
+        "operationId": "triggerTestError",
+        "summary": "Throw a test error, to check error reporting (platform admins)",
+        "responses": {
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/membership-requests": {
       "post": {
         "operationId": "createMembershipRequest",

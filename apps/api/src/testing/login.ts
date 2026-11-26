@@ -1,5 +1,6 @@
 import { normalizeEmail, updateUserProfile } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
+import type { Logger } from "@padvinder/logging";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
@@ -18,9 +19,12 @@ export type TestApp = {
 
 /**
  * An app on its own cloned test database, with `testEnv`, and a mailer and a mail queue that keep
- * mails and jobs in memory.
+ * mails and jobs in memory. Without `logger` the app does not log.
  */
-export async function createTestApp(overrides: Partial<ApiEnv> = {}): Promise<TestApp> {
+export async function createTestApp(
+  overrides: Partial<ApiEnv> = {},
+  options: { logger?: Logger } = {},
+): Promise<TestApp> {
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
   const mailQueue = createMemoryMailQueue();
@@ -31,6 +35,7 @@ export async function createTestApp(overrides: Partial<ApiEnv> = {}): Promise<Te
       notifications: createNoopNotificationHub(),
       mailer,
       queueMail: mailQueue.queueMail,
+      ...(options.logger ? { logger: options.logger } : {}),
     });
     return {
       app,

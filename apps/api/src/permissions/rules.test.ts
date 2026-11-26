@@ -132,6 +132,13 @@ test("only a platform admin sees database details", () => {
   }
 });
 
+test("only a platform admin triggers the test error; for others it is forbidden", () => {
+  const permission = { action: "system.triggerTestError" } as const;
+  for (const [who, a] of Object.entries(actors)) {
+    expect(decide(a, permission), who).toBe(who === "platformAdmin" ? "allowed" : "forbidden");
+  }
+});
+
 test("authorize throws 404 for hidden and 403 for forbidden", () => {
   const listMembers = { action: "workingGroup.listMembers", target } as const;
   const contact = { action: "workingGroup.viewMemberContact", target } as const;

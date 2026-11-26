@@ -31,6 +31,20 @@ test("exits 1 with only the message when the environment is invalid", async () =
   expect(stderr).not.toMatch(/\n\s+at /);
 }, 15_000);
 
+test.each([
+  ["PADVINDER_ENVIRONMENT", { PADVINDER_ENVIRONMENT: "prod" }],
+  ["SENTRY_DSN", { SENTRY_DSN: "not a url" }],
+])(
+  "exits 1 with only the message when %s is invalid",
+  async (variable, env) => {
+    const { code, stderr } = await runMain(env);
+    expect(code).toBe(1);
+    expect(stderr).toMatch(new RegExp(`^Invalid monitoring settings: ${variable}: `));
+    expect(stderr).not.toMatch(/\n\s+at /);
+  },
+  15_000,
+);
+
 async function freePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -66,7 +80,7 @@ test("SIGHUP shuts down cleanly with exit 0", async () => {
     });
   });
   expect(stdout).toMatch(
-    /\{"level":"info","time":\d+,"service":"api","commit":"dev","msg":"API started"\}/,
+    /\{"level":"info","time":\d+,"service":"api","commit":"dev","environment":"development","msg":"API started"\}/,
   );
   child.kill("SIGHUP");
   expect(await closed).toBe(0);

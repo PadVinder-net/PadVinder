@@ -32,6 +32,7 @@ import { membershipRoutes } from "./routes/memberships";
 import { organizationRoutes } from "./routes/organizations";
 import { platformAdminRoutes } from "./routes/platform-admins";
 import { speciesRoutes } from "./routes/species";
+import { systemRoutes } from "./routes/system";
 import { userRoutes } from "./routes/users";
 import { workingGroupRoutes } from "./routes/working-groups";
 import { versionRoutes } from "./routes/version";
@@ -129,6 +130,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(userRoutes, { db: deps.db });
       await api.register(speciesRoutes, { db: deps.db });
       await api.register(auditLogRoutes, { db: deps.db });
+      await api.register(systemRoutes, { db: deps.db });
       await api.register(membershipRequestRoutes, {
         db: deps.db,
         mailer: deps.mailer,

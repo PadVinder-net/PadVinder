@@ -1,5 +1,6 @@
 import { apiErrorCodes } from "@padvinder/contracts";
 import { type Access, type Db, getAccess, type UserProfile } from "@padvinder/db";
+import { setMonitoringUser } from "@padvinder/monitoring";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { toFetchHeaders } from "../auth/fetch-headers";
 import { apiError } from "../errors";
@@ -39,11 +40,19 @@ async function readSession(
     query: { disableRefresh: !renew },
     returnHeaders: true,
   });
-  if (!response) return { actor: null, headers };
+  if (!response) {
+    setMonitoringUser(null);
+    return { actor: null, headers };
+  }
   const { id, name, email, phone } = response.user;
   const access = await getAccess(db, id);
-  if (!access) return { actor: null, headers };
+  if (!access) {
+    setMonitoringUser(null);
+    return { actor: null, headers };
+  }
   const actor: Actor = { userId: id, user: { id, name, email, phone: phone ?? null }, ...access };
+  // Only the account's ID: an error of this request in Sentry names no person.
+  setMonitoringUser(id);
   return { actor, headers };
 }
 

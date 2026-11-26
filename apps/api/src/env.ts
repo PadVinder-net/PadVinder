@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { calVerSchema } from "@padvinder/contracts";
 import { smtpSettingsShape } from "@padvinder/mail";
+import { DEPLOYMENT_ENVIRONMENTS } from "@padvinder/monitoring";
 import { z } from "zod";
 
 /** A browser sends `Origin` as exactly `scheme://host[:port]`, so only that form can ever match. */
@@ -56,6 +57,9 @@ const apiEnvSchema = z
     ...smtpSettingsShape,
     // Only for local development and tests: it must never be switched off on a public origin.
     LOGIN_RATE_LIMITS: z.enum(["on", "off"]).default("on"),
+    // Which deployment this is, for Sentry and the start line. main.ts reads it (with SENTRY_DSN)
+    // before this file loads, so Sentry starts first.
+    PADVINDER_ENVIRONMENT: z.enum(DEPLOYMENT_ENVIRONMENTS).default("development"),
   })
   .check((ctx) => {
     // Zod runs this check even when a field above failed, so a value here may be missing or not
