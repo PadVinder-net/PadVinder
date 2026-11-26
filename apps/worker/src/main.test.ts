@@ -52,6 +52,10 @@ test("SIGHUP shuts down cleanly with exit 0", async () => {
       if (stdout.includes("Worker started")) resolve();
     });
   });
+  expect(stdout).toContain('"msg":"Worker started"');
+  expect(
+    JSON.parse(stdout.split("\n").find((line) => line.includes("Worker started"))!),
+  ).toMatchObject({ service: "worker", commit: "dev" });
   child.kill("SIGHUP");
   expect(await closed).toBe(0);
 }, 30_000);

@@ -14,6 +14,7 @@ test("names the missing variable", () => expect(() => loadWorkerEnv({})).toThrow
 test("parses a valid environment and defaults LOG_LEVEL to info", () =>
   expect(loadWorkerEnv(valid)).toEqual({
     DATABASE_URL: "postgres://x",
+    GIT_COMMIT: "dev",
     LOG_LEVEL: "info",
     PUBLIC_ORIGIN: "http://localhost:4101",
     SMTP_HOST: "localhost",
