@@ -3,8 +3,11 @@ import { expect, test } from "vitest";
 import type { AccountDeletionBlocker } from "@padvinder/contracts";
 import {
   accountDeletionBlockedMessage,
+  accountDeletionBlockedForOtherMessage,
   addMemberOutcomeMessage,
   apiErrorMessage,
+  lastLoggedInPlatformAdminMessage,
+  noAccountMessage,
   connectionMessage,
   loginErrorMessage,
   organizationNameTakenMessage,
@@ -130,4 +133,37 @@ test.each([
   [{ email: "jan@", outcome: "invalid" }, "'jan@' is geen geldig e-mailadres."],
 ] as const)("%j gives %j", (result, text) => {
   expect(addMemberOutcomeMessage(result)).toBe(text);
+});
+
+test.each<[AccountDeletionBlocker, string]>([
+  [
+    {
+      role: "coordinator",
+      workingGroupName: "Noord",
+      organizationName: "Paddentrek Voorbeeldstad",
+      contactEmail: null,
+    },
+    "Sanne Bakker is de enige coördinator van Noord. Maak eerst iemand anders coördinator.",
+  ],
+  [
+    {
+      role: "organizationAdmin",
+      workingGroupName: null,
+      organizationName: "Paddentrek Voorbeeldstad",
+      contactEmail: null,
+    },
+    "Sanne Bakker is de enige beheerder van Paddentrek Voorbeeldstad. Maak eerst iemand anders beheerder.",
+  ],
+])("accountDeletionBlockedForOtherMessage(Sanne Bakker, %j) gives %j", (blocker, text) => {
+  expect(accountDeletionBlockedForOtherMessage("Sanne Bakker", blocker)).toBe(text);
+});
+
+test("the platform admin texts", () => {
+  expect(apiErrorMessage("own_account")).toBe(
+    "Dit is je eigen account. Dat verwijder je in de app, onder Meer > Profiel.",
+  );
+  expect(lastLoggedInPlatformAdminMessage).toBe(
+    "Er moet een hoofdbeheerder blijven die al eens is ingelogd.",
+  );
+  expect(noAccountMessage).toBe("Geen account met dit adres.");
 });

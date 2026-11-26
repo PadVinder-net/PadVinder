@@ -25,12 +25,15 @@ export { NameForm, type NameFormProps } from "./components/login/name-form";
 export { LoginFlow, type LoginFlowProps, type LoginResult } from "./components/login/login-flow";
 export { AuthGateView, type AuthGateViewProps } from "./components/login/auth-gate-view";
 export {
+  accountDeletionBlockedForOtherMessage,
   accountDeletionBlockedMessage,
   addMemberOutcomeMessage,
   apiErrorMessage,
   connectionMessage,
+  lastLoggedInPlatformAdminMessage,
   loginErrorMessage,
   logOutFailedMessage,
+  noAccountMessage,
   organizationNameTakenMessage,
   personOutsideOrganizationMessage,
   speciesNameTakenMessage,
