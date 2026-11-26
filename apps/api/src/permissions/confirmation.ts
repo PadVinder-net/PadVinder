@@ -31,3 +31,16 @@ export function adminConfirmedUntil(actor: Actor): Date | null {
   }
   return new Date(actor.passkeyVerifiedAt.getTime() + ADMIN_PASSKEY_CONFIRMATION_WINDOW);
 }
+
+/** The actor with the admin roles taken away, everything else kept. */
+export function withoutAdminRoles(actor: Actor): Actor {
+  return { ...actor, isPlatformAdmin: false, adminOfOrganizationIds: [] };
+}
+
+/**
+ * The actor as the rules see them: an admin without a confirmation falls back to what they are
+ * besides admin.
+ */
+export function effectiveActor(actor: Actor): Actor {
+  return hasAdminRole(actor) && confirmationOf(actor) === "none" ? withoutAdminRoles(actor) : actor;
+}

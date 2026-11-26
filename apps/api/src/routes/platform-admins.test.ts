@@ -5,6 +5,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "../test-env";
 import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -224,6 +225,7 @@ test("with a second platform admin who logged in, someone removes themself, and 
   const email = uniqueAddress("tweede");
   const second = await loginAs(ctx, email, { name: "Tweede Hoofdbeheerder" });
   await grantPlatformAdmin(ctx.t.db, { email }, { kind: "system" });
+  await stampSession(ctx, second.headers.cookie, new Date());
   expect((await list(second)).statusCode).toBe(200);
   const res = await remove(second, second.userId);
   expect(res.statusCode).toBe(204);

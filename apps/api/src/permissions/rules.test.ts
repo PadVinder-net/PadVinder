@@ -1,6 +1,13 @@
 import { expect, test } from "vitest";
 import type { Actor } from "./actor";
-import { authorize, decide, organizationRelationTo, type Permission, relationTo } from "./rules";
+import {
+  authorize,
+  decide,
+  organizationRelationTo,
+  type Permission,
+  relationTo,
+  requiredConfirmation,
+} from "./rules";
 
 function m(workingGroupId: string, organizationId: string, as: "volunteer" | "coordinator") {
   const isCoordinator = as === "coordinator";
@@ -13,7 +20,8 @@ function actor(parts: Partial<Omit<Actor, "userId" | "user">>): Actor {
   return {
     userId: "u-1",
     user: { id: "u-1", name: "Test", email: "test@example.test", phone: null },
-    passkeyVerifiedAt: null,
+    // Recently confirmed by default, so the role tables below read as roles alone.
+    passkeyVerifiedAt: new Date(NOW.getTime() - 60 * 1000),
     now: NOW,
     isPlatformAdmin: false,
     memberships: [],
@@ -206,14 +214,16 @@ test("organization.readAuditLog: admins of the organization and platform admins;
   }
 });
 
-test.each(["platform.managePlatformAdmins", "platform.deleteAccounts"] as const)(
-  "only a platform admin: %s; for others it is forbidden, not hidden",
-  (action) => {
-    for (const [who, a] of Object.entries(actors)) {
-      expect(decide(a, { action }), who).toBe(who === "platformAdmin" ? "allowed" : "forbidden");
-    }
-  },
-);
+test.each([
+  "platform.managePlatformAdmins",
+  "platform.listPlatformAdmins",
+  "platform.deleteAccounts",
+  "platform.lookUpAccounts",
+] as const)("only a platform admin: %s; for others it is forbidden, not hidden", (action) => {
+  for (const [who, a] of Object.entries(actors)) {
+    expect(decide(a, { action }), who).toBe(who === "platformAdmin" ? "allowed" : "forbidden");
+  }
+});
 
 test("only a platform admin manages organizations", () => {
   for (const [who, a] of Object.entries(actors)) {
@@ -262,6 +272,7 @@ const withConfirmation = (a: Actor, c: keyof typeof confirmedAt): Actor => ({
 });
 
 const newActions = [
+  "admin.listAdministered",
   "passkeys.listOwn",
   "passkeys.removeOwn",
   "passkeys.add",
@@ -276,6 +287,8 @@ const existingPermissions = {
   "platform.manageOrganizations": { action: "platform.manageOrganizations" },
   "platform.managePlatformAdmins": { action: "platform.managePlatformAdmins" },
   "platform.deleteAccounts": { action: "platform.deleteAccounts" },
+  "platform.listPlatformAdmins": { action: "platform.listPlatformAdmins" },
+  "platform.lookUpAccounts": { action: "platform.lookUpAccounts" },
   "organization.view": { action: "organization.view", target: organizationTarget },
   "organization.readAuditLog": { action: "organization.readAuditLog", target: organizationTarget },
   "organization.changeContact": {
@@ -302,17 +315,146 @@ const existingPermissions = {
   },
 } satisfies Record<Exclude<Permission["action"], (typeof newActions)[number]>, Permission>;
 
-test("every existing action decides the same with and without a confirmation", () => {
-  for (const permission of Object.values(existingPermissions) as Permission[]) {
-    for (const [who, a] of Object.entries(actors)) {
-      const unconfirmed = decide(withConfirmation(a, "none"), permission);
-      expect(decide(withConfirmation(a, "recent"), permission), `${permission.action} ${who}`).toBe(
-        unconfirmed,
+const adminActions = Object.values(existingPermissions) as Permission[];
+
+test("every existing admin action is confirm without a confirmation and allowed with one", () => {
+  for (const permission of adminActions) {
+    for (const who of ["platformAdmin", "organizationAdmin"] as const) {
+      // Platform-only actions are forbidden for an organization admin, whatever the session.
+      const full = decide(withConfirmation(actors[who], "recent"), permission);
+      if (full !== "allowed") {
+        expect(decide(withConfirmation(actors[who], "none"), permission)).toBe(full);
+        continue;
+      }
+      const label = `${permission.action} ${who}`;
+      expect(decide(withConfirmation(actors[who], "none"), permission), label).toBe("confirm");
+      expect(decide(withConfirmation(actors[who], "confirmed"), permission), label).toBe(
+        requiredConfirmation(permission) === "recent" ? "confirm" : "allowed",
       );
-      expect(decide(withConfirmation(a, "confirmed"), permission)).toBe(unconfirmed);
-      expect(unconfirmed).not.toBe("confirm");
     }
   }
+});
+
+const orgAdminWhoCoordinates = (c: keyof typeof confirmedAt) =>
+  withConfirmation(
+    actor({
+      adminOfOrganizationIds: ["o-a"],
+      memberships: [m("g-a1", "o-a", "coordinator"), m("g-a2", "o-a", "volunteer")],
+    }),
+    c,
+  );
+
+test("an organization admin who coordinates the group keeps reviewRequests, viewMemberContact, addMembers and removeMember of a volunteer without a confirmation", () => {
+  const a = orgAdminWhoCoordinates("none");
+  for (const action of [
+    "workingGroup.reviewRequests",
+    "workingGroup.viewMemberContact",
+    "workingGroup.addMembers",
+  ] as const) {
+    expect(decide(a, { action, target }), action).toBe("allowed");
+  }
+  expect(
+    decide(a, { action: "workingGroup.removeMember", target, memberIsCoordinator: false }),
+  ).toBe("allowed");
+  // Removing a coordinator, and managing the group, are admin power.
+  expect(
+    decide(a, { action: "workingGroup.removeMember", target, memberIsCoordinator: true }),
+  ).toBe("confirm");
+  expect(decide(a, { action: "workingGroup.manage", target })).toBe("confirm");
+});
+
+test("an organization admin who is a volunteer of the group: listMembers allowed, viewMemberContact confirm", () => {
+  const a = withConfirmation(
+    actor({ adminOfOrganizationIds: ["o-a"], memberships: [m("g-a1", "o-a", "volunteer")] }),
+    "none",
+  );
+  expect(decide(a, { action: "workingGroup.listMembers", target })).toBe("allowed");
+  expect(decide(a, { action: "workingGroup.viewMemberContact", target })).toBe("confirm");
+});
+
+test("an organization admin of another organization stays hidden, confirmed or not", () => {
+  for (const c of ["recent", "confirmed", "none"] as const) {
+    const a = withConfirmation(actors.adminOtherOrganization, c);
+    for (const permission of adminActions) {
+      if (permission.action.startsWith("platform.") || permission.action.startsWith("system.")) {
+        continue;
+      }
+      expect(decide(a, permission), `${permission.action} ${c}`).toBe("hidden");
+    }
+  }
+});
+
+test("a platform admin who is a member of nothing: every working group action is confirm unconfirmed", () => {
+  const a = withConfirmation(actors.platformAdmin, "none");
+  for (const permission of adminActions.filter((p) => p.action.startsWith("workingGroup."))) {
+    expect(decide(a, permission), permission.action).toBe("confirm");
+  }
+});
+
+test.each([
+  "platform.deleteAccounts",
+  "platform.managePlatformAdmins",
+  "organization.manageAdmins",
+  "platform.manageOrganizations",
+] as const)("%s needs the 10 minutes: confirm at 11 minutes, allowed at 9", (action) => {
+  const permission = existingPermissions[action];
+  const at = (minutes: number) => ({
+    ...actors.platformAdmin,
+    passkeyVerifiedAt: new Date(NOW.getTime() - minutes * 60 * 1000),
+  });
+  expect(decide(at(11), permission)).toBe("confirm");
+  expect(decide(at(9), permission)).toBe("allowed");
+});
+
+test("platform.listPlatformAdmins and platform.lookUpAccounts need 24 hours, not 10 minutes", () => {
+  for (const action of ["platform.listPlatformAdmins", "platform.lookUpAccounts"] as const) {
+    const at = (hours: number) => ({
+      ...actors.platformAdmin,
+      passkeyVerifiedAt: new Date(NOW.getTime() - hours * 60 * 60 * 1000),
+    });
+    expect(decide(at(1), { action })).toBe("allowed");
+    expect(decide(at(25), { action })).toBe("confirm");
+    expect(decide(actors.organizationAdmin, { action })).toBe("forbidden");
+  }
+});
+
+test("admin.listAdministered: allowed for a coordinator and a volunteer, confirm for an unconfirmed admin who also coordinates", () => {
+  const permission: Permission = { action: "admin.listAdministered" };
+  expect(decide(withConfirmation(actors.coordinator, "none"), permission)).toBe("allowed");
+  expect(decide(withConfirmation(actors.volunteer, "none"), permission)).toBe("allowed");
+  expect(decide(withConfirmation(actors.applicant, "none"), permission)).toBe("allowed");
+  expect(decide(orgAdminWhoCoordinates("none"), permission)).toBe("confirm");
+  expect(decide(orgAdminWhoCoordinates("confirmed"), permission)).toBe("allowed");
+  expect(decide(withConfirmation(actors.platformAdmin, "none"), permission)).toBe("confirm");
+});
+
+test("a volunteer, a coordinator and an applicant decide exactly as the roles alone, whatever their session", () => {
+  for (const who of ["volunteer", "coordinator", "applicant", "volunteerOtherGroup"] as const) {
+    const reference = decide(withConfirmation(actors[who], "recent"), {
+      action: "passkeys.listOwn",
+    });
+    expect(reference).toBe("forbidden");
+    for (const permission of Object.values(existingPermissions) as Permission[]) {
+      const outcomes = (["recent", "confirmed", "none"] as const).map((c) =>
+        decide(withConfirmation(actors[who], c), permission),
+      );
+      expect(new Set(outcomes).size, `${who} ${permission.action}`).toBe(1);
+      expect(outcomes[0]).not.toBe("confirm");
+    }
+  }
+});
+
+test("the windows at their edges", () => {
+  const edge = (ms: number) => ({
+    ...actors.platformAdmin,
+    passkeyVerifiedAt: new Date(NOW.getTime() - ms),
+  });
+  const day = 24 * 60 * 60 * 1000;
+  const ten = 10 * 60 * 1000;
+  expect(decide(edge(day - 1), { action: "platform.manageSpecies" })).toBe("allowed");
+  expect(decide(edge(day), { action: "platform.manageSpecies" })).toBe("confirm");
+  expect(decide(edge(ten - 1), { action: "platform.deleteAccounts" })).toBe("allowed");
+  expect(decide(edge(ten), { action: "platform.deleteAccounts" })).toBe("confirm");
 });
 
 test.each([

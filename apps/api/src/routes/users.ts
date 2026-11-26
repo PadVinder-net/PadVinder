@@ -33,7 +33,7 @@ export const userRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db })
     },
     async (request): Promise<AccountSummary> => {
       // Decided before the address is read, so nobody else learns whether an account exists.
-      authorize(request.actor!, { action: "platform.deleteAccounts" });
+      authorize(request.actor!, { action: "platform.lookUpAccounts" });
       const account = await findAccountByEmail(db, request.body.email);
       if (!account) throw apiError(404, apiErrorCodes.notFound, "No account has this address");
       return account;

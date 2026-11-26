@@ -24,6 +24,7 @@ import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -182,6 +183,7 @@ test("the request log of a lookup holds no address", async () => {
     const logged: TestApp = { app, mailer, mailQueue, t, close: async () => {} };
     const admin = await loginAs(logged, "log-hoofdbeheerder@example.test");
     await grantPlatformAdmin(t.db, { email: "log-hoofdbeheerder@example.test" }, system);
+    await stampSession(logged, admin.headers.cookie, new Date());
     const from = log.text().split("\n").filter(Boolean).length;
     const statuses = [];
     for (const email of ["log-hoofdbeheerder@example.test", "log-niemand@example.test", "jan@"]) {

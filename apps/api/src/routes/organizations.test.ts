@@ -14,6 +14,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "../test-env";
 import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -539,6 +540,8 @@ test("each admin shows hasPasskey; mayResetPasskeys is false for yourself and fo
     system,
   );
   await grantPlatformAdmin(ctx.t.db, { email: platformEmail }, system);
+  await stampSession(ctx, plain.headers.cookie, new Date());
+  await stampSession(ctx, platform.headers.cookie, new Date());
   await ctx.t.db.insert(passkeys).values({
     userId: plain.userId,
     publicKey: "pk",
