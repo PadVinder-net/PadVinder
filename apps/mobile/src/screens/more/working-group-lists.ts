@@ -110,6 +110,8 @@ export function useMemberLists(me: MeResponse, options: ListOptions = {}) {
     lists,
     (data) => ({
       members: data?.members ?? ([] as Member[]),
+      /** Set when the API left fields out until a passkey confirmation (`passkeyReveals`). */
+      reveals: (data?.passkeyReveals?.length ?? 0) > 0,
     }),
     hidden,
   );

@@ -1,5 +1,6 @@
-import { useMe, type MeResponse } from "@padvinder/api-client";
+import { requestPasskeyConfirmation, useMe, type MeResponse } from "@padvinder/api-client";
 import { apiErrorMessage, MembershipRequestList } from "@padvinder/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { FlashMessage, LoadError, Loading, SubScreen } from "./sub-screen";
 import { useRequestLists } from "./working-group-lists";
@@ -18,14 +19,18 @@ export function MembershipRequestsScreen() {
 
 function Requests({ me }: { me: MeResponse }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const lists = useRequestLists(me);
   if (lists.error) return <LoadError error={lists.error} onRetry={lists.refetch} />;
   if (lists.isPending) return <Loading>Aanmeldingen laden…</Loading>;
   // No group to review: the menu hides Aanmeldingen, and a URL typed by hand gets the API's "no".
-  if (lists.groups.length === 0) return <p className="text-lg">{apiErrorMessage("not_allowed")}</p>;
+  if (lists.groups.length === 0 && lists.hiddenGroups.length === 0)
+    return <p className="text-lg">{apiErrorMessage("not_allowed")}</p>;
   return (
     <MembershipRequestList
       groups={lists.groups}
+      hiddenGroups={lists.hiddenGroups}
+      onReveal={() => requestPasskeyConfirmation(queryClient)}
       onOpen={(requestId) => void navigate(`/more/membership-requests/${requestId}`)}
     />
   );
