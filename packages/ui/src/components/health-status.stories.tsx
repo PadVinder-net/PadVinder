@@ -29,3 +29,9 @@ export const DatabaseUnreachable: Story = { args: { health: databaseUnreachableF
 export const DetailsHidden: Story = { args: { health: detailsHiddenFixture } };
 export const Loading: Story = { args: {} };
 export const LoadFailed: Story = { args: { loadFailed: true } };
+export const Hidden: Story = {
+  args: {
+    health: { ...detailsHiddenFixture, passkeyReveals: ["database"] },
+    onReveal: () => {},
+  },
+};

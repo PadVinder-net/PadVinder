@@ -66,6 +66,7 @@ export {
   MembershipRequestTable,
   type MembershipRequestTableProps,
 } from "./components/joining/membership-request-table";
+export { PasskeyHidden, type PasskeyHiddenProps } from "./components/passkeys/passkey-hidden";
 export { MemberList, type MemberListProps } from "./components/members/member-list";
 export { MemberDetail, type MemberDetailProps } from "./components/members/member-detail";
 export { ProfileForm, type ProfileFormProps } from "./components/profile/profile-form";

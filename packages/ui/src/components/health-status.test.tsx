@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { render, screen } from "@testing-library/react";
 import {
   databaseUnreachableFixture,
@@ -5,7 +6,7 @@ import {
   healthyFixture,
   workerStaleFixture,
 } from "@padvinder/contracts/fixtures";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { HealthStatus } from "./health-status";
 
 test("healthy", () => {
@@ -61,4 +62,24 @@ test("hidden details leave the version rows out", () => {
   expect(screen.getByText("Verbonden")).toBeVisible();
   expect(screen.getByText("Alles werkt")).toBeVisible();
   expect(screen.getByText("0123456")).toBeVisible();
+});
+
+test("the health status shows the bar for the database details only with passkeyReveals", async () => {
+  const onReveal = vi.fn();
+  const { unmount } = render(
+    <HealthStatus
+      health={{ ...detailsHiddenFixture, passkeyReveals: ["database"] }}
+      onReveal={onReveal}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Toon met je toegangssleutel" }));
+  expect(onReveal).toHaveBeenCalledOnce();
+  unmount();
+  render(<HealthStatus health={detailsHiddenFixture} onReveal={onReveal} />);
+  expect(screen.queryByRole("button", { name: "Toon met je toegangssleutel" })).toBeNull();
+});
+
+test("without onReveal nothing changes", () => {
+  render(<HealthStatus health={{ ...detailsHiddenFixture, passkeyReveals: ["database"] }} />);
+  expect(screen.queryByRole("button", { name: "Toon met je toegangssleutel" })).toBeNull();
 });

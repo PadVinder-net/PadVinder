@@ -80,3 +80,27 @@ test("an error that arrives while the dialog is open shows inside it", async () 
     "Het lukt nu niet.",
   );
 });
+
+test("the member detail shows the bar in place of the address and the phone number", async () => {
+  const onReveal = vi.fn();
+  render(
+    <MemberDetail
+      member={membersFixture[1]!}
+      workingGroupName="Noord"
+      canRemove={false}
+      onRemove={() => {}}
+      pending={false}
+      onReveal={onReveal}
+    />,
+  );
+  expect(screen.getByText("E-mailadres")).toBeVisible();
+  expect(screen.getByText("Telefoonnummer")).toBeVisible();
+  await userEvent.click(screen.getAllByRole("button", { name: "Toon met je toegangssleutel" })[0]!);
+  expect(onReveal).toHaveBeenCalledOnce();
+});
+
+test("without onReveal nothing changes", () => {
+  setup(membersFixture[1]!, false);
+  expect(screen.queryByText("E-mailadres")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Toon met je toegangssleutel" })).toBeNull();
+});

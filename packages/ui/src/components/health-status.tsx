@@ -1,5 +1,6 @@
 import type { HealthResponse } from "@padvinder/contracts";
 import { formatDateTime } from "../lib/format";
+import { PasskeyHidden } from "./passkeys/passkey-hidden";
 import { Badge } from "./ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
@@ -7,9 +8,11 @@ export type HealthStatusProps = {
   /** Leave out while the status is loading. */
   health?: HealthResponse;
   loadFailed?: boolean;
+  /** Asks for a passkey confirmation; the database details show a grey bar when hidden. */
+  onReveal?(): void;
 };
 
-export function HealthStatus({ health, loadFailed = false }: HealthStatusProps) {
+export function HealthStatus({ health, loadFailed = false, onReveal }: HealthStatusProps) {
   return (
     <Card className="text-lg">
       <CardHeader>
@@ -18,7 +21,7 @@ export function HealthStatus({ health, loadFailed = false }: HealthStatusProps) 
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <Body health={health} loadFailed={loadFailed} />
+        <Body health={health} loadFailed={loadFailed} onReveal={onReveal} />
       </CardContent>
     </Card>
   );
@@ -27,6 +30,7 @@ export function HealthStatus({ health, loadFailed = false }: HealthStatusProps) 
 function Body({
   health,
   loadFailed,
+  onReveal,
 }: Required<Pick<HealthStatusProps, "loadFailed">> & HealthStatusProps) {
   if (loadFailed) {
     return <p role="alert">De server is niet bereikbaar. Probeer het straks opnieuw.</p>;
@@ -48,6 +52,7 @@ function Body({
         ["PostGIS", database.postgisVersion ?? "Niet geïnstalleerd"],
         ["Laatste migratie", database.latestMigration?.name ?? "Onbekend"],
       ];
+  const databaseReveals = health.passkeyReveals?.includes("database") ?? false;
   const rows: [label: string, value: string][] = [
     ["Database", database.reachable ? "Verbonden" : "Niet bereikbaar"],
     ...databaseDetails,
@@ -68,7 +73,12 @@ function Body({
         {rows.map(([label, value]) => (
           <div key={label}>
             <dt className="text-base text-muted-foreground">{label}</dt>
-            <dd className="font-medium break-words">{value}</dd>
+            <dd className="font-medium break-words">
+              {value}
+              {label === "Database" && databaseReveals && onReveal ? (
+                <PasskeyHidden onReveal={onReveal} />
+              ) : null}
+            </dd>
           </div>
         ))}
       </dl>
