@@ -31,6 +31,8 @@ export const apiErrorCodes = {
   tooManyAddresses: "too_many_addresses",
   /** The user added or invited too many people in 24 hours. */
   tooManyAdditions: "too_many_additions",
+  /** A platform admin's own account: deleted in the app, which also ends the session. */
+  ownAccount: "own_account",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];

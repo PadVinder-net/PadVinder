@@ -1,4 +1,8 @@
-import { DELETED_ACCOUNT_EMAIL_DOMAIN, type AccountDeletionBlocker } from "@padvinder/contracts";
+import {
+  DELETED_ACCOUNT_EMAIL_DOMAIN,
+  type AccountDeletionBlocker,
+  type AccountSummary,
+} from "@padvinder/contracts";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   countCoordinators,
@@ -12,6 +16,7 @@ import { recordAudit, type AuditActor } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
 import { lockMembershipRequestsOfUser } from "./membership-requests";
 import { notifyAccessChanged, notifyMembershipRequestsChanged } from "./notifications";
+import { userHasLoggedIn } from "./users";
 import {
   accounts,
   loginCodeRequests,
@@ -332,4 +337,62 @@ export async function deleteAccount(
     await notifyAccessChanged(tx, input.userId);
     return { outcome: "deleted" };
   });
+}
+
+/**
+ * The account whose address equals `email`, trimmed and in lower case: the whole address, never a
+ * part of one (no `like`, so `%` and `_` are plain characters). `null` when there is none or it
+ * was deleted; a deleted account's old address is free, and its replaced address never matches
+ * (`isNull(deletedAt)`). The working groups are all the person's memberships, also of groups that
+ * are switched off (a deletion removes those too), sorted by organization and then name in Dutch
+ * order; the organizations they administer likewise. No phone number.
+ */
+export async function findAccountByEmail(db: Db, email: string): Promise<AccountSummary | null> {
+  const [user] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      hasLoggedIn: userHasLoggedIn,
+      isPlatformAdmin: users.isPlatformAdmin,
+    })
+    .from(users)
+    .where(and(eq(users.email, email.trim().toLowerCase()), isNull(users.deletedAt)));
+  if (!user) return null;
+  const [memberships, administered] = await Promise.all([
+    db
+      .select({
+        id: workingGroups.id,
+        name: workingGroups.name,
+        organizationId: organizations.id,
+        organizationName: organizations.name,
+        isCoordinator: workingGroupMemberships.isCoordinator,
+      })
+      .from(workingGroupMemberships)
+      .innerJoin(workingGroups, eq(workingGroups.id, workingGroupMemberships.workingGroupId))
+      .innerJoin(organizations, eq(organizations.id, workingGroups.organizationId))
+      .where(eq(workingGroupMemberships.userId, user.id))
+      .orderBy(
+        dutch(organizations.name),
+        asc(organizations.id),
+        dutch(workingGroups.name),
+        asc(workingGroups.id),
+      ),
+    db
+      .select({ id: organizations.id, name: organizations.name })
+      .from(organizationAdmins)
+      .innerJoin(organizations, eq(organizations.id, organizationAdmins.organizationId))
+      .where(eq(organizationAdmins.userId, user.id))
+      .orderBy(dutch(organizations.name), asc(organizations.id)),
+  ]);
+  return {
+    ...user,
+    organizationAdminOf: administered,
+    workingGroups: memberships.map((row) => ({
+      id: row.id,
+      name: row.name,
+      organization: { id: row.organizationId, name: row.organizationName },
+      isCoordinator: row.isCoordinator,
+    })),
+  };
 }

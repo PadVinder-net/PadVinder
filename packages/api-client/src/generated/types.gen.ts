@@ -4,6 +4,31 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AccountSummaryInput = {
+    id: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+    isPlatformAdmin: boolean;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
+    workingGroups: Array<{
+        id: string;
+        name: string;
+        organization: {
+            id: string;
+            name: string;
+        };
+        isCoordinator: boolean;
+    }>;
+};
+
+export type FindAccountRequestInput = {
+    email: string;
+};
+
 export type AddMemberOutcomeInput = 'added' | 'approved' | 'invited' | 'already_member' | 'invalid';
 
 export type AddMembersRequestInput = {
@@ -304,6 +329,31 @@ export type UpdateSpeciesRequestInput = {
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
+};
+
+export type AccountSummary = {
+    id: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+    isPlatformAdmin: boolean;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
+    workingGroups: Array<{
+        id: string;
+        name: string;
+        organization: {
+            id: string;
+            name: string;
+        };
+        isCoordinator: boolean;
+    }>;
+};
+
+export type FindAccountRequest = {
+    email: string;
 };
 
 export type AddMemberOutcome = 'added' | 'approved' | 'invited' | 'already_member' | 'invalid';
@@ -1394,6 +1444,86 @@ export type RemovePlatformAdminResponses = {
 };
 
 export type RemovePlatformAdminResponse = RemovePlatformAdminResponses[keyof RemovePlatformAdminResponses];
+
+export type FindAccountData = {
+    body: FindAccountRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/users/lookup';
+};
+
+export type FindAccountErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type FindAccountError = FindAccountErrors[keyof FindAccountErrors];
+
+export type FindAccountResponses = {
+    /**
+     * Default Response
+     */
+    200: AccountSummary;
+};
+
+export type FindAccountResponse = FindAccountResponses[keyof FindAccountResponses];
+
+export type DeleteUserData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/api/users/{userId}';
+};
+
+export type DeleteUserErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: AccountDeletionBlocked;
+};
+
+export type DeleteUserError = DeleteUserErrors[keyof DeleteUserErrors];
+
+export type DeleteUserResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type DeleteUserResponse = DeleteUserResponses[keyof DeleteUserResponses];
 
 export type ListSpeciesData = {
     body?: never;

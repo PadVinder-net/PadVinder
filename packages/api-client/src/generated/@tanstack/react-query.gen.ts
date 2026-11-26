@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { addMembers, addOrganizationAdmin, addPlatformAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listAuditLogEntries, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listPlatformAdmins, listReviewableMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, removePlatformAdmin, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
-import type { AddMembersData, AddMembersError, AddMembersResponse2, AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, AddPlatformAdminData, AddPlatformAdminError, AddPlatformAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListAuditLogEntriesData, ListAuditLogEntriesError, ListAuditLogEntriesResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListPlatformAdminsData, ListPlatformAdminsError, ListPlatformAdminsResponse, ListReviewableMembershipRequestsData, ListReviewableMembershipRequestsError, ListReviewableMembershipRequestsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, RemovePlatformAdminData, RemovePlatformAdminError, RemovePlatformAdminResponse, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { addMembers, addOrganizationAdmin, addPlatformAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, deleteUser, findAccount, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listAuditLogEntries, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listPlatformAdmins, listReviewableMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, removePlatformAdmin, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
+import type { AddMembersData, AddMembersError, AddMembersResponse2, AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, AddPlatformAdminData, AddPlatformAdminError, AddPlatformAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, FindAccountData, FindAccountError, FindAccountResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListAuditLogEntriesData, ListAuditLogEntriesError, ListAuditLogEntriesResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListPlatformAdminsData, ListPlatformAdminsError, ListPlatformAdminsResponse, ListReviewableMembershipRequestsData, ListReviewableMembershipRequestsError, ListReviewableMembershipRequestsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, RemovePlatformAdminData, RemovePlatformAdminError, RemovePlatformAdminResponse, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -430,6 +430,40 @@ export const removePlatformAdminMutation = (options?: Partial<Options<RemovePlat
     const mutationOptions: UseMutationOptions<RemovePlatformAdminResponse, RemovePlatformAdminError, Options<RemovePlatformAdminData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await removePlatformAdmin({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * The account with exactly this address (platform admins). Changes nothing; 404 when no account has it
+ */
+export const findAccountMutation = (options?: Partial<Options<FindAccountData>>): UseMutationOptions<FindAccountResponse, FindAccountError, Options<FindAccountData>> => {
+    const mutationOptions: UseMutationOptions<FindAccountResponse, FindAccountError, Options<FindAccountData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await findAccount({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Delete someone's account (platform admins), as `DELETE /api/me` does: refused for the only platform admin, and for the only coordinator of an active working group or admin of an organization (with `blockers`). Never the actor's own account
+ */
+export const deleteUserMutation = (options?: Partial<Options<DeleteUserData>>): UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> => {
+    const mutationOptions: UseMutationOptions<DeleteUserResponse, DeleteUserError, Options<DeleteUserData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteUser({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

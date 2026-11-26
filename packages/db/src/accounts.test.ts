@@ -3,7 +3,12 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { getAccess } from "./access";
-import { deleteAccount, deletedAccountEmail, DELETED_ACCOUNT_NAME } from "./accounts";
+import {
+  deleteAccount,
+  deletedAccountEmail,
+  DELETED_ACCOUNT_NAME,
+  findAccountByEmail,
+} from "./accounts";
 import {
   AdminError,
   createOrganization,
@@ -1178,4 +1183,97 @@ test("onlyIfUnused keeps an account that got a membership in the meantime", asyn
       .from(workingGroupMemberships)
       .where(eq(workingGroupMemberships.userId, userId)),
   ).toHaveLength(1);
+});
+
+// Looking up an account by address, for the platform admin who deletes it.
+
+test("findAccountByEmail finds the whole address, in any capitals and with spaces around it", async () => {
+  const user = await newUser();
+  const expected = {
+    id: user.id,
+    name: "Noor de Vries",
+    email: user.email,
+    hasLoggedIn: false,
+    isPlatformAdmin: false,
+    organizationAdminOf: [],
+    workingGroups: [],
+  };
+  expect(await findAccountByEmail(db(), user.email)).toEqual(expected);
+  expect(await findAccountByEmail(db(), `  ${user.email.toUpperCase()} `)).toEqual(expected);
+});
+
+test.each(["noor", "noor@example", "%@example.test", "no_r@example.test", "noor@example.test%"])(
+  "%j finds nothing",
+  async (email) => {
+    // "no_r" would match "noor" under `like`, and "%" anything.
+    await db()
+      .insert(users)
+      .values({ name: "Noor", email: "noor@example.test", emailVerified: true })
+      .onConflictDoNothing();
+    expect(await findAccountByEmail(db(), "noor@example.test")).not.toBeNull();
+    expect(await findAccountByEmail(db(), email)).toBeNull();
+  },
+);
+
+test("the old address of a deleted account finds nothing, and so does its replaced address", async () => {
+  const user = await newUser();
+  expect(await deleteAccount(db(), { userId: user.id, now })).toEqual({ outcome: "deleted" });
+  expect(await findAccountByEmail(db(), user.email)).toBeNull();
+  expect(await findAccountByEmail(db(), deletedAccountEmail(user.id))).toBeNull();
+});
+
+test("lists every membership, also of a group that is switched off, and the organizations the person administers", async () => {
+  const user = await newUser();
+  await db().update(users).set({ lastLoginAt: now }).where(eq(users.id, user.id));
+  // In C order "Zwolle" comes before "achterhoek" and "Noord" before "eiland"; in Dutch order not.
+  const suffix = organizationCount++;
+  const zwolle = await newOrganization(user.email, { name: `Zwolle ${suffix}` });
+  const achterhoek = await newOrganization(user.email, { name: `achterhoek ${suffix}` });
+  const middle = await newGroup(zwolle, "Midden", user.email);
+  const north = await newGroup(achterhoek, "Noord", user.email);
+  const island = await newGroup(achterhoek, "eiland", "eiland-coordinator@example.test");
+  await db()
+    .insert(workingGroupMemberships)
+    .values({ userId: user.id, workingGroupId: island, isCoordinator: false });
+  await updateWorkingGroup(db(), { workingGroupId: island, patch: { active: false } }, system);
+
+  const achterhoekRef = { id: achterhoek, name: `achterhoek ${suffix}` };
+  const zwolleRef = { id: zwolle, name: `Zwolle ${suffix}` };
+  expect(await findAccountByEmail(db(), user.email)).toEqual({
+    id: user.id,
+    name: "Noor de Vries",
+    email: user.email,
+    hasLoggedIn: true,
+    isPlatformAdmin: false,
+    organizationAdminOf: [achterhoekRef, zwolleRef],
+    workingGroups: [
+      { id: island, name: "eiland", organization: achterhoekRef, isCoordinator: false },
+      { id: north, name: "Noord", organization: achterhoekRef, isCoordinator: true },
+      { id: middle, name: "Midden", organization: zwolleRef, isCoordinator: true },
+    ],
+  });
+});
+
+test("a platform admin shows as one", async () => {
+  const user = await newUser();
+  await grantPlatformAdmin(db(), { email: user.email }, system);
+  expect(await findAccountByEmail(db(), user.email)).toMatchObject({ isPlatformAdmin: true });
+  await revokePlatformAdmin(db(), { email: user.email }, system);
+});
+
+// "without it the user" is pinned by "writes one audit entry: the user deleted themselves", and
+// `deletedBy` with `onlyIfUnused` by "onlyIfUnused deletes an unused account, with the given actor".
+test("with deletedBy the entry account.deleted names that actor, also for an account in use", async () => {
+  const user = await newUser();
+  const platformAdmin = await newUser();
+  expect(
+    await deleteAccount(db(), {
+      userId: user.id,
+      now,
+      deletedBy: { kind: "user", userId: platformAdmin.id },
+    }),
+  ).toEqual({ outcome: "deleted" });
+  expect(await deletedEntries(user.id)).toMatchObject([
+    { actorKind: "user", actorUserId: platformAdmin.id, subjectId: user.id, details: {} },
+  ]);
 });
