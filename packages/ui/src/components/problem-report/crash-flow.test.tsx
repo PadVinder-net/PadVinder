@@ -12,7 +12,8 @@ test("Vertel wat er gebeurde opens the form in place, and a sent report thanks t
   const onReload = vi.fn();
   render(<CrashFlow variant="app" contact={contact} onReload={onReload} onSend={onSend} />);
   await userEvent.click(screen.getByRole("button", { name: "Vertel wat er gebeurde" }));
-  expect(screen.getByRole("heading", { name: "Meld een probleem" })).toBeVisible();
+  // The button that had focus is gone: focus moves to the form's heading.
+  expect(screen.getByRole("heading", { name: "Meld een probleem" })).toHaveFocus();
   expect(screen.getByRole("checkbox")).not.toBeChecked();
   await userEvent.type(
     screen.getByRole("textbox", { name: "Wat ging er mis?" }),
@@ -21,6 +22,7 @@ test("Vertel wat er gebeurde opens the form in place, and a sent report thanks t
   await userEvent.click(screen.getByRole("button", { name: "Verstuur" }));
   expect(onSend).toHaveBeenCalledWith({ message: "Ik tikte op Leden", includeContact: false });
   expect(await screen.findByText("Bedankt, je melding is verstuurd.")).toBeVisible();
+  expect(screen.getByRole("status")).toHaveFocus();
   expect(screen.queryByRole("textbox")).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Laad opnieuw" }));
   expect(onReload).toHaveBeenCalledOnce();
@@ -63,4 +65,17 @@ test("before login there is no report button", () => {
   render(<CrashFlow variant="app" contact={null} onReload={vi.fn()} onSend={vi.fn()} />);
   expect(screen.getByRole("heading", { name: "Er ging iets mis" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "Vertel wat er gebeurde" })).toBeNull();
+});
+
+test("a flow that starts at a step (a story) takes no focus", () => {
+  render(
+    <CrashFlow
+      variant="app"
+      contact={contact}
+      onReload={vi.fn()}
+      onSend={vi.fn()}
+      initialStep="form"
+    />,
+  );
+  expect(document.body).toHaveFocus();
 });

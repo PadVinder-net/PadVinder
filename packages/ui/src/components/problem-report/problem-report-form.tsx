@@ -1,4 +1,4 @@
-import { useState, type SubmitEvent } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { FieldError, WideButton, labelClass } from "../login/form-parts";
 import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
@@ -16,6 +16,8 @@ export type ProblemReportFormProps = {
   errorText?: string;
   /** False in a modal, which shows the title itself. */
   heading?: boolean;
+  /** Moves focus to the heading when the form appears in place of what had focus. */
+  focusHeading?: boolean;
   /** For stories: the form as it looks while sending, or filled in. */
   sending?: boolean;
   initialMessage?: string;
@@ -39,6 +41,7 @@ export function ProblemReportForm({
   onSubmit,
   errorText,
   heading = true,
+  focusHeading = false,
   sending = false,
   initialMessage = "",
   initialIncludeContact = false,
@@ -46,6 +49,10 @@ export function ProblemReportForm({
   const [message, setMessage] = useState(initialMessage);
   const [includeContact, setIncludeContact] = useState(initialIncludeContact);
   const [submitting, setSubmitting] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusHeading) headingRef.current?.focus();
+  }, [focusHeading]);
   const busy = sending || submitting;
   const empty = message.trim() === "";
 
@@ -64,7 +71,11 @@ export function ProblemReportForm({
 
   return (
     <section className="flex flex-col gap-4 text-lg">
-      {heading ? <h2 className="text-2xl font-semibold">{problemReportTitle}</h2> : null}
+      {heading ? (
+        <h2 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold outline-none">
+          {problemReportTitle}
+        </h2>
+      ) : null}
       <p>
         Werkt er iets niet? Schrijf op wat je deed en wat er misging. Dit gaat naar de makers van
         PadVinder. Wil je een antwoord? Stuur dan je naam en e-mailadres mee.
@@ -85,7 +96,9 @@ export function ProblemReportForm({
             maxLength={maxMessageLength}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-lg shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            aria-invalid={errorText ? true : undefined}
+            aria-describedby={errorText ? "problem-report-error" : undefined}
+            className="w-full aria-invalid:border-destructive rounded-md border border-input bg-transparent px-3 py-2 text-lg shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
         </div>
         <div className="flex items-start gap-3">

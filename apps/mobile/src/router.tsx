@@ -4,6 +4,7 @@ import { RouteCrash } from "./components/crash";
 import { JoinAnotherScreen } from "./screens/more/join-another-screen";
 import { MapScreen } from "./screens/map-screen";
 import { MoreScreen } from "./screens/more-screen";
+import { NotFoundScreen } from "./screens/not-found-screen";
 import { MemberScreen } from "./screens/more/member-screen";
 import { MembersScreen } from "./screens/more/members-screen";
 import { MembershipRequestScreen } from "./screens/more/membership-request-screen";
@@ -70,6 +71,8 @@ const screens: RouteObject[] = [
       { path: "report-problem", element: <ReportProblemScreen /> },
     ],
   },
+  // Inside the layout, so the tabs stay; the error element is for real crashes only.
+  { path: "*", element: <NotFoundScreen /> },
 ];
 
 export const routes = buildRoutes({ dev: import.meta.env.DEV });

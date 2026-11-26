@@ -93,11 +93,19 @@ test("a crash whose event was not sent sends a report without an event ID", asyn
   expect(bodies).toEqual([expect.not.objectContaining({ eventId: expect.anything() })]);
 });
 
-test("an address without a screen is no crash to report", async () => {
+test("an address without a screen is no crash: the not-found screen shows, with the tabs", async () => {
   mockFetch({ "/api/me": meFixture });
-  renderApp("/app/does-not-exist");
-  expect(await screen.findByRole("heading", { name: "Er ging iets mis" })).toBeVisible();
+  const { router } = renderApp("/app/does-not-exist");
+  expect(
+    await screen.findByRole("heading", { level: 1, name: "Deze pagina bestaat niet" }),
+  ).toBeVisible();
+  expect(screen.getByText("Of je mag haar niet zien.")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Er ging iets mis" })).toBeNull();
+  expect(screen.getByRole("navigation", { name: "Hoofdmenu" })).toBeVisible();
   expect(captureCrash).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("link", { name: "Terug naar het begin" }));
+  expect(router.state.location.pathname).toBe("/app/");
+  expect(screen.getByRole("heading", { level: 1, name: "Vanavond" })).toBeVisible();
 });
 
 function Crash(): never {

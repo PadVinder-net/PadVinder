@@ -139,6 +139,7 @@ export {
   sentErrorEventId,
   setBrowserMonitoringUser,
   startBrowserMonitoring,
+  stopBrowserMonitoring,
   type BrowserMonitoringOptions,
   type RouterTracingHooks,
 } from "./monitoring/browser-monitoring";

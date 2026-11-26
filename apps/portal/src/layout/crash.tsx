@@ -49,13 +49,20 @@ export function RouteCrash() {
 
 /** Around the whole portal, for a crash outside the router: the gate, the login screens. */
 export function RootCrashBoundary({ children }: { children: ReactNode }) {
+  // Unhandled, as the router's crashes are: the app could not go on.
   return (
-    <Sentry.ErrorBoundary
-      fallback={({ eventId }) => (
-        <PortalCrash eventId={sentErrorEventId(eventId)} page={window.location.pathname} />
-      )}
-    >
+    <Sentry.ErrorBoundary handled={false} fallback={RootCrash}>
       {children}
     </Sentry.ErrorBoundary>
   );
+}
+
+/**
+ * The root boundary's fallback, a component of its own so it keeps its state. Whether the crash's
+ * event was sent is decided once, right after it was captured: a later event must not unlink it.
+ */
+function RootCrash({ eventId }: { eventId: string }) {
+  const [sentId] = useState(() => sentErrorEventId(eventId));
+  const [page] = useState(() => window.location.pathname);
+  return <PortalCrash eventId={sentId} page={page} />;
 }

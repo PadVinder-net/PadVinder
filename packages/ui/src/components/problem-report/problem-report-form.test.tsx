@@ -98,8 +98,19 @@ test("a failed send keeps the message and shows the error", async () => {
     "Je melding is niet verstuurd. Probeer het zo nog eens.",
   );
   expect(message()).toHaveValue("Het tellen lukt niet");
+  // The error belongs to the field, for a screen reader too.
+  expect(message()).toHaveAttribute("aria-invalid", "true");
+  expect(message()).toHaveAccessibleDescription(
+    "Je melding is niet verstuurd. Probeer het zo nog eens.",
+  );
   expect(contact()).toBeChecked();
   expect(screen.getByRole("button", { name: "Verstuur" })).toBeEnabled();
+});
+
+test("without an error the field is not marked invalid", () => {
+  render(<ProblemReportForm name={name} email={email} onSubmit={vi.fn()} />);
+  expect(message()).not.toHaveAttribute("aria-invalid");
+  expect(message()).not.toHaveAttribute("aria-describedby");
 });
 
 test("a message is at most 2,000 characters, as the API takes", () => {

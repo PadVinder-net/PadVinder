@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WideButton } from "../login/form-parts";
 import { CrashFrame, CrashScreen } from "./crash-screen";
 import {
@@ -34,12 +34,22 @@ export function CrashFlow({
   initialStep = "crash",
 }: CrashFlowProps) {
   const [step, setStep] = useState<CrashStep>(initialStep);
+  // Each step replaces the button that was pressed, so focus moves along; not on the first render.
+  const [moved, setMoved] = useState(false);
+  const thanksRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (moved && step === "sent") thanksRef.current?.focus();
+  }, [moved, step]);
+  const goTo = (next: CrashStep) => {
+    setMoved(true);
+    setStep(next);
+  };
   if (step === "crash" || contact === null) {
     return (
       <CrashScreen
         variant={variant}
         onReload={onReload}
-        onReport={contact === null ? undefined : () => setStep("form")}
+        onReport={contact === null ? undefined : () => goTo("form")}
       />
     );
   }
@@ -51,7 +61,7 @@ export function CrashFlow({
   if (step === "sent") {
     return (
       <CrashFrame>
-        <p role="status" className="font-medium">
+        <p ref={thanksRef} role="status" tabIndex={-1} className="font-medium outline-none">
           {problemReportSentMessage}
         </p>
         {reload}
@@ -64,9 +74,10 @@ export function CrashFlow({
         name={contact.name}
         email={contact.email}
         errorText={errorText}
+        focusHeading={moved}
         onSubmit={async (input) => {
           await onSend(input);
-          setStep("sent");
+          goTo("sent");
         }}
       />
       {reload}
