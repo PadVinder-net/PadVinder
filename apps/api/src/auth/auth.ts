@@ -15,7 +15,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { eq } from "drizzle-orm";
-import { scrub } from "@padvinder/logging";
+import { scrub, withoutDatabaseValues, withoutQueryText } from "@padvinder/logging";
 import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail, describeMailError, type Mailer } from "@padvinder/mail";
@@ -44,7 +44,29 @@ const PASSKEY_SESSION_PATHS = new Set([
  */
 const redactQuoted = (text: string): string => text.replace(/"[\s\S]*"/, '"[redacted]"');
 
-const clean = (text: string): string => scrub(redactQuoted(text));
+const clean = (text: string): string => scrub(redactQuoted(withoutQueryText(text)));
+
+type ForwardedError = { type: string; message: string; code?: string; cause?: ForwardedError };
+
+/**
+ * An error as `forwardLog` keeps it: its name and cleaned message. A database error keeps its
+ * name, the fixed message of `withoutDatabaseValues` and its SQLSTATE `code`, and the same of its
+ * cause: Drizzle's message holds the query's parameters (a session token, a credential ID, a
+ * challenge), after the last quote, where `redactQuoted` does not reach.
+ */
+function forwardedError(error: Error): ForwardedError {
+  const safe = withoutDatabaseValues(error);
+  return safe === error ? { type: error.name, message: clean(error.message) } : withCodes(safe);
+}
+
+/** A copy made by `withoutDatabaseValues`, with the codes of it and its causes. */
+function withCodes(error: Error): ForwardedError {
+  const result: ForwardedError = { type: error.name, message: clean(error.message) };
+  const code: unknown = (error as { code?: unknown }).code;
+  if (typeof code === "string") result.code = clean(code);
+  if (error.cause instanceof Error) result.cause = withCodes(error.cause);
+  return result;
+}
 
 /**
  * The answer (429) when an address asked for too many login codes. The browser client tells the
@@ -63,15 +85,15 @@ export const LOGIN_CODE_LIMIT_ERRORS: Record<LoginCodeLimit, { code: string; mes
 
 /**
  * Passes Better Auth's log lines to our logger. Its `info` lines are hints for developers, so
- * they go to `debug`. Arguments are reduced to error names and messages: a database error can
- * carry the row (with an email address) in its details. Quoted values are redacted from the
- * message and the error messages, then addresses are scrubbed.
+ * they go to `debug`. Arguments are reduced to error names and messages (`forwardedError`): a
+ * database error can carry the row (with an email address) in its details, and the query's
+ * parameters in its message. Better Auth also logs a database error's message as the line's own
+ * message, so Drizzle's query text is cut from it too (`withoutQueryText`). Quoted values are
+ * redacted from the message and the error messages, then addresses are scrubbed.
  */
 export function forwardLog(log: FastifyBaseLogger) {
   return (level: "debug" | "info" | "warn" | "error", message: string, ...args: unknown[]) => {
-    const errors = args
-      .filter((arg): arg is Error => arg instanceof Error)
-      .map((error) => ({ type: error.name, message: clean(error.message) }));
+    const errors = args.filter((arg): arg is Error => arg instanceof Error).map(forwardedError);
     const target = level === "info" ? "debug" : level;
     log[target](
       { errors: errors.length > 0 ? errors : undefined },

@@ -1,3 +1,4 @@
+import { QUERY_ERROR_MESSAGE } from "@padvinder/logging";
 import { createTestLogger } from "@padvinder/logging/testing";
 import {
   auditLogEntries,
@@ -8,7 +9,8 @@ import {
   sessions,
 } from "@padvinder/db";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createCast, expectStatuses } from "../testing/cast";
 import { codeFor, createTestApp, loginAs, requestCode, type TestApp } from "../testing/login";
@@ -586,4 +588,69 @@ test("no log line of a failed verification holds the challenge or the credential
   ]) {
     expect(log).not.toContain(secret);
   }
+});
+
+test("a database failure during a passkey login logs no credential ID, query or parameter", async () => {
+  await ctx.close();
+  const logs = createTestLogger("debug");
+  ctx = await createTestApp({ LOG_LEVEL: "debug" }, { logger: logs.logger });
+  const { authenticator } = await adminWithPasskey();
+  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", null);
+  // Better Auth's look-up of the passkey by its credential ID now fails in the database.
+  await ctx.t.pool.query("alter table passkeys rename to passkeys_gone");
+  const res = await postAuth(ctx, "/passkey/verify-authentication", withCookies(null, options), {
+    response: authenticator.authenticate(options.json()),
+  });
+  expect(res.statusCode).toBeGreaterThanOrEqual(500);
+  const line = logs.entries().find((entry) => JSON.stringify(entry).includes("DrizzleQueryError"));
+  expect(line).toMatchObject({ level: "error" });
+  const log = logs.text();
+  expect(log).toContain(QUERY_ERROR_MESSAGE);
+  expect(log).not.toContain("Failed query:");
+  expect(log).not.toContain("params");
+  expect(log).not.toContain("credential_id");
+  expect(log).not.toContain(authenticator.credentialId);
+});
+
+test("when deleting the replaced session fails in the database, its token is not logged", async () => {
+  await ctx.close();
+  const logs = createTestLogger("debug");
+  ctx = await createTestApp({ LOG_LEVEL: "debug" }, { logger: logs.logger });
+  const admin = await adminWithPasskey();
+  const token = sessionTokenOf(admin.cookie);
+  expect(token).toBeTruthy();
+  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", admin.cookie);
+  const { internalAdapter } = await ctx.app.auth.$context;
+  // A real failed query with the token as its parameter. The worst case: Drizzle's
+  // `paramsInErrors` on (it is off in `createDb`) puts it in the message, PostgreSQL in its own.
+  const loud = drizzle({ client: ctx.t.pool, paramsInErrors: true });
+  const spy = vi.spyOn(internalAdapter, "deleteSession").mockImplementation(async (value) => {
+    await loud.execute(sql`select ${value}::uuid`);
+  });
+  const res = await postAuth(
+    ctx,
+    "/passkey/verify-authentication",
+    withCookies(admin.cookie, options),
+    {
+      response: admin.authenticator.authenticate(options.json()),
+    },
+  );
+  spy.mockRestore();
+  expect(res.statusCode).toBe(500);
+  expect(logs.entries()).toContainEqual(
+    expect.objectContaining({
+      level: "error",
+      msg: "Better Auth: Deleting the replaced session failed",
+      errors: [
+        {
+          type: "DrizzleQueryError",
+          message: QUERY_ERROR_MESSAGE,
+          cause: expect.objectContaining({ code: "22P02" }),
+        },
+      ],
+    }),
+  );
+  const log = logs.text();
+  expect(log).not.toContain(token);
+  expect(log).not.toContain("Failed query:");
 });

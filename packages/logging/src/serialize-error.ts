@@ -1,3 +1,4 @@
+import { withoutDatabaseValues } from "./database-error";
 import { scrub } from "./scrub";
 
 export type SerializedError = {
@@ -69,7 +70,10 @@ function serialize(error: unknown, depth: number, seen: Set<unknown>): Serialize
   }
 }
 
-/** Never throws: a value that cannot be read becomes `{ type: "unknown", message: "[unserializable]" }`. */
+/**
+ * Never throws: a value that cannot be read becomes `{ type: "unknown", message: "[unserializable]" }`.
+ * A database error (and a database error as a cause) loses its message (`withoutDatabaseValues`).
+ */
 export function serializeError(error: unknown): SerializedError {
-  return serialize(error, 1, new Set());
+  return serialize(withoutDatabaseValues(error), 1, new Set());
 }

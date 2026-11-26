@@ -1,3 +1,4 @@
+import { DATABASE_ERROR_MESSAGE, QUERY_ERROR_MESSAGE } from "@padvinder/logging";
 import { createTestLogger } from "@padvinder/logging/testing";
 import {
   createOrganization,
@@ -10,6 +11,7 @@ import {
 } from "@padvinder/db";
 import { createTestDatabase } from "@padvinder/db/testing";
 import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
 import { forwardLog } from "./auth";
@@ -469,6 +471,56 @@ test("a quote inside a quoted value does not let another quoted value through", 
   expect(logs.entries()[0]).toMatchObject({
     msg: 'Better Auth: Unexpected challenge "[redacted]"',
   });
+});
+
+/** A real `DrizzleQueryError` whose message and cause hold `value`: the worst case. */
+async function failedQueryWith(value: string): Promise<Error> {
+  // `paramsInErrors` is off in `createDb`; on, Drizzle puts the parameters in the message.
+  const loud = drizzle({ client: ctx.t.pool, paramsInErrors: true });
+  const error = await loud.execute(sql`select ${value}::uuid`).then(
+    () => undefined,
+    (thrown: unknown) => thrown,
+  );
+  if (!(error instanceof Error)) throw new Error("The query did not fail");
+  expect(error.name).toBe("DrizzleQueryError");
+  expect(error.message).toContain(value);
+  expect(String((error.cause as Error).message)).toContain(value);
+  return error;
+}
+
+test("a real query error reaches the log without its parameters, query or PostgreSQL's quoted value", async () => {
+  const token = "session-token-MARKER-0123456789";
+  const error = await failedQueryWith(token);
+  const logs = createTestLogger("debug");
+  // Better Auth logs a database error's message as the line's message too.
+  forwardLog(logs.logger)("error", error.message, error);
+  logs.logger.error({ err: error }, "Unexpected error");
+  logs.logger.error(error, "Unexpected error");
+  const [forwarded, asErr, asFirst] = logs.entries();
+  expect(forwarded).toMatchObject({
+    msg: `Better Auth: ${QUERY_ERROR_MESSAGE}`,
+    errors: [
+      {
+        type: "DrizzleQueryError",
+        message: QUERY_ERROR_MESSAGE,
+        cause: { message: DATABASE_ERROR_MESSAGE, code: "22P02" },
+      },
+    ],
+  });
+  for (const entry of [asErr, asFirst]) {
+    expect(entry).toMatchObject({
+      err: {
+        type: "DrizzleQueryError",
+        message: QUERY_ERROR_MESSAGE,
+        stack: expect.stringContaining("login.test.ts"),
+        cause: { message: DATABASE_ERROR_MESSAGE, code: "22P02" },
+      },
+    });
+  }
+  const text = logs.text();
+  expect(text).not.toContain(token);
+  expect(text).not.toContain("Failed query:");
+  expect(text).not.toContain("::uuid");
 });
 
 test("a POST from a foreign Origin is refused", async () => {
