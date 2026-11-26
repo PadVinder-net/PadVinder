@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { scrubBreadcrumb, scrubEvent } from "./scrub-event";
+import { scrubBreadcrumb, scrubEvent, withoutAttributeValues } from "./scrub-event";
 
 test("scrubs every string, drops request headers, cookies, body, query and user fields but id", () => {
   const event = {
@@ -181,4 +181,51 @@ test("keeps the query of a from or to that is not a navigation breadcrumb's", ()
     breadcrumbs: [{ category: "console", data: { from: "a?b", to: "c#d" } }],
     extra: { from: "a?b", data: { to: "c#d" } },
   });
+});
+
+const SELECTOR = 'body > li.row > button#x[aria-label="Acties voor Anne de Vries"][title="Anne"]';
+const STRIPPED = "body > li.row > button#x[aria-label][title]";
+
+test("web vitals' element selectors keep attribute names only", () => {
+  const result = scrubEvent({
+    contexts: {
+      trace: { data: { "lcp.element": SELECTOR, "cls.source.1": SELECTOR, "lcp.size": 10 } },
+    },
+    spans: [{ data: { "browser.web_vital.inp.target": SELECTOR, "cls.source.12": SELECTOR } }],
+  });
+  expect(result).toEqual({
+    contexts: {
+      trace: { data: { "lcp.element": STRIPPED, "cls.source.1": STRIPPED, "lcp.size": 10 } },
+    },
+    spans: [{ data: { "browser.web_vital.inp.target": STRIPPED, "cls.source.12": STRIPPED } }],
+  });
+});
+
+test("a value with quotes is removed whole; one that looks like a next element gives [element]", () => {
+  expect(withoutAttributeValues('button[aria-label="Anne "x"] de Vries"]')).toBe(
+    "button[aria-label]",
+  );
+  expect(withoutAttributeValues('button[aria-label="Anne"] > de Vries"]')).toBe("[element]");
+  expect(withoutAttributeValues('a[title="Anne"] > b[alt="x"]')).toBe("a[title] > b[alt]");
+});
+
+test("a tap breadcrumb keeps its selector without values and no data, even if the browser sent them", () => {
+  const tap = { category: "ui.click", message: SELECTOR, data: { "ui.component_name": "Anne" } };
+  const expected = { category: "ui.click", message: STRIPPED };
+  expect(scrubEvent({ breadcrumbs: [tap] })).toEqual({ breadcrumbs: [expected] });
+  expect(scrubBreadcrumb({ ...tap, category: "ui.input" })).toEqual({
+    ...expected,
+    category: "ui.input",
+  });
+  expect(JSON.stringify(scrubEvent({ breadcrumbs: [tap] }))).not.toContain("Anne");
+});
+
+test("a console breadcrumb loses its raw arguments", () => {
+  expect(
+    scrubBreadcrumb({
+      category: "console",
+      message: "x noor@example.test",
+      data: { arguments: [{ name: "Anne" }], logger: "console" },
+    }),
+  ).toEqual({ category: "console", message: "x [email]", data: { logger: "console" } });
 });

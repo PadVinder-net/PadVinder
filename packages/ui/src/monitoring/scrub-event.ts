@@ -24,7 +24,7 @@ const URL_KEYS: ReadonlySet<string> = new Set([
 // In the data of a navigation breadcrumb, `from` and `to` are page URLs too.
 const NAVIGATION_URL_KEYS: ReadonlySet<string> = new Set([...URL_KEYS, "from", "to"]);
 // The attributes whose names (never their values) a tap's breadcrumb keeps, as the SDK lists them.
-const ELEMENT_ATTRIBUTES = ["aria-label", "title", "name", "alt"];
+const ELEMENT_ATTRIBUTES = ["type", "aria-label", "title", "name", "alt"];
 const MAX_ELEMENTS = 5;
 
 /** `%40` is `@` in a URL, so a percent-encoded address is scrubbed too. */
@@ -35,6 +35,41 @@ function scrubText(text: string): string {
 function withoutQuery(url: string): string {
   const end = url.search(/[?#]/);
   return end === -1 ? url : url.slice(0, end);
+}
+
+// CSS selectors the SDK writes for an element (`htmlTreeAsString`): a tap's breadcrumb message and
+// the web vitals' elements (`lcp.element`, `cls.source.N`, `browser.web_vital.*`). They hold
+// attribute values such as `[aria-label="Acties voor Anne de Vries"]`.
+const SELECTOR_KEY = /^(?:lcp\.element|cls\.source\.\d+|browser\.web_vital\..+)$/;
+// An attribute with its value, up to the `"]` that the next attribute, the next element or the
+// end follows.
+const ATTRIBUTE_VALUE = /\[([\w-]+)="[\s\S]*?"\](?=\[|\s>\s|$)/g;
+
+/**
+ * A selector with attribute names only: `button[aria-label]`. A selector that still holds a quote
+ * afterwards (a value with `"]` in it) becomes `[element]` as a whole.
+ */
+export function withoutAttributeValues(selector: string): string {
+  const stripped = selector.replace(ATTRIBUTE_VALUE, "[$1]");
+  return stripped.includes('"') ? "[element]" : stripped;
+}
+
+function isTap(category: unknown): boolean {
+  return category === "ui.click" || category === "ui.input";
+}
+
+/**
+ * The rules for breadcrumbs, applied to a scrubbed copy: a tap keeps its message as a selector
+ * without attribute values and no data; a console breadcrumb loses the raw `arguments` (its message
+ * is the scrubbed text of them).
+ */
+function trimBreadcrumb(copy: Record<string, unknown>): void {
+  if (isTap(copy.category)) {
+    delete copy.data;
+    if (typeof copy.message === "string") copy.message = withoutAttributeValues(copy.message);
+  } else if (copy.category === "console" && typeof copy.data === "object" && copy.data !== null) {
+    delete (copy.data as Record<string, unknown>).arguments;
+  }
 }
 
 /**
@@ -50,6 +85,8 @@ function scrubValue(
   navigationData = false,
 ): unknown {
   if (typeof value === "string") {
+    if (key !== undefined && SELECTOR_KEY.test(key))
+      return withoutAttributeValues(scrubText(value));
     return scrubText(key !== undefined && urlKeys.has(key) ? withoutQuery(value) : value);
   }
   if (typeof value !== "object" || value === null) return value;
@@ -78,6 +115,7 @@ function scrubValue(
               navigation && itemKey === "data",
             );
     }
+    trimBreadcrumb(copy);
     return copy;
   } finally {
     ancestors.pop();
@@ -121,17 +159,13 @@ export function scrubBrowserEvent<T>(event: T): T {
 
 function elementAsString(element: Element): string {
   let text = element.tagName.toLowerCase();
-  const type = element.getAttribute("type");
-  // A type is a word from the code (`button`, `checkbox`), never what someone typed.
-  if (type !== null && /^[a-z-]{1,20}$/.test(type)) text += `[type="${type}"]`;
   for (const name of ELEMENT_ATTRIBUTES) if (element.hasAttribute(name)) text += `[${name}]`;
   return text;
 }
 
 /**
- * The path to a tapped element as tag names, its `type` and the names of its labelling
- * attributes, never their values, the element's text, its id or its classes: those can hold a
- * person's name.
+ * The path to a tapped element as tag names and the names of its `type` and labelling attributes,
+ * never their values, the element's text, its id or its classes: those can hold a person's name.
  */
 export function elementPath(element: Element): string {
   const parts: string[] = [];

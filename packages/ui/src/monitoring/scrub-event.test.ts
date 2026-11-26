@@ -4,6 +4,7 @@ import {
   scrubBrowserBreadcrumb,
   scrubBrowserEvent,
   scrubStrings,
+  withoutAttributeValues,
 } from "./scrub-event";
 
 const QUERY = "?email=noor%40example.test&phone=0612345678#frag";
@@ -83,13 +84,13 @@ test("survives cycles and depth, and keeps sdkProcessingMetadata as it is", () =
   expect(result.sdkProcessingMetadata).toBe(metadata);
 });
 
-test("a tap keeps the element's path: tags, type and attribute names, no values or text", () => {
+test("a tap keeps the element's path: tags and attribute names, no values or text", () => {
   document.body.innerHTML =
     '<div id="anne" class="anne"><a href="/x" title="Anne de Vries" alt="Anne">Anne</a><input type="checkbox" name="anne"></div>';
   const link = document.querySelector("a")!;
   const input = document.querySelector("input")!;
   expect(elementPath(link)).toBe("body > div > a[title][alt]");
-  expect(elementPath(input)).toBe('body > div > input[type="checkbox"][name]');
+  expect(elementPath(input)).toBe("body > div > input[type][name]");
   const event = new MouseEvent("click");
   Object.defineProperty(event, "target", { value: link });
   const crumb = {
@@ -103,15 +104,15 @@ test("a tap keeps the element's path: tags, type and attribute names, no values 
   });
   expect(scrubBrowserBreadcrumb({ ...crumb, category: "ui.input" }, { event: input })).toEqual({
     category: "ui.input",
-    message: 'body > div > input[type="checkbox"][name]',
+    message: "body > div > input[type][name]",
   });
   expect(scrubBrowserBreadcrumb(crumb)).toEqual({ category: "ui.click", message: "[element]" });
   document.body.innerHTML = "";
 });
 
-test("a type that is not a plain word is left out", () => {
+test("a type keeps its name only", () => {
   document.body.innerHTML = '<input type="Anne de Vries">';
-  expect(elementPath(document.querySelector("input")!)).toBe("body > input");
+  expect(elementPath(document.querySelector("input")!)).toBe("body > input[type]");
   document.body.innerHTML = "";
 });
 
@@ -119,4 +120,54 @@ test("the path holds at most five elements", () => {
   document.body.innerHTML = "<div><div><div><div><div><span>x</span></div></div></div></div></div>";
   expect(elementPath(document.querySelector("span")!)).toBe("div > div > div > div > span");
   document.body.innerHTML = "";
+});
+
+test("web vitals' element selectors keep attribute names only", () => {
+  const selector = 'body > li.row > button#x[aria-label="Acties voor Anne de Vries"][title="Anne"]';
+  const result = scrubBrowserEvent({
+    contexts: {
+      trace: { data: { "lcp.element": selector, "cls.source.1": selector, "lcp.size": 10 } },
+    },
+    spans: [{ data: { "browser.web_vital.inp.target": selector, "cls.source.12": selector } }],
+  });
+  const stripped = "body > li.row > button#x[aria-label][title]";
+  expect(result).toEqual({
+    contexts: {
+      trace: { data: { "lcp.element": stripped, "cls.source.1": stripped, "lcp.size": 10 } },
+    },
+    spans: [{ data: { "browser.web_vital.inp.target": stripped, "cls.source.12": stripped } }],
+  });
+});
+
+test("a value with quotes is removed whole; one that looks like a next element gives [element]", () => {
+  expect(withoutAttributeValues('button[aria-label="Anne "x"] de Vries"]')).toBe(
+    "button[aria-label]",
+  );
+  expect(withoutAttributeValues('button[aria-label="Anne"] > de Vries"]')).toBe("[element]");
+  expect(withoutAttributeValues('a[title="Anne"] > b[alt="x"]')).toBe("a[title] > b[alt]");
+});
+
+test("a tap breadcrumb in an event keeps the selector without values and no data", () => {
+  const result = scrubBrowserEvent({
+    breadcrumbs: [
+      {
+        category: "ui.click",
+        message: 'body > button[aria-label="Anne de Vries"]',
+        data: { "ui.component_name": "Anne" },
+      },
+    ],
+  });
+  expect(result).toEqual({
+    breadcrumbs: [{ category: "ui.click", message: "body > button[aria-label]" }],
+  });
+});
+
+test("a console breadcrumb loses its raw arguments", () => {
+  expect(
+    scrubStrings({
+      category: "console",
+      message: "x noor@example.test",
+      data: { arguments: [{ name: "Anne" }], logger: "console" },
+    }),
+  ).toEqual({ category: "console", message: "x [email]", data: { logger: "console" } });
 });

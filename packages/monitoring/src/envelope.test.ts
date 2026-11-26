@@ -288,3 +288,40 @@ test("forwardEnvelope answers unreachable for a closed port and after its timeou
     await new Promise((resolve) => silent.close(resolve));
   }
 });
+
+test("a browser that sent a tap's selector with a person's name: the tunnel keeps no name", () => {
+  const [, items] = prepared(
+    envelopeOf(
+      browserHeader,
+      [
+        { type: "event" },
+        {
+          message: "boom",
+          breadcrumbs: [
+            {
+              category: "ui.click",
+              message: 'body > li > button[aria-label="Acties voor Anne de Vries"]',
+              data: { "ui.component_name": "AnneRow" },
+            },
+          ],
+        },
+      ],
+      [
+        { type: "transaction" },
+        {
+          type: "transaction",
+          contexts: { trace: { data: { "lcp.element": 'p[title="Anne de Vries"]' } } },
+        },
+      ],
+    ),
+  );
+  const [event, transaction] = items.map(([, payload]) => payload) as [
+    { breadcrumbs: unknown },
+    { contexts: unknown },
+  ];
+  expect(event.breadcrumbs).toEqual([
+    { category: "ui.click", message: "body > li > button[aria-label]" },
+  ]);
+  expect(transaction.contexts).toEqual({ trace: { data: { "lcp.element": "p[title]" } } });
+  expect(JSON.stringify(items)).not.toContain("Anne");
+});

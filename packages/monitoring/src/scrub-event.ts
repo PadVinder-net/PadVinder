@@ -37,6 +37,41 @@ function withoutQuery(url: string): string {
   return end === -1 ? url : url.slice(0, end);
 }
 
+// CSS selectors the SDK writes for an element (`htmlTreeAsString`): a tap's breadcrumb message and
+// the web vitals' elements (`lcp.element`, `cls.source.N`, `browser.web_vital.*`). They hold
+// attribute values such as `[aria-label="Acties voor Anne de Vries"]`.
+const SELECTOR_KEY = /^(?:lcp\.element|cls\.source\.\d+|browser\.web_vital\..+)$/;
+// An attribute with its value, up to the `"]` that the next attribute, the next element or the
+// end follows.
+const ATTRIBUTE_VALUE = /\[([\w-]+)="[\s\S]*?"\](?=\[|\s>\s|$)/g;
+
+/**
+ * A selector with attribute names only: `button[aria-label]`. A selector that still holds a quote
+ * afterwards (a value with `"]` in it) becomes `[element]` as a whole.
+ */
+export function withoutAttributeValues(selector: string): string {
+  const stripped = selector.replace(ATTRIBUTE_VALUE, "[$1]");
+  return stripped.includes('"') ? "[element]" : stripped;
+}
+
+function isTap(category: unknown): boolean {
+  return category === "ui.click" || category === "ui.input";
+}
+
+/**
+ * The rules for breadcrumbs, applied to a scrubbed copy: a tap keeps its message as a selector
+ * without attribute values and no data; a console breadcrumb loses the raw `arguments` (its message
+ * is the scrubbed text of them).
+ */
+function trimBreadcrumb(copy: Record<string, unknown>): void {
+  if (isTap(copy.category)) {
+    delete copy.data;
+    if (typeof copy.message === "string") copy.message = withoutAttributeValues(copy.message);
+  } else if (copy.category === "console" && typeof copy.data === "object" && copy.data !== null) {
+    delete (copy.data as Record<string, unknown>).arguments;
+  }
+}
+
 /**
  * Every string through `scrub` (with `%40` read as `@`), URL values (`key` in `urlKeys`, chosen by
  * the parent) without their query and fragment; keys stay as they are. Cycles and deep nesting
@@ -51,6 +86,8 @@ function scrubValue(
   navigationData = false,
 ): unknown {
   if (typeof value === "string") {
+    if (key !== undefined && SELECTOR_KEY.test(key))
+      return withoutAttributeValues(scrubText(value));
     return scrubText(key !== undefined && urlKeys.has(key) ? withoutQuery(value) : value);
   }
   if (typeof value !== "object" || value === null) return value;
@@ -77,6 +114,7 @@ function scrubValue(
               navigation && itemKey === "data",
             );
     }
+    trimBreadcrumb(copy);
     return copy;
   } finally {
     ancestors.pop();

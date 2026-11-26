@@ -30,6 +30,7 @@ const MAX_ERRORS_PER_PAGE_LOAD = 10;
 
 let enabled = false;
 let errorsThisPageLoad = 0;
+let lastSentErrorId: string | undefined;
 
 /**
  * Starts Sentry in the browser and answers whether it is on: only in a production build (or with
@@ -39,9 +40,13 @@ let errorsThisPageLoad = 0;
 export function startBrowserMonitoring(options: BrowserMonitoringOptions): boolean {
   if (!(options.enabled ?? import.meta.env.PROD)) return false;
   errorsThisPageLoad = 0;
+  lastSentErrorId = undefined;
+  // No INP: it is sent as a span of its own (which the tunnel drops), with the tapped element's
+  // selector and the user agent.
+  const webVitals = { ignore: ["inp" as const] };
   const tracing = options.router
-    ? Sentry.reactRouterBrowserTracingIntegration(options.router)
-    : Sentry.browserTracingIntegration();
+    ? Sentry.reactRouterBrowserTracingIntegration({ ...options.router, webVitals })
+    : Sentry.browserTracingIntegration({ webVitals });
   Sentry.init({
     dsn: PLACEHOLDER_DSN,
     tunnel: TUNNEL_PATH,
@@ -69,15 +74,17 @@ export function startBrowserMonitoring(options: BrowserMonitoringOptions): boole
     // Trace headers only to our own API, so a tap and the request it causes are one trace.
     tracePropagationTargets: [/^\/api\//],
     integrations: [tracing],
-    // A call that failed because there was no connection; the API reports its own 5xx.
+    // A call that failed because there was no connection (Chrome, Safari, Firefox), as the whole
+    // message; the API reports its own 5xx.
     ignoreErrors: [
-      "Failed to fetch",
-      "Load failed",
-      "NetworkError when attempting to fetch resource",
+      /^Failed to fetch$/,
+      /^Load failed$/,
+      /^NetworkError when attempting to fetch resource\.?$/,
     ],
     beforeSend: (event) => {
       errorsThisPageLoad += 1;
       if (errorsThisPageLoad > MAX_ERRORS_PER_PAGE_LOAD) return null;
+      lastSentErrorId = event.event_id;
       return scrubBrowserEvent(event);
     },
     beforeSendTransaction: scrubBrowserEvent,
@@ -93,9 +100,13 @@ export function setBrowserMonitoringUser(id: string | null): void {
   Sentry.setUser(id === null ? null : { id });
 }
 
-/** The ID of the last error event, for a problem report about a crash. */
+/**
+ * The ID of the last error event that was sent (past the ignored errors and the cap), for a
+ * problem report about a crash. Set in `beforeSend`, which runs during the capture call in this
+ * SDK version.
+ */
 export function lastErrorEventId(): string | undefined {
-  return enabled ? Sentry.lastEventId() : undefined;
+  return enabled ? lastSentErrorId : undefined;
 }
 
 /** Stops Sentry and forgets this page load's user and breadcrumbs. For tests. */

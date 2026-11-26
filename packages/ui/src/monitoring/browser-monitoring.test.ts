@@ -144,9 +144,7 @@ test("a tap on a person's name leaves a breadcrumb without the name", async () =
   await Sentry.flush(2000);
   const crumbs = t.events()[0]!.breadcrumbs!.filter((crumb) => crumb.category === "ui.click");
   expect(crumbs).toHaveLength(1);
-  expect(crumbs[0]!.message).toBe(
-    'body > ul > li > button[type="button"][aria-label][title][name]',
-  );
+  expect(crumbs[0]!.message).toBe("body > ul > li > button[type][aria-label][title][name]");
   expect(JSON.stringify(t.envelopes())).not.toMatch(/anne/i);
 });
 
@@ -189,4 +187,43 @@ test("the user is only the account's ID, and null clears it", async () => {
   const [asUser, loggedOut] = t.events();
   expect(asUser!.user).toEqual({ id: "u1" });
   expect(loggedOut!.user).toBeUndefined();
+});
+
+test("lastErrorEventId names only an event that was sent", async () => {
+  const t = testTransport();
+  start(t);
+  const ids: string[] = [];
+  for (let i = 1; i <= 10; i++) ids.push(Sentry.captureException(new Error(`error ${i}`)));
+  await Sentry.flush(2000);
+  expect(lastErrorEventId()).toBe(ids[9]);
+  // Dropped by the cap, and ignored as a network failure: neither was sent.
+  Sentry.captureException(new Error("error 11"));
+  Sentry.captureException(new TypeError("Failed to fetch"));
+  await Sentry.flush(2000);
+  expect(t.events().map((event) => event.event_id)).toEqual(ids);
+  expect(lastErrorEventId()).toBe(ids[9]);
+});
+
+test("a network failure is matched as a whole message, not as part of one", async () => {
+  const t = testTransport();
+  start(t);
+  Sentry.captureException(new TypeError("Failed to fetch dynamically imported module: /x.js"));
+  await Sentry.flush(2000);
+  expect(t.events()).toHaveLength(1);
+});
+
+test("a console breadcrumb keeps its scrubbed message, not its raw arguments", async () => {
+  const t = testTransport();
+  start(t);
+  Sentry.addBreadcrumb({
+    category: "console",
+    level: "log",
+    message: "member Anne de Vries noor@example.test",
+    data: { arguments: ["member", { name: "Anne de Vries" }], logger: "console" },
+  });
+  Sentry.captureException(new Error("after logging"));
+  await Sentry.flush(2000);
+  const crumb = t.events()[0]!.breadcrumbs!.find((c) => c.category === "console")!;
+  expect(crumb.data).toEqual({ logger: "console" });
+  expect(crumb.message).toBe("member Anne de Vries [email]");
 });
