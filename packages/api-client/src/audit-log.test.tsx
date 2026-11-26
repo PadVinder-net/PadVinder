@@ -92,4 +92,19 @@ test("a failed loadMore keeps the loaded entries and sets loadMoreFailed", async
   await waitFor(() => expect(result.current.loadMoreFailed).toBe(true));
   expect(result.current.entries).toEqual(first);
   expect(result.current.loadingMore).toBe(false);
+  expect(result.current.error).toBeNull();
+});
+
+test("a 404 on the first page is not retried", async () => {
+  const { urls } = mockLog(() =>
+    Response.json(
+      { statusCode: 404, error: "Not Found", message: "x", code: "not_found" },
+      { status: 404 },
+    ),
+  );
+  const { result } = setup(() => useAuditLog({}), undefined);
+  await waitFor(() => expect(result.current.error).not.toBeNull());
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(urls).toHaveLength(1);
+  expect(result.current.entries).toEqual([]);
 });

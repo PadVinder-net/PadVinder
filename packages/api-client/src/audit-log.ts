@@ -30,7 +30,8 @@ export function useAuditLog(filters: { organizationId?: string; actionGroup?: Au
     loadingMore: query.isFetchingNextPage,
     loadMoreFailed: query.isFetchNextPageError,
     isPending: query.isPending,
-    error: query.error,
+    // Only a failed first load: a failed `loadMore` keeps its rows and sets `loadMoreFailed`.
+    error: query.data ? null : query.error,
     refetch: () => void query.refetch(),
   };
 }
