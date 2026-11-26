@@ -1,9 +1,9 @@
-import { useSyncExternalStore } from "react";
-import { useQueryClient, type Mutation, type QueryClient } from "@tanstack/react-query";
+import { useEffect, useSyncExternalStore } from "react";
+import { useQueryClient, type Mutation, type Query, type QueryClient } from "@tanstack/react-query";
 import type { PasskeyError, PasskeyResult } from "@padvinder/contracts";
 import { logOut } from "./auth-client";
 import type { GetMeResponse } from "./generated";
-import { getMeQueryKey, listPasskeysQueryKey } from "./generated/@tanstack/react-query.gen";
+import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
 import { refetchMe, useMe } from "./me-query";
 import { authenticateWithPasskey, createPasskey } from "./passkey-client";
 import { reopenServerEvents } from "./server-events";
@@ -17,6 +17,17 @@ export const backgroundRequestMeta = { background: true } as const;
 
 function isBackground(meta: Record<string, unknown> | undefined): boolean {
   return meta?.background === true;
+}
+
+/**
+ * Whether a screen on display asked for a query: at least one of its observers lacks
+ * `backgroundRequestMeta` in its own options. The portal's badge and the Werkgroepen page observe
+ * one query, and only the page asks; the query's own `meta` is that of whichever observer fetched
+ * last. A query without observers (a prefetch, or a refetch after its screen closed) was asked for
+ * by no screen on display.
+ */
+function isAskedFor(query: Query<unknown, unknown, unknown>): boolean {
+  return query.observers.some((observer) => !isBackground(observer.options.meta));
 }
 
 type ConfirmationState = { open: boolean; pending: boolean; error: PasskeyError | null };
@@ -37,7 +48,6 @@ const STALE_CHOICE_ERRORS = new Set<PasskeyError>(["unknown_passkey", "confirmat
 class ConfirmationStore {
   private state = closed;
   private readonly listeners = new Set<() => void>();
-  private readonly queryHashes = new Set<string>();
   private readonly mutations = new Set<AnyMutation>();
   /** Raised by `cancel`, so a ceremony that ends after it does not show its error. */
   private round = 0;
@@ -60,11 +70,6 @@ class ConfirmationStore {
     if (!this.state.open) this.set({ open: true, error: null });
   }
 
-  reportQuery(queryHash: string) {
-    this.queryHashes.add(queryHash);
-    this.open();
-  }
-
   reportMutation(mutation: AnyMutation) {
     this.mutations.add(mutation);
     this.open();
@@ -73,7 +78,6 @@ class ConfirmationStore {
   /** Closes the modal and forgets the reports: the queries and mutations keep their error. */
   cancel = () => {
     this.round++;
-    this.queryHashes.clear();
     this.mutations.clear();
     if (this.state.open || this.state.error) this.set({ open: false, error: null });
   };
@@ -97,21 +101,17 @@ class ConfirmationStore {
       return;
     }
     // The session is confirmed now, also when the modal was cancelled meanwhile.
-    const queryHashes = [...this.queryHashes];
     // A mutation dropped from the cache meanwhile (by logging out) is not sent again.
     const cached = new Set<unknown>(this.queryClient.getMutationCache().getAll());
     const mutations = [...this.mutations].filter((mutation) => cached.has(mutation));
-    this.queryHashes.clear();
     this.mutations.clear();
     this.set(closed);
-    const queryClient = this.queryClient;
-    void refetchMe(queryClient);
+    // The session changed, so everything on screen may show more now: me, the queries that
+    // failed, and those that left something out (an eye button has no failed request). Every
+    // query, without the filter that live events use for queries waiting for a passkey.
+    void this.queryClient.invalidateQueries();
     // The streams were opened with the session the confirmation replaced.
     reopenServerEvents();
-    void queryClient.invalidateQueries({
-      predicate: (query) => queryHashes.includes(query.queryHash),
-    });
-    void queryClient.invalidateQueries({ queryKey: listPasskeysQueryKey() });
     // Sent again with the same variables, so the screen's `useMutation` sees the result.
     for (const mutation of mutations) {
       mutation.execute(mutation.state.variables).catch(() => {});
@@ -139,19 +139,16 @@ function confirmationStore(queryClient: QueryClient): ConfirmationStore {
 }
 
 /**
- * Called by `createQueryClient`'s caches for every error. A `passkey_required` of a query or
- * mutation the person asked for opens the modal; a background request's never does.
+ * Called by `createQueryClient`'s caches for every `passkey_required`. A query opens the modal
+ * when a screen on display asked for it (`isAskedFor`), a mutation when its own `meta` is not
+ * `backgroundRequestMeta`.
  */
 export function reportPasskeyRequired(
   queryClient: QueryClient,
-  failed:
-    | { query: { queryHash: string; meta: Record<string, unknown> | undefined } }
-    | { mutation: AnyMutation },
+  failed: { query: Query<unknown, unknown, unknown> } | { mutation: AnyMutation },
 ): void {
   if ("query" in failed) {
-    if (!isBackground(failed.query.meta)) {
-      confirmationStore(queryClient).reportQuery(failed.query.queryHash);
-    }
+    if (isAskedFor(failed.query)) confirmationStore(queryClient).open();
   } else if (!isBackground(failed.mutation.options.meta)) {
     confirmationStore(queryClient).reportMutation(failed.mutation);
   }
@@ -172,9 +169,9 @@ export function requestPasskeyConfirmation(queryClient: QueryClient): void {
 
 /**
  * The shared confirmation modal's state. `confirm()` uses the passkey when the person has one and
- * makes one otherwise, by me's `hasPasskey`. On success it closes the modal, refetches me, reopens
- * the event stream, refetches every query that waited for it and the passkeys list, and sends
- * every mutation that waited again. On failure the modal stays open with `error`; when the choice
+ * makes one otherwise, by me's `hasPasskey`. On success it closes the modal, invalidates every
+ * query (the active ones refetch, me among them), reopens the event stream, and sends every
+ * mutation that waited again. On failure the modal stays open with `error`; when the choice
  * came from a stale `hasPasskey` (`unknown_passkey`, `confirmation_required`), me is refetched,
  * so the next try uses the other ceremony.
  */
@@ -197,4 +194,31 @@ export function usePasskeyConfirmation(): {
     cancel: store.cancel,
     logInAgain: store.logInAgain,
   };
+}
+
+/** Longer than this, `setTimeout` fires at once (a signed 32-bit number of milliseconds). */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+/** Me is asked a moment after the confirmation ran out, so the server's clock agrees. */
+const EXPIRY_MARGIN_MS = 1000;
+/** When me still reports a confirmation the device's clock says has passed: ask again after this. */
+const EXPIRY_RECHECK_MS = 60 * 1000;
+
+/**
+ * Refetches me when `adminConfirmedUntil` passes, so the screens that read it (the app's lists,
+ * which then name the groups of administered organizations without loading them) fall back without
+ * a reload. One timer, set again whenever me is fetched. Mounted by both apps' confirmation hosts.
+ */
+export function useAdminConfirmationExpiry(): void {
+  const queryClient = useQueryClient();
+  const me = useMe();
+  const until = me.data?.adminConfirmedUntil ?? null;
+  const fetchedAt = me.dataUpdatedAt;
+  useEffect(() => {
+    if (until === null) return;
+    const left = new Date(until).getTime() - Date.now();
+    // A device clock ahead of the server's: me still says confirmed, so look again later.
+    const delay = left > 0 ? left + EXPIRY_MARGIN_MS : EXPIRY_RECHECK_MS;
+    const timer = setTimeout(() => void refetchMe(queryClient), Math.min(delay, MAX_TIMEOUT_MS));
+    return () => clearTimeout(timer);
+  }, [queryClient, until, fetchedAt]);
 }

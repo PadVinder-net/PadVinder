@@ -5,19 +5,34 @@ import {
   useQuery,
   type QueryClient,
 } from "@tanstack/react-query";
-import { platformAdminMeFixture, passkeysFixture } from "@padvinder/contracts/fixtures";
+import {
+  platformAdminMeFixture,
+  passkeysFixture,
+  requestsForReviewFixture,
+} from "@padvinder/contracts/fixtures";
 import type { MeResponse, PasskeyResult } from "@padvinder/contracts";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { useAccessLiveUpdates } from "./access-live-updates";
+import { useManagedWorkingGroups } from "./administration";
+import { apiErrorCode } from "./error-messages";
 import { client } from "./generated/client.gen";
-import { getMeQueryKey, listPasskeysOptions } from "./generated/@tanstack/react-query.gen";
+import {
+  getMeQueryKey,
+  listManagedWorkingGroupsQueryKey,
+  listMembersQueryKey,
+  listMembershipRequestsQueryKey,
+  listPasskeysOptions,
+} from "./generated/@tanstack/react-query.gen";
 import { authenticateWithPasskey, createPasskey } from "./passkey-client";
 import {
   backgroundRequestMeta,
   requestPasskeyConfirmation,
+  useAdminConfirmationExpiry,
   usePasskeyConfirmation,
 } from "./passkey-confirmation";
+import { useMe } from "./me-query";
 import { createQueryClient } from "./query-client";
 import { subscribeToServerEvents } from "./server-events";
 import { FakeEventSource } from "./testing";
@@ -244,13 +259,13 @@ test("cancel closes the modal and the query keeps its error", async () => {
   expect(result.current.members.error).toEqual(required);
   expect(authenticateWithPasskey).not.toHaveBeenCalled();
 
-  // The cancelled report is forgotten: a later round does not refetch it.
+  // A later confirmation refetches everything on screen, so the query too.
   act(() => requestPasskeyConfirmation(queryClient));
   expect(result.current.confirmation.open).toBe(true);
   await act(async () => result.current.confirmation.confirm());
-  await waitFor(() => expect(result.current.confirmation.open).toBe(false));
-  expect(queryFn).toHaveBeenCalledOnce();
-  expect(result.current.members.error).toEqual(required);
+  await waitFor(() => expect(result.current.members.data).toBe("de leden"));
+  expect(result.current.confirmation.open).toBe(false);
+  expect(queryFn).toHaveBeenCalledTimes(2);
 });
 
 test("confirm twice while pending starts one ceremony", async () => {
@@ -456,4 +471,183 @@ test("when the me query finds the session gone, an open confirmation is cancelle
   act(() => requestPasskeyConfirmation(queryClient));
   await act(async () => result.current.confirmation.confirm());
   expect(mutationFn).toHaveBeenCalledOnce();
+});
+
+test.each([
+  { name: "badge first", badgeFirst: true },
+  { name: "page first", badgeFirst: false },
+])(
+  "a query observed by a background badge and by a page opens the modal ($name)",
+  async ({ badgeFirst }) => {
+    const queryFn = guarded("de werkgroepen");
+    const badge = () => useQuery({ queryKey: ["groups"], queryFn, meta: backgroundRequestMeta });
+    const page = () => useQuery({ queryKey: ["groups"], queryFn });
+    const { result } = setup(() => {
+      const confirmation = usePasskeyConfirmation();
+      const [first, second] = badgeFirst ? [badge(), page()] : [page(), badge()];
+      return { confirmation, first, second };
+    });
+    await waitFor(() => expect(result.current.first.isError).toBe(true));
+    await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+  },
+);
+
+test("a query observed only by the badge does not open the modal", async () => {
+  confirmed = true;
+  const queryFn = guarded("de werkgroepen");
+  const queryClient = createQueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  const badge = renderHook(
+    () => ({
+      confirmation: usePasskeyConfirmation(),
+      badge: useQuery({ queryKey: ["groups"], queryFn, meta: backgroundRequestMeta }),
+    }),
+    { wrapper },
+  );
+  const page = renderHook(() => useQuery({ queryKey: ["groups"], queryFn }), { wrapper });
+  await waitFor(() => expect(page.result.current.data).toBe("de werkgroepen"));
+  // The page is left; the confirmation runs out; a live event refetches the badge's query, which
+  // still has the page's options.
+  page.unmount();
+  confirmed = false;
+  await act(async () => queryClient.invalidateQueries({ queryKey: ["groups"] }));
+  await waitFor(() => expect(badge.result.current.badge.isError).toBe(true));
+  expect(badge.result.current.confirmation.open).toBe(false);
+});
+
+test("a query without an observer (a prefetch) does not open the modal", async () => {
+  const queryFn = guarded("de werkgroepen");
+  const { result, queryClient } = setup(() => usePasskeyConfirmation());
+  await act(async () => queryClient.prefetchQuery({ queryKey: ["groups"], queryFn }));
+  expect(queryClient.getQueryState(["groups"])?.error).toEqual(required);
+  expect(result.current.open).toBe(false);
+});
+
+test("after a confirmation every active query refetches, also one that never failed", async () => {
+  const failing = guarded("de leden");
+  const fine = vi.fn(async () => (confirmed ? "alles" : "een deel"));
+  const { result } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    members: useQuery({ queryKey: ["members"], queryFn: failing }),
+    groups: useQuery({ queryKey: ["groups"], queryFn: fine }),
+  }));
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+  expect(result.current.groups.data).toBe("een deel");
+
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(result.current.groups.data).toBe("alles"));
+  await waitFor(() => expect(result.current.members.data).toBe("de leden"));
+  expect(fine).toHaveBeenCalledTimes(2);
+});
+
+test("requestPasskeyConfirmation from an eye button, then confirm: the screen's queries refetch", async () => {
+  const health = vi.fn(async () => (confirmed ? "met versies" : "zonder versies"));
+  const { result, queryClient } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    health: useQuery({ queryKey: ["health"], queryFn: health }),
+  }));
+  await waitFor(() => expect(result.current.health.data).toBe("zonder versies"));
+
+  act(() => requestPasskeyConfirmation(queryClient));
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(result.current.health.data).toBe("met versies"));
+  expect(result.current.confirmation.open).toBe(false);
+});
+
+test("after Annuleer, live events and a reopened stream do not reopen the modal; a confirmation refetches", async () => {
+  FakeEventSource.instances = [];
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const workingGroupId = requestsForReviewFixture[0]!.workingGroup.id;
+  const organizationId = requestsForReviewFixture[0]!.workingGroup.organization.id;
+  const path = { path: { workingGroupId } };
+  const managed = guarded({ workingGroups: [] });
+  const members = guarded({ members: [] });
+  const requests = guarded({ membershipRequests: [] });
+  const { result, queryClient } = setup(() => {
+    useAccessLiveUpdates();
+    return {
+      confirmation: usePasskeyConfirmation(),
+      managed: useQuery({ queryKey: listManagedWorkingGroupsQueryKey(), queryFn: managed }),
+      members: useQuery({ queryKey: listMembersQueryKey(path), queryFn: members }),
+      requests: useQuery({ queryKey: listMembershipRequestsQueryKey(path), queryFn: requests }),
+    };
+  });
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+  await waitFor(() => expect(result.current.requests.isError).toBe(true));
+  act(() => result.current.confirmation.cancel());
+
+  const source = FakeEventSource.instances.at(-1)!;
+  act(() => {
+    source.emit("access-changed", JSON.stringify({ type: "access-changed", userId: me.user.id }));
+    source.emit(
+      "membership-requests-changed",
+      JSON.stringify({ type: "membership-requests-changed", workingGroupId, organizationId }),
+    );
+    source.onopen?.();
+  });
+  // Give a refetch the time to start and fail.
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(result.current.confirmation.open).toBe(false);
+  for (const queryFn of [managed, members, requests]) expect(queryFn).toHaveBeenCalledOnce();
+  // Me is never left alone.
+  expect(count("GET /api/me")).toBeGreaterThan(1);
+
+  act(() => requestPasskeyConfirmation(queryClient));
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(result.current.requests.data).toEqual({ membershipRequests: [] }));
+  await waitFor(() => expect(result.current.members.data).toEqual({ members: [] }));
+  await waitFor(() => expect(result.current.managed.data).toEqual({ workingGroups: [] }));
+});
+
+test("useManagedWorkingGroups({ background: true }) never opens the modal", async () => {
+  client.setConfig({
+    fetch: async (input: Request | string | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(String(input), init);
+      if (new URL(request.url).pathname === "/api/managed-working-groups") {
+        return Response.json(required, { status: 403 });
+      }
+      return answer(input, init);
+    },
+  });
+  const { result } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    badge: useManagedWorkingGroups({ background: true }),
+  }));
+  await waitFor(() => expect(result.current.badge.isError).toBe(true));
+  expect(apiErrorCode(result.current.badge.error)).toBe("passkey_required");
+  expect(result.current.confirmation.open).toBe(false);
+});
+
+describe("useAdminConfirmationExpiry", () => {
+  afterEach(() => vi.useRealTimers());
+
+  test("me is refetched when adminConfirmedUntil passes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const now = Date.now();
+    me = { ...withPasskey, adminConfirmedUntil: new Date(now + 60 * 60 * 1000).toISOString() };
+    const { result } = setup(() => {
+      useAdminConfirmationExpiry();
+      return useMe();
+    });
+    await waitFor(() => expect(result.current.data).toEqual(me));
+    const meFetches = () => count("GET /api/me");
+    const before = meFetches();
+
+    await act(async () => vi.advanceTimersByTimeAsync(59 * 60 * 1000));
+    expect(meFetches()).toBe(before);
+
+    me = { ...withPasskey, adminConfirmedUntil: null };
+    await act(async () => vi.advanceTimersByTimeAsync(2 * 60 * 1000));
+    await waitFor(() => expect(result.current.data?.adminConfirmedUntil).toBeNull());
+    expect(meFetches()).toBe(before + 1);
+
+    // Nothing to wait for any more.
+    await act(async () => vi.advanceTimersByTimeAsync(48 * 60 * 60 * 1000));
+    expect(meFetches()).toBe(before + 1);
+  });
 });

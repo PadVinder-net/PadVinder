@@ -19,18 +19,25 @@ function isNotLoggedIn(error: unknown): boolean {
 
 const isPasskeyRequired = (error: unknown) => apiErrorCode(error) === "passkey_required";
 
+/**
+ * Whether a query waits for a passkey confirmation: its current error is `passkey_required`.
+ * Refetches the person did not ask for (window focus, live events, a reopened event stream) leave
+ * it alone, so after Annuleer the modal does not open again on its own: it keeps its error until
+ * the person asks again (an explicit `refetch`, or opening the screen again) or confirms, which
+ * refetches every query. The me query never waits: it does not answer `passkey_required`.
+ */
+export function waitsForPasskey(query: { state: { error: unknown } }): boolean {
+  return isPasskeyRequired(query.state.error);
+}
+
 /** TanStack Query's default of three retries, but none for what only a confirmation solves. */
 function retry(failureCount: number, error: unknown): boolean {
   return !isPasskeyRequired(error) && failureCount < 3;
 }
 
-/**
- * TanStack Query's default refetch on window focus, but not for a query that waits for a passkey
- * confirmation: after Annuleer it keeps its error until the person asks again (an explicit
- * `refetch`, which opens the modal again).
- */
+/** TanStack Query's default refetch on window focus, but not for a query that `waitsForPasskey`. */
 function refetchOnWindowFocus(query: Query): boolean {
-  return !isPasskeyRequired(query.state.error);
+  return !waitsForPasskey(query);
 }
 
 /**
@@ -39,8 +46,8 @@ function refetchOnWindowFocus(query: Query): boolean {
  * session leads to the login screen. The me query itself is left alone: it resolves a 401 to `null`.
  * When it does, the data of the user whose session ended is dropped (`clearOtherUserData`).
  * A query or mutation that fails with `passkey_required` is not retried and opens the passkey
- * confirmation (`usePasskeyConfirmation`), unless its `meta` is `backgroundRequestMeta`. Such a
- * query is not refetched on window focus either.
+ * confirmation (`usePasskeyConfirmation`), unless only background requests asked for it (see
+ * `reportPasskeyRequired`). Such a query is not refetched on window focus either.
  */
 export function createQueryClient(): QueryClient {
   const meKey = getMeQueryKey();

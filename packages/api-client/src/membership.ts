@@ -24,6 +24,7 @@ import {
   listReviewableMembershipRequestsOptions,
 } from "./generated/@tanstack/react-query.gen";
 import { clearOtherUserData, refetchMe } from "./me-query";
+import { waitsForPasskey } from "./query-client";
 
 /** The operation a query belongs to: the `_id` the generated query keys carry. */
 function operationOf(query: Query): string | undefined {
@@ -33,11 +34,13 @@ function operationOf(query: Query): string | undefined {
 /**
  * Refetches the request lists and the open requests. With a `workingGroupId`, only the list of
  * that group and the requests that belong to it (or whose group is not known yet); the reviewer's
- * list of all groups is always refetched.
+ * list of all groups is always refetched. A query that `waitsForPasskey` is left alone, so a live
+ * event does not open the confirmation again.
  */
 export function refetchMembershipRequests(queryClient: QueryClient, workingGroupId?: string): void {
   void queryClient.invalidateQueries({
     predicate: (query) => {
+      if (waitsForPasskey(query)) return false;
       const operation = operationOf(query);
       // The reviewer's list spans every group the user reviews, so any change reaches it.
       if (operation === "listReviewableMembershipRequests") return true;
@@ -63,10 +66,10 @@ export function useReviewableMembershipRequests() {
   return useQuery(listReviewableMembershipRequestsOptions());
 }
 
-/** Refetches every member list. */
+/** Refetches every member list, except one that `waitsForPasskey`. */
 export function refetchMembers(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({
-    predicate: (query) => operationOf(query) === "listMembers",
+    predicate: (query) => operationOf(query) === "listMembers" && !waitsForPasskey(query),
   });
 }
 

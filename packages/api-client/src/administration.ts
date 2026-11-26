@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type Query,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   addMembers,
   addOrganizationAdmin,
@@ -28,10 +34,19 @@ import {
 import { apiErrorCode } from "./error-messages";
 import { refetchMe } from "./me-query";
 import { refetchMembers } from "./membership";
+import { backgroundRequestMeta } from "./passkey-confirmation";
+import { waitsForPasskey } from "./query-client";
 
-/** The working groups the user manages: all of them for a platform admin, those of their organizations for an admin. */
-export function useManagedWorkingGroups() {
-  return useQuery(listManagedWorkingGroupsOptions());
+/**
+ * The working groups the user manages: all of them for a platform admin, those of their
+ * organizations for an admin. With `background` (the portal's navigation badge) a
+ * `passkey_required` does not open the confirmation; a page that shows the list asks.
+ */
+export function useManagedWorkingGroups({ background = false }: { background?: boolean } = {}) {
+  return useQuery({
+    ...listManagedWorkingGroupsOptions(),
+    ...(background ? { meta: backgroundRequestMeta } : {}),
+  });
 }
 
 /** The organizations the user administers (all of them for a platform admin). */
@@ -66,15 +81,24 @@ export function useOrganization(organizationId: string) {
 /**
  * Refetches everything the administration pages show: the managed working groups, the
  * organizations, every organization detail and every member list. Resolves when the queries on
- * screen are fresh (a failed refetch resolves too; the list keeps its data).
+ * screen are fresh (a failed refetch resolves too; the list keeps its data). A query that
+ * `waitsForPasskey` is left alone, so a live event does not open the confirmation again.
  */
 export async function refetchAdministration(queryClient: QueryClient): Promise<void> {
+  const refetchable = (query: Query) => !waitsForPasskey(query);
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: listManagedWorkingGroupsQueryKey() }),
-    queryClient.invalidateQueries({ queryKey: listOrganizationsQueryKey() }),
+    queryClient.invalidateQueries({
+      queryKey: listManagedWorkingGroupsQueryKey(),
+      predicate: refetchable,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: listOrganizationsQueryKey(),
+      predicate: refetchable,
+    }),
     queryClient.invalidateQueries({
       predicate: (query) =>
-        (query.queryKey[0] as { _id?: string } | undefined)?._id === "getOrganization",
+        (query.queryKey[0] as { _id?: string } | undefined)?._id === "getOrganization" &&
+        refetchable(query),
     }),
     refetchMembers(queryClient),
   ]);
