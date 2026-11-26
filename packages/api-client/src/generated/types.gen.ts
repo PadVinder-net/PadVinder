@@ -1365,6 +1365,43 @@ export type UpdateSpeciesResponses = {
 
 export type UpdateSpeciesResponse = UpdateSpeciesResponses[keyof UpdateSpeciesResponses];
 
+export type ListAuditLogEntriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        organizationId?: string;
+        actionGroup?: AuditActionGroupInput;
+        cursor?: string;
+    };
+    url: '/api/audit-log-entries';
+};
+
+export type ListAuditLogEntriesErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type ListAuditLogEntriesError = ListAuditLogEntriesErrors[keyof ListAuditLogEntriesErrors];
+
+export type ListAuditLogEntriesResponses = {
+    /**
+     * Default Response
+     */
+    200: AuditLogPage;
+};
+
+export type ListAuditLogEntriesResponse = ListAuditLogEntriesResponses[keyof ListAuditLogEntriesResponses];
+
 export type ListReviewableMembershipRequestsData = {
     body?: never;
     path?: never;
