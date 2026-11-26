@@ -1,4 +1,10 @@
 export { DsnError, parseDsn, type Dsn } from "./dsn";
+export {
+  forwardEnvelope,
+  prepareBrowserEnvelope,
+  type BrowserEnvelopeOptions,
+  type ForwardResult,
+} from "./envelope";
 export { scrubBreadcrumb, scrubEvent } from "./scrub-event";
 export {
   closeMonitoring,

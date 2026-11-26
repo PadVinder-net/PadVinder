@@ -12,7 +12,8 @@ const SHUTDOWN_LIMIT_MS = 2_000;
 // Left out: our crash handler logs the crash, and pino's error line is what Sentry captures.
 // Fastify's own capture is replaced below, so an error the API logs is one event, not two.
 const REPLACED_INTEGRATIONS = new Set(["OnUncaughtException", "OnUnhandledRejection", "Fastify"]);
-const UNSAMPLED_PATHS = new Set(["/api/health", "/api/events"]);
+// The tunnel too: a trace per browser envelope would double what the browser sends.
+const UNSAMPLED_PATHS = new Set(["/api/health", "/api/events", "/api/sentry-tunnel"]);
 const UNSAMPLED_JOBS = new Set(["heartbeat"]);
 
 let enabled = false;
@@ -51,8 +52,8 @@ function requestPath(context: { name: string; attributes?: Record<string, unknow
 }
 
 /**
- * Samples every trace except requests for `/api/health`, `/api/events` and every path outside
- * `/api/`, and the worker's `heartbeat` job.
+ * Samples every trace except requests for `/api/health`, `/api/events`, `/api/sentry-tunnel` and
+ * every path outside `/api/`, and the worker's `heartbeat` job.
  */
 export function tracesSampler(context: {
   name: string;

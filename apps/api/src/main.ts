@@ -18,4 +18,4 @@ try {
 startServerMonitoring({ service: "api", settings });
 
 const { run } = await import("./run");
-await run();
+await run(settings);

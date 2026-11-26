@@ -176,6 +176,7 @@ test.each([
   [{ name: "GET /api/health", attributes: {} }, 0],
   [{ name: "GET", attributes: { "url.path": "/api/events" } }, 0],
   [{ name: "GET", attributes: { "http.target": "/api/health?x=1" } }, 0],
+  [{ name: "POST", attributes: { "url.path": "/api/sentry-tunnel" } }, 0],
   [{ name: "GET /app/", attributes: {} }, 0],
   [{ name: "GET /", attributes: { "url.path": "/" } }, 0],
   [{ name: "GET /assets/x.js", attributes: {} }, 0],

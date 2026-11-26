@@ -1,10 +1,10 @@
 import { loadApiEnv, type ApiEnv } from "./env";
 import { createLogger, installCrashHandlers } from "@padvinder/logging";
-import { closeMonitoring, flushMonitoring } from "@padvinder/monitoring";
+import { closeMonitoring, flushMonitoring, type MonitoringSettings } from "@padvinder/monitoring";
 import { startApi } from "./start-api";
 
-/** The API process: loaded by main.ts after Sentry has started. */
-export async function run(): Promise<void> {
+/** The API process: loaded by main.ts after Sentry has started, with the settings it read. */
+export async function run(monitoring: MonitoringSettings): Promise<void> {
   let env: ApiEnv;
   try {
     env = loadApiEnv(process.env);
@@ -50,7 +50,7 @@ export async function run(): Promise<void> {
   process.on("SIGHUP", () => void shutdown("SIGHUP"));
 
   try {
-    api = await startApi(env, logger);
+    api = await startApi(env, logger, monitoring);
   } catch {
     // startApi has logged and cleaned up. Close again (a no-op when it did), so the "failed to
     // start" event is sent even when the cleanup threw. Exit deliberately so the supervisor

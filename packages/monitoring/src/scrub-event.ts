@@ -99,7 +99,12 @@ export function scrubEvent<T>(event: T): T {
   return copy;
 }
 
+/** A scrubbed copy of any JSON value: as `scrubEvent` does with strings and URLs. */
+export function scrubStrings<T>(value: T): T {
+  return scrubValue(value, 0, [], undefined) as T;
+}
+
 /** A scrubbed copy of a breadcrumb: as `scrubEvent` does with strings and URLs. */
 export function scrubBreadcrumb<T>(breadcrumb: T): T {
-  return scrubValue(breadcrumb, 0, [], undefined) as T;
+  return scrubStrings(breadcrumb);
 }

@@ -33,6 +33,8 @@ export const apiErrorCodes = {
   tooManyAdditions: "too_many_additions",
   /** A platform admin's own account: deleted in the app, which also ends the session. */
   ownAccount: "own_account",
+  /** The Sentry tunnel could not reach Sentry, or Sentry failed. Only the browser SDK reads it. */
+  sentryUnavailable: "sentry_unavailable",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];
