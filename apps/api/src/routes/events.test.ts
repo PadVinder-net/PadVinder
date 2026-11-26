@@ -128,9 +128,10 @@ async function openSubscribed(
 /** A user of their own, logged in, so a test can change their rights or end their session. */
 async function newPlatformAdmin(email: string) {
   const login = await loginAs(ctx, email);
-  await grantPlatformAdmin(t!.db, { email }, { kind: "system" });
-  // Admin power needs a passkey in this session; the stream delivers admin events only then.
+  // Admin power needs a passkey in this session. Stamped before the grant, so a reload that the
+  // grant's access-changed causes never reads an unconfirmed session.
   await stampSession(ctx, login.headers.cookie!, new Date());
+  await grantPlatformAdmin(t!.db, { email }, { kind: "system" });
   return login;
 }
 
@@ -538,6 +539,9 @@ test("a check that started before access-changed does not overwrite the newer ac
   // On the app that checks every RECHECK_MS.
   const email = "events-stale-check@example.test";
   const login = await loginAs(ctx, email);
+  // Stamped before the stream opens and before the grant: a stamp on a non-admin session is
+  // harmless, and no reload can read the session unconfirmed.
+  await stampSession(ctx, login.headers.cookie!, new Date());
   const stream = await openSubscribed(login.headers);
   const parked = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -559,8 +563,6 @@ test("a check that started before access-changed does not overwrite the newer ac
   try {
     await parked.promise;
     await grantPlatformAdmin(t!.db, { email }, { kind: "system" });
-    // Admin events need a passkey in this session.
-    await stampSession(ctx, login.headers.cookie!, new Date());
     await expect(stream.nextEvent()).resolves.toMatchObject({ event: "access-changed" });
     expect(call).toBe(2);
     release.resolve();
