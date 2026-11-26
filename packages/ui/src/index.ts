@@ -110,6 +110,14 @@ export {
   OrganizationAdminsTable,
   type OrganizationAdminsTableProps,
 } from "./components/administration/organization-admins-table";
+export {
+  PlatformAdminsTable,
+  type PlatformAdminsTableProps,
+} from "./components/administration/platform-admins-table";
+export {
+  AccountSummaryCard,
+  type AccountSummaryCardProps,
+} from "./components/administration/account-summary-card";
 export { AuditLogTable, type AuditLogTableProps } from "./components/audit-log/audit-log-table";
 export {
   AuditLogFilters,
