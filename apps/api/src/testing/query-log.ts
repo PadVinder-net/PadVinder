@@ -15,6 +15,9 @@ export async function recordQueries(pool: pg.Pool, fn: () => Promise<unknown>): 
   };
   const originalQuery = poolAny.query;
   const originalConnect = poolAny.connect;
+  // Every connection wrapped during this recording, restored afterwards: pooled connections are
+  // reused, and a wrapper left behind would write into this recording's log forever.
+  const restores: Array<() => void> = [];
   poolAny.query = function (this: unknown, ...args: unknown[]) {
     log.push(textOf(args[0]));
     return originalQuery.apply(pool, args);
@@ -24,15 +27,14 @@ export async function recordQueries(pool: pg.Pool, fn: () => Promise<unknown>): 
     if (!result || typeof result.then !== "function") return result;
     return result.then((client) => {
       const clientAny = client as unknown as { query: (...a: unknown[]) => unknown };
-      if (!(clientAny.query as { recorded?: boolean }).recorded) {
-        const original = clientAny.query;
-        const wrapped = function (this: unknown, ...a: unknown[]) {
-          log.push(textOf(a[0]));
-          return original.apply(client, a);
-        };
-        (wrapped as { recorded?: boolean }).recorded = true;
-        clientAny.query = wrapped;
-      }
+      const original = clientAny.query;
+      clientAny.query = function (this: unknown, ...a: unknown[]) {
+        log.push(textOf(a[0]));
+        return original.apply(client, a);
+      };
+      restores.push(() => {
+        clientAny.query = original;
+      });
       return client;
     });
   };
@@ -41,6 +43,7 @@ export async function recordQueries(pool: pg.Pool, fn: () => Promise<unknown>): 
   } finally {
     poolAny.query = originalQuery;
     poolAny.connect = originalConnect;
+    for (const restore of restores) restore();
   }
   return log;
 }

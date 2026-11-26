@@ -110,6 +110,8 @@ export const workingGroupRoutes: FastifyPluginAsyncZod<{
       },
     },
     async (request): Promise<MemberListResponse> => {
+      // The group row is read before the decision, to find the target. It leaks nothing: an
+      // outsider gets the same 404 for a missing group as for one they may not see.
       const group = await getWorkingGroup(db, request.params.workingGroupId);
       if (!group) throw apiError(404, apiErrorCodes.notFound, "Not found");
       const target = { workingGroupId: group.workingGroupId, organizationId: group.organizationId };
