@@ -1,4 +1,4 @@
-import { Writable } from "node:stream";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { accountDeletionBlockedSchema } from "@padvinder/contracts";
 import {
   auditLogEntries,
@@ -166,7 +166,7 @@ test("an unknown address is 404; 'noor' and 'deleted-…@deleted.invalid' are 40
 });
 
 test("the request log of a lookup holds no address", async () => {
-  const lines: string[] = [];
+  const log = createTestLogger("info");
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
   const mailQueue = createMemoryMailQueue();
@@ -176,25 +176,19 @@ test("the request log of a lookup holds no address", async () => {
     notifications: createNoopNotificationHub(),
     mailer,
     queueMail: mailQueue.queueMail,
-    logger: true,
-    logStream: new Writable({
-      write(chunk, _encoding, callback) {
-        lines.push(String(chunk));
-        callback();
-      },
-    }),
+    logger: log.logger,
   });
   try {
     const logged: TestApp = { app, mailer, mailQueue, t, close: async () => {} };
     const admin = await loginAs(logged, "log-hoofdbeheerder@example.test");
     await grantPlatformAdmin(t.db, { email: "log-hoofdbeheerder@example.test" }, system);
-    const from = lines.length;
+    const from = log.text().split("\n").filter(Boolean).length;
     const statuses = [];
     for (const email of ["log-hoofdbeheerder@example.test", "log-niemand@example.test", "jan@"]) {
       statuses.push((await lookup(admin, { email }, app)).statusCode);
     }
     expect(statuses).toEqual([200, 404, 400]);
-    const lookupLines = lines.slice(from);
+    const lookupLines = log.text().split("\n").filter(Boolean).slice(from);
     expect(lookupLines.join("")).toContain("/api/users/lookup");
     for (const line of lookupLines) expect(line).not.toContain("@");
   } finally {

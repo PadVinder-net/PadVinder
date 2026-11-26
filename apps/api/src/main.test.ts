@@ -62,9 +62,12 @@ test("SIGHUP shuts down cleanly with exit 0", async () => {
     child.on("close", () => reject(new Error(`exited before it was ready: ${stdout}`)));
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
-      if (stdout.includes("Server listening")) resolve();
+      if (stdout.includes("API started")) resolve();
     });
   });
+  expect(stdout).toMatch(
+    /\{"level":"info","time":\d+,"service":"api","commit":"dev","msg":"API started"\}/,
+  );
   child.kill("SIGHUP");
   expect(await closed).toBe(0);
 }, 30_000);

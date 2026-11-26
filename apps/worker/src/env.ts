@@ -1,7 +1,6 @@
+import { LOG_LEVELS } from "@padvinder/logging";
 import { smtpSettingsShape } from "@padvinder/mail";
 import { z } from "zod";
-
-export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
 /** A browser sends `Origin` as exactly `scheme://host[:port]`; the API reads PUBLIC_ORIGIN the same way. */
 function isOrigin(value: string): boolean {
@@ -15,6 +14,8 @@ function isOrigin(value: string): boolean {
 const workerEnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
+  // The commit of the release, from release.env; "dev" outside a release.
+  GIT_COMMIT: z.string().min(1).default("dev"),
   // The links in the mails the worker sends: the app is `{origin}/app/`, the portal `{origin}/`.
   PUBLIC_ORIGIN: z.string().refine(isOrigin, {
     error: "is not an origin: use scheme, host and optional port, without a path",

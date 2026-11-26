@@ -7,7 +7,7 @@ import {
 } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance } from "fastify";
-import { Writable } from "node:stream";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
@@ -21,7 +21,12 @@ let t: TestDatabase | undefined;
 let app: FastifyInstance | undefined;
 let ctx: TestApp;
 let cast: Cast;
-const logLines: string[] = [];
+const log = createTestLogger("info");
+let mark = 0;
+const logLines = () => log.text().split("\n").filter(Boolean).slice(mark);
+const clearLog = () => {
+  mark = log.text().split("\n").filter(Boolean).length;
+};
 
 beforeAll(async () => {
   t = await createTestDatabase();
@@ -33,13 +38,7 @@ beforeAll(async () => {
     notifications: createNoopNotificationHub(),
     mailer,
     queueMail: mailQueue.queueMail,
-    logger: true,
-    logStream: new Writable({
-      write(chunk, _encoding, callback) {
-        logLines.push(String(chunk));
-        callback();
-      },
-    }),
+    logger: log.logger,
   });
   ctx = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
@@ -155,13 +154,13 @@ test("without a coordinator and without an admin it mails nobody and logs the gr
     .where(eq(workingGroupMemberships.workingGroupId, group.id));
   const name = "Eenzame Aanvrager";
   const applicant = await newApplicant(name);
-  logLines.length = 0;
+  clearLog();
   const before = requestMails().length;
   expect((await create(applicant, group.id)).statusCode).toBe(201);
-  await expect.poll(() => logLines.join("")).toContain("nobody to mail");
-  const line = logLines.find((entry) => entry.includes("nobody to mail"))!;
+  await expect.poll(() => logLines().join("")).toContain("nobody to mail");
+  const line = logLines().find((entry) => entry.includes("nobody to mail"))!;
   expect(JSON.parse(line)).toMatchObject({
-    level: 40,
+    level: "warn",
     mailKind: "new-request",
     workingGroupId: group.id,
   });
@@ -258,7 +257,7 @@ test("a failing mailer does not fail the request or the decision", async () => {
 test("the failure log holds no address and no name", async () => {
   const name = "Geheime Naam Jansen";
   const applicant = await newApplicant(name);
-  logLines.length = 0;
+  clearLog();
   ctx.mailer.failWith(
     new Error(`rejected ${applicant.email} ${name} ${cast.members.coordinator.email}`),
   );
@@ -266,12 +265,12 @@ test("the failure log holds no address and no name", async () => {
     const created = await create(applicant, cast.workingGroup.workingGroupId);
     const id = (created.json() as { id: string }).id;
     await decide(cast.members.coordinator, id, "reject");
-    await expect.poll(() => logLines.join("")).toContain("new-request");
-    await expect.poll(() => logLines.join("")).toContain('"mailKind":"rejected"');
+    await expect.poll(() => logLines().join("")).toContain("new-request");
+    await expect.poll(() => logLines().join("")).toContain('"mailKind":"rejected"');
   } finally {
     ctx.mailer.failWith(null);
   }
-  const log = logLines.join("");
+  const log = logLines().join("");
   expect(log).not.toContain("example.test");
   expect(log).not.toContain("Geheime");
   expect(log).not.toContain("Jansen");

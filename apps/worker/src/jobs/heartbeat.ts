@@ -1,6 +1,6 @@
 import { recordHeartbeat, type Db } from "@padvinder/db";
+import type { Logger } from "@padvinder/logging";
 import type { PgBoss } from "pg-boss";
-import type { Logger } from "../logger";
 
 export const HEARTBEAT_QUEUE = "heartbeat";
 
@@ -18,13 +18,16 @@ export async function registerHeartbeatJob(boss: PgBoss, db: Db, logger: Logger)
   await boss.updateQueue(HEARTBEAT_QUEUE, HEARTBEAT_QUEUE_OPTIONS);
   // Day boundaries and schedules use Europe/Amsterdam, never the server's time zone.
   await boss.schedule(HEARTBEAT_QUEUE, "* * * * *", null, { tz: "Europe/Amsterdam" });
-  await boss.work(HEARTBEAT_QUEUE, async () => {
-    try {
-      await recordHeartbeat(db);
-    } catch (error) {
-      // pg-boss does not route handler errors to boss.on("error"). Rethrow so the job is retried.
-      logger.error("Heartbeat job failed", error);
-      throw error;
+  await boss.work(HEARTBEAT_QUEUE, async (jobs) => {
+    for (const job of jobs) {
+      const jobLogger = logger.child({ job: { name: job.name, id: job.id } });
+      try {
+        await recordHeartbeat(db);
+      } catch (error) {
+        // pg-boss does not route handler errors to boss.on("error"). Rethrow so the job is retried.
+        jobLogger.error({ err: error }, "Heartbeat job failed");
+        throw error;
+      }
     }
   });
 }

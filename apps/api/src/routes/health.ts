@@ -43,6 +43,8 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
   app.get(
     "/health",
     {
+      // Monitors poll this; its request lines would drown the log. Warnings still show.
+      logLevel: "warn",
       schema: {
         operationId: "getHealth",
         summary: "Health of the API, the database and the worker",

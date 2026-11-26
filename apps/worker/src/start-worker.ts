@@ -1,10 +1,10 @@
 import { createDb, recordHeartbeat } from "@padvinder/db";
+import type { Logger } from "@padvinder/logging";
 import { createSmtpMailer } from "@padvinder/mail";
 import { PgBoss } from "pg-boss";
 import type { WorkerEnv } from "./env";
 import { registerHeartbeatJob } from "./jobs/heartbeat";
 import { registerMailJob } from "./jobs/mail";
-import type { Logger } from "./logger";
 
 export type RunningWorker = { stop(): Promise<void> };
 
@@ -15,10 +15,10 @@ export type RunningWorker = { stop(): Promise<void> };
  */
 export async function startWorker(env: WorkerEnv, logger: Logger): Promise<RunningWorker> {
   const { db, pool } = createDb(env.DATABASE_URL, {
-    onError: (error) => logger.error("Database pool error", error),
+    onError: (error) => logger.error({ err: error }, "Database pool error"),
   });
   const boss = new PgBoss(env.DATABASE_URL);
-  boss.on("error", (error) => logger.error("pg-boss error", error));
+  boss.on("error", (error) => logger.error({ err: error }, "pg-boss error"));
   // The settings whole, so the mailer puts MAIL_SUBJECT_PREFIX before every subject, as in the API.
   const mailer = createSmtpMailer(env);
 
@@ -36,15 +36,17 @@ export async function startWorker(env: WorkerEnv, logger: Logger): Promise<Runni
     await registerHeartbeatJob(boss, db, logger);
     await registerMailJob(boss, { db, mailer, publicOrigin: env.PUBLIC_ORIGIN, logger });
   } catch (error) {
-    logger.error("Worker failed to start", error);
-    await stop().catch((stopError) => logger.error("Cleanup after failed start failed", stopError));
+    logger.error({ err: error }, "Worker failed to start");
+    await stop().catch((stopError) =>
+      logger.error({ err: stopError }, "Cleanup after failed start failed"),
+    );
     throw error;
   }
 
   try {
     await recordHeartbeat(db);
   } catch (error) {
-    logger.warn("Immediate heartbeat failed; the next scheduled one will record", error);
+    logger.warn({ err: error }, "Immediate heartbeat failed; the next scheduled one will record");
   }
   return { stop };
 }

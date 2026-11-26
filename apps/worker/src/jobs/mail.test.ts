@@ -18,8 +18,9 @@ import {
 } from "@padvinder/mail";
 import { eq } from "drizzle-orm";
 import { PgBoss } from "pg-boss";
-import { afterAll, beforeAll, expect, test, vi } from "vitest";
-import type { Logger } from "../logger";
+import { afterAll, beforeAll, expect, test } from "vitest";
+import type { Logger } from "@padvinder/logging";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { registerMailJob } from "./mail";
 
 const system = { kind: "system" } as const;
@@ -65,15 +66,6 @@ afterAll(async () => {
   await sender?.stop({ graceful: true, timeout: 5_000 });
   await t?.drop();
 });
-
-function testLogger(): Logger {
-  return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-}
-
-/** Everything that was logged, as one text. */
-function loggedText(logger: Logger): string {
-  return JSON.stringify(Object.values(logger).map((fn) => vi.mocked(fn).mock.calls));
-}
 
 async function addUser(name: string): Promise<{ id: string; email: string; name: string }> {
   const email = `${randomUUID()}@example.test`;
@@ -125,7 +117,7 @@ async function startMailWorker(deps: {
   await registerMailJob(boss, {
     db: t!.db,
     publicOrigin,
-    logger: deps.logger ?? testLogger(),
+    logger: deps.logger ?? createTestLogger().logger,
     mailer: deps.mailer,
     pauseMs: deps.pauseMs ?? 0,
     queueOptions: deps.queueOptions ?? quickRetries,
@@ -214,7 +206,7 @@ test(
   "a job whose membership is gone is dropped: no mail, no retry",
   async () => {
     const mailer = createMemoryMailer();
-    const logger = testLogger();
+    const { logger, entries, text } = createTestLogger();
     const worker = await startMailWorker({ mailer, logger });
     try {
       const person = await addedPerson();
@@ -225,10 +217,15 @@ test(
       await expect.poll(() => jobState(id), { timeout: 10_000 }).toBe("completed");
       expect(mailer.sent).toEqual([]);
       expect((await sender.getJobById(MAIL_QUEUE, id))?.retryCount).toBe(0);
-      expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/dropped/i), {
-        kind: "added-to-working-group",
-      });
-      expect(loggedText(logger)).not.toContain(person.email);
+      expect(entries()).toContainEqual(
+        expect.objectContaining({
+          level: "info",
+          msg: "Mail dropped: the receiver or what it is about is gone",
+          kind: "added-to-working-group",
+          job: { name: "mail", id: expect.any(String) },
+        }),
+      );
+      expect(text()).not.toContain(person.email);
     } finally {
       await worker.stop();
     }
@@ -240,13 +237,19 @@ test(
   "a job that is not a valid mail job is dropped without a retry",
   async () => {
     const mailer = createMemoryMailer();
-    const logger = testLogger();
+    const { logger, entries } = createTestLogger();
     const worker = await startMailWorker({ mailer, logger });
     try {
       const id = (await sender.send(MAIL_QUEUE, { kind: "added-to-working-group", to: "x" }))!;
       await expect.poll(() => jobState(id), { timeout: 10_000 }).toBe("completed");
       expect(mailer.sent).toEqual([]);
-      expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/not a valid mail job/i));
+      expect(entries()).toContainEqual(
+        expect.objectContaining({
+          level: "error",
+          msg: expect.stringMatching(/not a valid mail job/i),
+          job: { name: "mail", id: expect.any(String) },
+        }),
+      );
     } finally {
       await worker.stop();
     }
@@ -259,8 +262,7 @@ test(
   async () => {
     const person = await addedPerson();
     const mailer = failingFor([person.email]);
-    const logger = testLogger();
-    const worker = await startMailWorker({ mailer, logger });
+    const worker = await startMailWorker({ mailer });
     try {
       const id = await queue(person.job);
       await expect.poll(() => mailer.attempts.length, { timeout: 10_000 }).toBe(1);
@@ -283,7 +285,7 @@ test(
     const failing = await addedPerson("Faal Persoon");
     const next = await addedPerson("Volgende Persoon");
     const mailer = failingFor([failing.email]);
-    const logger = testLogger();
+    const { logger, entries } = createTestLogger();
     const worker = await startMailWorker({ mailer, logger });
     try {
       const failingId = await queue(failing.job);
@@ -294,11 +296,16 @@ test(
       await expect.poll(() => jobState(failingId), { timeout: 20_000 }).toBe("failed");
       // retryLimit 2: the first try and two more.
       expect(mailer.attempts.filter((mail) => mail.to === failing.email)).toHaveLength(3);
-      expect(logger.warn).toHaveBeenCalledTimes(2);
-      expect(logger.error).toHaveBeenCalledTimes(1);
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringMatching(/dropped after the last try/i),
-        expect.objectContaining({ kind: "added-to-working-group" }),
+      const warns = entries().filter((entry) => entry.level === "warn");
+      expect(warns).toHaveLength(2);
+      expect(warns.map((entry) => entry.tryNumber)).toEqual([1, 2]);
+      const errors = entries().filter((entry) => entry.level === "error");
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toEqual(
+        expect.objectContaining({
+          msg: expect.stringMatching(/dropped after the last try/i),
+          kind: "added-to-working-group",
+        }),
       );
     } finally {
       await worker.stop();
@@ -312,7 +319,7 @@ test(
   async () => {
     const person = await addedPerson("Geheime Naam");
     const mailer = failingFor([person.email]);
-    const logger = testLogger();
+    const { logger, entries, text } = createTestLogger();
     const worker = await startMailWorker({
       mailer,
       logger,
@@ -322,11 +329,15 @@ test(
       // The worker made the queue's retryLimit 0: the first failure is the last.
       const id = await queue(person.job);
       await expect.poll(() => jobState(id), { timeout: 10_000 }).toBe("failed");
-      expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/dropped/i), {
-        kind: "added-to-working-group",
-        error: { type: "Error", code: "EENVELOPE", responseCode: 550, command: "RCPT TO" },
-      });
-      const logged = loggedText(logger);
+      expect(entries()).toContainEqual(
+        expect.objectContaining({
+          level: "error",
+          msg: expect.stringMatching(/dropped/i),
+          kind: "added-to-working-group",
+          error: { type: "Error", code: "EENVELOPE", responseCode: 550, command: "RCPT TO" },
+        }),
+      );
+      const logged = text();
       expect(logged).toContain("added-to-working-group");
       // pg-boss keeps the thrown error with the job: the queue holds no address either.
       const { rows } = await t!.pool.query<{ output: unknown }>(

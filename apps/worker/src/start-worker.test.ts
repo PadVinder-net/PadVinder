@@ -6,12 +6,12 @@ import {
   workingGroupMemberships,
 } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { createQueueMail, ensureMailQueue } from "@padvinder/mail";
 import nodemailer from "nodemailer";
 import { PgBoss } from "pg-boss";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import type { WorkerEnv } from "./env";
-import type { Logger } from "./logger";
 import { startWorker } from "./start-worker";
 
 const mailSettings = {
@@ -20,10 +20,6 @@ const mailSettings = {
   SMTP_PORT: 54325,
   MAIL_FROM: "PadVinder <noreply@padvinder.test>",
 };
-
-function testLogger(): Logger {
-  return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-}
 
 let t: TestDatabase | undefined;
 beforeAll(async () => {
@@ -34,18 +30,25 @@ afterAll(async () => {
 });
 
 test("logs and rejects when the database is unreachable", async () => {
-  const logger = testLogger();
+  const { logger, entries } = createTestLogger();
   await expect(
     startWorker(
       {
         DATABASE_URL: "postgres://padvinder:padvinder@127.0.0.1:1/none",
         LOG_LEVEL: "info",
+        GIT_COMMIT: "dev",
         ...mailSettings,
       },
       logger,
     ),
   ).rejects.toThrow();
-  expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/start/i), expect.anything());
+  expect(entries()).toContainEqual(
+    expect.objectContaining({
+      level: "error",
+      msg: expect.stringMatching(/start/i),
+      err: expect.objectContaining({ type: expect.any(String) }),
+    }),
+  );
 });
 
 test("with MAIL_SUBJECT_PREFIX the worker's mails start with it", async () => {
@@ -90,10 +93,11 @@ test("with MAIL_SUBJECT_PREFIX the worker's mails start with it", async () => {
   const env: WorkerEnv = {
     DATABASE_URL: t!.url,
     LOG_LEVEL: "info",
+    GIT_COMMIT: "dev",
     ...mailSettings,
     MAIL_SUBJECT_PREFIX: "[STAGING]",
   };
-  const worker = await startWorker(env, testLogger());
+  const worker = await startWorker(env, createTestLogger().logger);
   const sender = new PgBoss(t!.url);
   try {
     expect(createTransport).toHaveBeenCalledWith(

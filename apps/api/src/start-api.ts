@@ -1,5 +1,6 @@
 import { createDb, liveEventsChannel } from "@padvinder/db";
-import Fastify, { type FastifyInstance } from "fastify";
+import type { Logger } from "@padvinder/logging";
+import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app";
 import type { ApiEnv } from "./env";
 import { createSmtpMailer } from "@padvinder/mail";
@@ -15,20 +16,16 @@ export type RunningApi = { app: FastifyInstance; stop(): Promise<void> };
  * (such as a port in use) it logs, closes what it opened and rethrows; the caller exits 1 so the
  * service supervisor restarts us.
  */
-export async function startApi(env: ApiEnv): Promise<RunningApi> {
-  // The pool needs a logger before the app exists; the app needs the pool. Errors in that
-  // short window go to stderr.
+export async function startApi(env: ApiEnv, logger: Logger): Promise<RunningApi> {
   let app: FastifyInstance | undefined;
   const { db, pool } = createDb(env.DATABASE_URL, {
-    onError: (error) =>
-      app ? app.log.error({ err: error }, "Database pool error") : console.error(error),
+    onError: (error) => logger.error({ err: error }, "Database pool error"),
   });
   let notifications: NotificationHub | undefined;
   const mailer = createSmtpMailer(env);
   // Connects on the first queued mail, not here: see startMailQueue.
   const mailQueue = startMailQueue(env, {
-    onError: (error) =>
-      app ? app.log.error({ err: error }, "Mail queue error") : console.error(error),
+    onError: (error) => logger.error({ err: error }, "Mail queue error"),
   });
 
   const stop = async () => {
@@ -44,8 +41,7 @@ export async function startApi(env: ApiEnv): Promise<RunningApi> {
     notifications = await startNotificationHub({
       databaseUrl: env.DATABASE_URL,
       channels: [liveEventsChannel],
-      // The hub starts before the app exists. An unused Fastify instance gives the same JSON logger.
-      logger: Fastify({ logger: { level: env.LOG_LEVEL } }).log,
+      logger,
     });
     app = await buildApp({
       env,
@@ -53,14 +49,14 @@ export async function startApi(env: ApiEnv): Promise<RunningApi> {
       notifications,
       mailer,
       queueMail: mailQueue.queueMail,
-      logger: true,
+      logger,
     });
     await app.listen({ host: env.API_HOST, port: env.API_PORT });
+    logger.info({ commit: env.GIT_COMMIT }, "API started");
   } catch (error) {
-    if (app) app.log.error({ err: error }, "API failed to start");
-    else console.error("API failed to start", error);
+    logger.error({ err: error }, "API failed to start");
     await stop().catch((stopError) =>
-      console.error("Cleanup after failed start failed", stopError),
+      logger.error({ err: stopError }, "Cleanup after failed start failed"),
     );
     throw error;
   }

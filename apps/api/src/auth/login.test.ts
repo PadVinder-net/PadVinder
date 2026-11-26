@@ -1,4 +1,4 @@
-import { Writable } from "node:stream";
+import { createTestLogger } from "@padvinder/logging/testing";
 import {
   createOrganization,
   createWorkingGroup,
@@ -367,13 +367,7 @@ test("the code never appears in the log, and Better Auth logs only through ours"
   const consoleSpies = (["log", "info", "warn", "error", "debug"] as const).map((method) =>
     vi.spyOn(console, method).mockImplementation(() => {}),
   );
-  const lines: string[] = [];
-  const logStream = new Writable({
-    write(chunk, _encoding, callback) {
-      lines.push(String(chunk));
-      callback();
-    },
-  });
+  const logs = createTestLogger("debug");
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
   const mailQueue = createMemoryMailQueue();
@@ -383,8 +377,7 @@ test("the code never appears in the log, and Better Auth logs only through ours"
     notifications: createNoopNotificationHub(),
     mailer,
     queueMail: mailQueue.queueMail,
-    logger: true,
-    logStream,
+    logger: logs.logger,
   });
   ctx = {
     app,
@@ -404,7 +397,7 @@ test("the code never appears in the log, and Better Auth logs only through ours"
   mailer.failWith(new Error(`could not send ${code} to noor@example.test`));
   await requestCode(ctx, "noor@example.test");
   // The failed mail is logged once its promise settles, after the response.
-  await expect.poll(() => lines.join("")).toContain("login code mail");
+  await expect.poll(() => logs.text()).toContain("login code mail");
   // A refusal from a Better Auth middleware (no Origin with a cookie), and an unexpected error
   // (a stored code that cannot be decrypted).
   const signedIn = await signIn(ctx, "sam@example.test", "000000");
@@ -424,7 +417,7 @@ test("the code never appears in the log, and Better Auth logs only through ours"
   expect(broken.statusCode).toBe(500);
   expect(broken.json()).toMatchObject({ code: "internal_error" });
 
-  const log = lines.join("");
+  const log = logs.text();
   for (const spy of consoleSpies) {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
