@@ -1,5 +1,5 @@
-import { auditLogEntries, grantPlatformAdmin, users } from "@padvinder/db";
-import { and, eq } from "drizzle-orm";
+import { auditLogEntries, deleteAccount, grantPlatformAdmin, users } from "@padvinder/db";
+import { and, eq, isNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "../test-env";
@@ -144,23 +144,66 @@ test.each([{ email: "jan@" }, {}, { email: "jan@example.test", extra: 1 }])(
 );
 
 test("the address of a deleted account is 400 with an issue on email", async () => {
-  const email = "deleted-0192f3c0@deleted.invalid";
+  const leaving = await loginAs(ctx, uniqueAddress("weg"));
+  expect(await deleteAccount(ctx.t.db, { userId: leaving.userId, now: new Date() })).toMatchObject({
+    outcome: "deleted",
+  });
+  const [deleted] = await ctx.t.db.select().from(users).where(eq(users.id, leaving.userId));
+  const email = deleted!.email;
+  expect(email).toMatch(/@deleted\.invalid$/);
   const res = await appoint(cast.members.platformAdmin, { email });
   expect(res.statusCode).toBe(400);
   expect(res.json()).toMatchObject({ code: "invalid_request", issues: [{ path: "email" }] });
-  expect(await accountsWith(email)).toEqual([]);
+  // Only the deleted account has the address, and it got no flag.
+  expect(await accountsWith(email)).toMatchObject([{ id: leaving.userId, isPlatformAdmin: false }]);
 });
 
 test("the only platform admin who logged in cannot remove themself: 409 last_platform_admin, and the flag stays", async () => {
+  const self = cast.members.platformAdmin;
+  const loggedInPlatformAdmins = await ctx.t.db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(eq(users.isPlatformAdmin, true), eq(users.emailVerified, true), isNull(users.deletedAt)),
+    );
+  expect(
+    loggedInPlatformAdmins.map((row) => row.id),
+    "an earlier test left another platform admin who logged in; this test needs the cast's to be the only one",
+  ).toEqual([self.userId]);
   // A platform admin who never logged in does not count.
   await appointed();
-  const self = cast.members.platformAdmin;
   const res = await remove(self, self.userId);
   expect(res.statusCode).toBe(409);
   expect(res.json()).toMatchObject({ code: "last_platform_admin" });
   const [account] = await ctx.t.db.select().from(users).where(eq(users.id, self.userId));
   expect(account?.isPlatformAdmin).toBe(true);
   expect((await list(self)).statusCode).toBe(200);
+});
+
+/** The `role.platform_admin_revoked` entries about this user. */
+const revokedEntries = (userId: string) =>
+  ctx.t.db
+    .select()
+    .from(auditLogEntries)
+    .where(
+      and(
+        eq(auditLogEntries.subjectId, userId),
+        eq(auditLogEntries.action, "role.platform_admin_revoked"),
+      ),
+    );
+
+test("removing one writes one entry, with the removing platform admin as actor", async () => {
+  const target = await appointed();
+  expect((await remove(cast.members.platformAdmin, target.userId)).statusCode).toBe(204);
+  expect((await remove(cast.members.platformAdmin, target.userId)).statusCode).toBe(404);
+  const entries = await revokedEntries(target.userId);
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toMatchObject({
+    actorKind: "user",
+    actorUserId: cast.members.platformAdmin.userId,
+    organizationId: null,
+    subjectType: "user",
+  });
 });
 
 test("with a second platform admin who logged in, someone removes themself, and their next list is 403", async () => {
@@ -170,6 +213,9 @@ test("with a second platform admin who logged in, someone removes themself, and 
   expect((await list(second)).statusCode).toBe(200);
   const res = await remove(second, second.userId);
   expect(res.statusCode).toBe(204);
+  const entries = await revokedEntries(second.userId);
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toMatchObject({ actorKind: "user", actorUserId: second.userId });
   expect((await list(second)).statusCode).toBe(403);
   const after = rows(await list(cast.members.platformAdmin));
   expect(after.map((row) => row.userId)).not.toContain(second.userId);
