@@ -35,6 +35,10 @@ export const apiErrorCodes = {
   ownAccount: "own_account",
   /** The Sentry tunnel could not reach Sentry, or Sentry failed. Only the browser SDK reads it. */
   sentryUnavailable: "sentry_unavailable",
+  /** Sentry could not be reached or refused a problem report: the user can send it again. */
+  reportNotSent: "report_not_sent",
+  /** The user sent more problem reports in the last hour than the limit allows. */
+  tooManyReports: "too_many_reports",
   internalError: "internal_error",
 } as const;
 export type ApiErrorCode = (typeof apiErrorCodes)[keyof typeof apiErrorCodes];

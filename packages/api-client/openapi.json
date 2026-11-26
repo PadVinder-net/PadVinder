@@ -1156,6 +1156,46 @@
         ],
         "additionalProperties": false
       },
+      "ProblemReportRequestInput": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "includeContact": {
+            "type": "boolean"
+          },
+          "eventId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "page": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "app": {
+            "type": "string",
+            "enum": [
+              "app",
+              "portal"
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "includeContact",
+          "page",
+          "appVersion",
+          "app"
+        ],
+        "additionalProperties": false
+      },
       "SpeciesInput": {
         "type": "object",
         "properties": {
@@ -2470,6 +2510,46 @@
         },
         "required": [
           "email"
+        ],
+        "additionalProperties": false
+      },
+      "ProblemReportRequest": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "includeContact": {
+            "type": "boolean"
+          },
+          "eventId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "page": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "app": {
+            "type": "string",
+            "enum": [
+              "app",
+              "portal"
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "includeContact",
+          "page",
+          "appVersion",
+          "app"
         ],
         "additionalProperties": false
       },
@@ -4875,6 +4955,78 @@
             }
           },
           "413": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/problem-reports": {
+      "post": {
+        "operationId": "reportProblem",
+        "summary": "Send a problem report to the makers (Sentry user feedback)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemReportRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    null
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
             "description": "Default Response",
             "content": {
               "application/json": {

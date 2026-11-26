@@ -13,6 +13,7 @@ export * from "./members";
 export * from "./membership-requests";
 export * from "./organizations";
 export * from "./platform-admins";
+export * from "./problem-reports";
 export * from "./species";
 export * from "./version";
 export * from "./working-groups";

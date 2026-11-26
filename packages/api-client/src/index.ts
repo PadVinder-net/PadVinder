@@ -12,6 +12,7 @@ export * from "./health-query";
 export * from "./me-query";
 export * from "./membership";
 export * from "./platform-administration";
+export * from "./problem-reports";
 export * from "./query-client";
 export * from "./species";
 export * from "./server-events";

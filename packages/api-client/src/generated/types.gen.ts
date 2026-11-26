@@ -301,6 +301,15 @@ export type AddPlatformAdminRequestInput = {
     email: string;
 };
 
+export type ProblemReportRequestInput = {
+    message: string;
+    includeContact: boolean;
+    eventId?: string;
+    page: string;
+    appVersion: string;
+    app: 'app' | 'portal';
+};
+
 export type SpeciesInput = {
     id: string;
     dutchName: string;
@@ -626,6 +635,15 @@ export type PlatformAdminListResponse = {
 
 export type AddPlatformAdminRequest = {
     email: string;
+};
+
+export type ProblemReportRequest = {
+    message: string;
+    includeContact: boolean;
+    eventId?: string;
+    page: string;
+    appVersion: string;
+    app: 'app' | 'portal';
 };
 
 export type Species = {
@@ -1969,3 +1987,40 @@ export type ForwardSentryEnvelopeResponses = {
 };
 
 export type ForwardSentryEnvelopeResponse = ForwardSentryEnvelopeResponses[keyof ForwardSentryEnvelopeResponses];
+
+export type ReportProblemData = {
+    body: ProblemReportRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/problem-reports';
+};
+
+export type ReportProblemErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    429: ApiError;
+    /**
+     * Default Response
+     */
+    502: ApiError;
+};
+
+export type ReportProblemError = ReportProblemErrors[keyof ReportProblemErrors];
+
+export type ReportProblemResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type ReportProblemResponse = ReportProblemResponses[keyof ReportProblemResponses];
