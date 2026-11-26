@@ -181,6 +181,9 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
       node:
         specifier: runtime:24
         version: runtime:24.22.3
@@ -190,6 +193,9 @@ importers:
       oxlint:
         specifier: 1.94.0
         version: 1.94.0
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       typescript:
         specifier: 7.0.2
         version: 7.0.2

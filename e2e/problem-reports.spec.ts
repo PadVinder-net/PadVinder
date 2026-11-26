@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { runAdmin } from "./helpers/admin.ts";
 import { newAddress } from "./helpers/mailpit.ts";
+import { confirmSession } from "./helpers/database.ts";
 import { createSession } from "./helpers/session.ts";
 
 // Under the dev server Sentry is off and the API has no SENTRY_BROWSER_DSN: it answers 204 for a report.
@@ -12,6 +13,7 @@ test("Meer, Meld een probleem sends a report and thanks", async ({ page, context
   const address = newAddress("report");
   runAdmin("grant-platform-admin", "--email", address);
   await createSession(context, address, { name: "Anne de Vries" });
+  await confirmSession(context);
   await page.goto("/app/more");
   await page.getByRole("link", { name: "Meld een probleem" }).click();
   await expect(page).toHaveURL(/\/app\/more\/report-problem$/);
@@ -35,6 +37,7 @@ test("a crash in a screen shows the crash screen, from which a report goes out",
   const address = newAddress("crash");
   runAdmin("grant-platform-admin", "--email", address);
   await createSession(context, address);
+  await confirmSession(context);
   await page.goto("/app/dev/crash");
   await expect(page.getByRole("heading", { name: "Er ging iets mis" })).toBeVisible();
   await expect(

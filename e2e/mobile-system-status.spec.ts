@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { runAdmin } from "./helpers/admin.ts";
 import { newAddress } from "./helpers/mailpit.ts";
+import { confirmSession } from "./helpers/database.ts";
 import { createSession } from "./helpers/session.ts";
 import { createWorkingGroup, makeVolunteer } from "./helpers/working-groups.ts";
 
@@ -8,6 +9,7 @@ test("a platform admin sees a working system on the Meer tab", async ({ page, co
   const address = newAddress("admin");
   runAdmin("grant-platform-admin", "--email", address);
   await createSession(context, address);
+  await confirmSession(context);
   await page.goto("/app/");
   await page.getByRole("link", { name: "Meer" }).click();
   await expect(page).toHaveURL(/\/app\/more$/);
@@ -33,6 +35,7 @@ test("a deep link below /app/more works on reload", async ({ page, context }) =>
   const address = newAddress("system");
   runAdmin("grant-platform-admin", "--email", address);
   await createSession(context, address);
+  await confirmSession(context);
   await page.goto("/app/more/system");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Systeemstatus" })).toBeVisible();
