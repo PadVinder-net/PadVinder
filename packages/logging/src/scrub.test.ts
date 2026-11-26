@@ -25,3 +25,22 @@ test("keeps a JSON line valid when the address is followed by a newline", () => 
   const result = scrub(line);
   expect(JSON.parse(result).msg).toBe("to [email]\nnext");
 });
+test.each([
+  ["after a newline", "line one\nfoo@b.test"],
+  ["after a tab", "tab\tfoo@b.test"],
+  ["after a carriage return", "a\rfoo@b.test"],
+  ["after a backspace", "a\bfoo@b.test"],
+  ["after a form feed", "a\ffoo@b.test"],
+  ["after a control character", "a\u0001foo@b.test"],
+  ["after an escaped backslash", "a\\foo@b.test"],
+  ["after a quote", 'say "foo@b.test"'],
+  ["in a quoted string followed by a newline", '"foo@b.test"\nnext'],
+  ["at the start", "foo@b.test is gone"],
+  ["at the end", "sent to foo@b.test"],
+  ["two in a row", "foo@b.test foo2@b.test"],
+  ["starting with an escape letter", "x\nnoor@b.test"],
+])("keeps JSON valid and removes the address %s", (_name, v) => {
+  const result = JSON.parse(scrub(JSON.stringify({ v }))) as { v: string };
+  expect(result.v).not.toMatch(/@b\.test/);
+  expect(result.v).toContain("[email]");
+});
