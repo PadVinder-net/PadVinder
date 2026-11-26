@@ -40,6 +40,9 @@ const apiErrorMessages: Record<string, string> = {
   no_coordinator: "Deze werkgroep heeft geen coördinator. Maak eerst iemand coördinator.",
   too_many_addresses: "Voeg hoogstens tweehonderd adressen per keer toe.",
   too_many_additions: "Je hebt vandaag te veel mensen toegevoegd. Probeer het morgen opnieuw.",
+  report_not_sent: "Je melding is niet verstuurd. Probeer het zo nog eens.",
+  too_many_reports:
+    "Je hebt in het afgelopen uur veel meldingen gestuurd. Probeer het later nog eens.",
 };
 
 /**

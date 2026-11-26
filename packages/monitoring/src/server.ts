@@ -1,5 +1,6 @@
 import type { BaseTransportOptions, Transport } from "@sentry/core";
 import * as Sentry from "@sentry/node";
+import { relative } from "node:path";
 import { scrubBreadcrumb, scrubEvent } from "./scrub-event";
 import type { MonitoringSettings } from "./settings";
 
@@ -11,10 +12,30 @@ const SHUTDOWN_LIMIT_MS = 2_000;
 // Left out: our crash handler logs the crash, and pino's error line is what Sentry captures.
 // Fastify's own capture is replaced below, so an error the API logs is one event, not two.
 const REPLACED_INTEGRATIONS = new Set(["OnUncaughtException", "OnUnhandledRejection", "Fastify"]);
-const UNSAMPLED_PATHS = new Set(["/api/health", "/api/events"]);
+// The tunnel too: a trace per browser envelope would double what the browser sends.
+const UNSAMPLED_PATHS = new Set(["/api/health", "/api/events", "/api/sentry-tunnel"]);
 const UNSAMPLED_JOBS = new Set(["heartbeat"]);
 
 let enabled = false;
+
+const FRAME_PREFIX = "app:///";
+
+/**
+ * Makes a stack frame's file name relative to the release directory, so the home directory of
+ * the server account never reaches Sentry. Both `filename` and `abs_path` are rewritten: the
+ * debug-ID image's `code_file` is made from `abs_path` after this runs, and Sentry matches a
+ * source map by its debug ID, not by path.
+ */
+export function relativeFrame<T extends { filename?: string; abs_path?: string }>(
+  root: string,
+  frame: T,
+): T {
+  const rewrite = (path: string | undefined) =>
+    path !== undefined && path.startsWith("/") ? `${FRAME_PREFIX}${relative(root, path)}` : path;
+  if (frame.filename !== undefined) frame.filename = rewrite(frame.filename);
+  if (frame.abs_path !== undefined) frame.abs_path = rewrite(frame.abs_path);
+  return frame;
+}
 
 function attribute(attributes: Record<string, unknown> | undefined, key: string) {
   const value = attributes?.[key];
@@ -31,8 +52,8 @@ function requestPath(context: { name: string; attributes?: Record<string, unknow
 }
 
 /**
- * Samples every trace except requests for `/api/health`, `/api/events` and every path outside
- * `/api/`, and the worker's `heartbeat` job.
+ * Samples every trace except requests for `/api/health`, `/api/events`, `/api/sentry-tunnel` and
+ * every path outside `/api/`, and the worker's `heartbeat` job.
  */
 export function tracesSampler(context: {
   name: string;
@@ -53,8 +74,11 @@ export function startServerMonitoring(options: {
   service: "api" | "worker";
   settings: MonitoringSettings;
   transport?: TransportFactory;
+  /** The directory frame paths are made relative to: the release directory. */
+  root?: string;
 }): boolean {
   const { service, settings, transport } = options;
+  const root = options.root ?? process.cwd();
   const dsn = settings.dsn ?? (transport ? TEST_DSN : undefined);
   if (dsn === undefined) return false;
   Sentry.init({
@@ -88,6 +112,11 @@ export function startServerMonitoring(options: {
     beforeBreadcrumb: scrubBreadcrumb,
     integrations: (defaults) => [
       ...defaults.filter((integration) => !REPLACED_INTEGRATIONS.has(integration.name)),
+      Sentry.rewriteFramesIntegration({
+        root,
+        prefix: FRAME_PREFIX,
+        iteratee: (frame) => relativeFrame(root, frame),
+      }),
       Sentry.fastifyIntegration({ shouldHandleError: () => false }),
       Sentry.pinoIntegration({ error: { levels: ["error"] }, log: { levels: [] } }),
     ],

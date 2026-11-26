@@ -10,7 +10,7 @@ import type { RouteObject } from "react-router";
 import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { expect, test, vi } from "vitest";
-import { appBasename, routes } from "./router";
+import { appBasename, buildRoutes, isDevCrashOutsideRouter, routes } from "./router";
 import { renderApp } from "./testing/render-app";
 
 vi.mock("./hooks/use-service-worker", () => ({
@@ -60,6 +60,7 @@ test("no route under /more is Dutch, and every sub-screen links back", async () 
     "members",
     "members/:membershipId",
     "system",
+    "report-problem",
   ]);
 
   const noord = workingGroupsFixture.find((g) => g.name === "Noord")!;
@@ -77,6 +78,7 @@ test("no route under /more is Dutch, and every sub-screen links back", async () 
     ["/app/more/members", "/app/more"],
     [`/app/more/members/${member.membershipId}`, "/app/more/members"],
     ["/app/more/system", "/app/more"],
+    ["/app/more/report-problem", "/app/more"],
   ];
   for (const [path, back] of subScreens) {
     mockFetch({
@@ -96,4 +98,24 @@ test("no route under /more is Dutch, and every sub-screen links back", async () 
     );
     unmount();
   }
+});
+
+/** Every path in a route table, joined with its parents' paths. */
+function allPaths(list: RouteObject[], parent = ""): string[] {
+  return list.flatMap((route) => {
+    const path = route.path ? `${parent}/${route.path}` : parent;
+    return [...(route.path ? [path] : []), ...allPaths(route.children ?? [], path)];
+  });
+}
+
+test("the crash routes for the end-to-end tests exist only under the dev server", () => {
+  expect(allPaths(buildRoutes({ dev: true }))).toContain("/dev/crash");
+  expect(allPaths(buildRoutes({ dev: false })).filter((path) => path.includes("dev"))).toEqual([]);
+  expect(isDevCrashOutsideRouter("/app/dev/crash-outside-router", true)).toBe(true);
+  expect(isDevCrashOutsideRouter("/app/dev/crash-outside-router", false)).toBe(false);
+  expect(isDevCrashOutsideRouter("/app/dev/crash", true)).toBe(false);
+});
+
+test("the top route has the crash screen as its error element", () => {
+  for (const dev of [true, false]) expect(buildRoutes({ dev })[0]!.errorElement).toBeTruthy();
 });

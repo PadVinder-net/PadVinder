@@ -13,5 +13,11 @@ minimumReleaseAgeExclude:
   - "@sentry/opentelemetry@11.18.0"
   - "@sentry/server-runtime-injection@11.18.0"
   - "@sentry/server-utils@11.18.0"
+  - "@sentry/browser-utils@11.18.0"
+  - "@sentry/browser@11.18.0"
+  - "@sentry/feedback@11.18.0"
+  - "@sentry/react@11.18.0"
+  - "@sentry/replay-canvas@11.18.0"
+  - "@sentry/replay@11.18.0"
 allowBuilds:
   esbuild: false

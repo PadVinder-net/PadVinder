@@ -1,5 +1,5 @@
-import { logInWithCode, requestLoginCode, useAuthGate } from "@padvinder/api-client";
-import { AuthGateView } from "@padvinder/ui";
+import { logInWithCode, requestLoginCode, useAuthGate, useMe } from "@padvinder/api-client";
+import { AuthGateView, useBrowserMonitoringUser } from "@padvinder/ui";
 import { useEffect, useRef, type ReactNode } from "react";
 
 /**
@@ -18,6 +18,9 @@ export function AuthGate({
   onLoggedOut?: () => void;
 }) {
   const gate = useAuthGate();
+  const me = useMe();
+  // Sentry's user: the account's ID while logged in, none after logging out.
+  useBrowserMonitoringUser(me.data === undefined ? undefined : (me.data?.user.id ?? null));
   const wasLoggedIn = useRef(false);
   useEffect(() => {
     if (gate.state === "login") {

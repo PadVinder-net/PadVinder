@@ -39,6 +39,8 @@ export default defineConfig(({ command, mode }) => {
   }
   // The CI run number, shown next to the version. Empty counts as unset.
   const appBuild = env.PADVINDER_BUILD_NUMBER || "dev";
+  // The commit, Sentry's release: scripts/build-release.sh sets GIT_COMMIT. Empty counts as unset.
+  const gitCommit = env.GIT_COMMIT || "dev";
   const https = env.DEV_HTTPS === "1";
 
   return {
@@ -48,11 +50,15 @@ export default defineConfig(({ command, mode }) => {
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
       __APP_BUILD__: JSON.stringify(appBuild),
+      __GIT_COMMIT__: JSON.stringify(gitCommit),
       // The portal's dev port, so a request link can go on to it; null in a build (one origin).
       __PORTAL_DEV_PORT__: JSON.stringify(
         command === "serve" && env.PORTAL_PORT ? Number(env.PORTAL_PORT) : null,
       ),
     },
+    // Maps for Sentry, without a `sourceMappingURL` in the bundles: scripts/build-release.sh moves
+    // them out of the served directory.
+    build: { sourcemap: "hidden" },
     server: {
       port,
       strictPort: true,
@@ -74,6 +80,8 @@ export default defineConfig(({ command, mode }) => {
           navigateFallback: "/app/index.html",
           navigateFallbackDenylist: [/^\/api\//],
           // No runtimeCaching: API responses are never cached by the service worker.
+          // No maps for the service worker: Sentry does not run in it.
+          sourcemap: false,
         },
         devOptions: { enabled: false },
       }),

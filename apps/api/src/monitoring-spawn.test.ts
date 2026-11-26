@@ -115,3 +115,39 @@ test("no address or phone number in a query string or a path reaches Sentry", as
   expect(sent).not.toContain("example.test");
   expect(sent).not.toContain("0612345678");
 }, 30_000);
+
+test("an API that cannot start sends its error to Sentry before it exits", async () => {
+  const before = fake!.events().length;
+  // Occupy the port, so listen fails after the database and the hub have started.
+  const blocker = createServer();
+  await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+  const { port } = blocker.address() as { port: number };
+  try {
+    const child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
+      cwd: `${import.meta.dirname}/..`,
+      env: {
+        PATH: process.env.PATH ?? "",
+        DATABASE_URL: t!.url,
+        API_PORT: String(port),
+        API_HOST: "127.0.0.1",
+        ALLOWED_ORIGINS: ORIGIN,
+        AUTH_SECRET: "test-secret-test-secret-test-secret-0123456789",
+        PUBLIC_ORIGIN: ORIGIN,
+        SMTP_HOST: "127.0.0.1",
+        SMTP_PORT: "1",
+        MAIL_FROM: "PadVinder <noreply@padvinder.test>",
+        SENTRY_DSN: fake!.dsn,
+      },
+    });
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += chunk));
+    child.stderr.on("data", (chunk) => (output += chunk));
+    const code = await new Promise<number | null>((resolve) => child.on("close", resolve));
+    expect(code, output).toBe(1);
+    const events = fake!.events().slice(before);
+    expect(events, output).toHaveLength(1);
+    expect(JSON.stringify(events[0])).toContain("API failed to start");
+  } finally {
+    await new Promise((resolve) => blocker.close(resolve));
+  }
+}, 30_000);

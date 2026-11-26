@@ -124,3 +124,24 @@ export {
   type AuditLogFiltersProps,
   type AuditLogFilterValue,
 } from "./components/audit-log/audit-log-filters";
+export {
+  ProblemReportForm,
+  problemReportSentMessage,
+  problemReportTitle,
+  type ProblemReportFormProps,
+  type ProblemReportInput,
+} from "./components/problem-report/problem-report-form";
+export { CrashScreen, type CrashScreenProps } from "./components/problem-report/crash-screen";
+export { CrashFlow, type CrashFlowProps } from "./components/problem-report/crash-flow";
+export {
+  captureCrash,
+  lastErrorEventId,
+  sentErrorEventId,
+  setBrowserMonitoringUser,
+  startBrowserMonitoring,
+  stopBrowserMonitoring,
+  type BrowserMonitoringOptions,
+  type RouterTracingHooks,
+} from "./monitoring/browser-monitoring";
+export { useBrowserMonitoringUser } from "./monitoring/use-browser-monitoring-user";
+export { reloadOnPreloadError } from "./lib/reload-on-preload-error";

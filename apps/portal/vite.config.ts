@@ -17,16 +17,22 @@ export default defineConfig(({ command, mode }) => {
     );
   }
   const https = env.DEV_HTTPS === "1";
+  // The commit, Sentry's release: scripts/build-release.sh sets GIT_COMMIT. Empty counts as unset.
+  const gitCommit = env.GIT_COMMIT || "dev";
 
   return {
     base: "/",
     envDir: rootDir,
     define: {
+      __GIT_COMMIT__: JSON.stringify(gitCommit),
       // The app's dev port, so a requests link can go on to it; null in a build (one origin).
       __APP_DEV_PORT__: JSON.stringify(
         command === "serve" && env.MOBILE_PORT ? Number(env.MOBILE_PORT) : null,
       ),
     },
+    // Maps for Sentry, without a `sourceMappingURL` in the bundles: scripts/build-release.sh moves
+    // them out of the served directory.
+    build: { sourcemap: "hidden" },
     server: {
       port,
       strictPort: true,

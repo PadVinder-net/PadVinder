@@ -49,9 +49,9 @@ test("an unexpected error is logged without the row's address", async () => {
   expect(log.text()).not.toContain("noor@example.test");
 });
 
-test("one line per request, with method, scrubbed URL, status, response time and reqId", async () => {
+test("one line per request, with method, path, status, response time and reqId", async () => {
   const before = log.entries().length;
-  const res = await app!.inject("/api/version?email=a@b.test");
+  const res = await app!.inject("/api/version?email=noor%40example.test&phone=0612345678");
   expect(res.statusCode).toBe(200);
   const lines = log.entries().slice(before);
   expect(lines).toHaveLength(1);
@@ -60,13 +60,14 @@ test("one line per request, with method, scrubbed URL, status, response time and
     time: expect.any(Number),
     service: "test",
     reqId: expect.any(String),
-    req: { method: "GET", url: "/api/version?email=[email]", host: expect.any(String) },
+    req: { method: "GET", url: "/api/version", host: expect.any(String) },
     res: { statusCode: 200 },
     responseTime: expect.any(Number),
     msg: "request completed",
   });
   expect(log.entries().some((e) => e.msg === "incoming request")).toBe(false);
-  expect(log.text()).not.toContain("a@b.test");
+  expect(log.text()).not.toContain("0612345678");
+  expect(log.text()).not.toContain("example.test");
 });
 
 test("a failing request also gets exactly one request line", async () => {

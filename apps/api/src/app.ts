@@ -1,6 +1,7 @@
 import swagger from "@fastify/swagger";
 import type { Db, QueueMail } from "@padvinder/db";
 import type { Logger } from "@padvinder/logging";
+import type { MonitoringSettings } from "@padvinder/monitoring";
 import Fastify, {
   LogController,
   type FastifyBaseLogger,
@@ -31,7 +32,9 @@ import { membershipRequestRoutes } from "./routes/membership-requests";
 import { membershipRoutes } from "./routes/memberships";
 import { organizationRoutes } from "./routes/organizations";
 import { platformAdminRoutes } from "./routes/platform-admins";
+import { problemReportRoutes } from "./routes/problem-reports";
 import { speciesRoutes } from "./routes/species";
+import { sentryTunnelRoutes } from "./routes/sentry-tunnel";
 import { systemRoutes } from "./routes/system";
 import { userRoutes } from "./routes/users";
 import { workingGroupRoutes } from "./routes/working-groups";
@@ -50,6 +53,11 @@ export type AppDeps = {
   queueMail: QueueMail;
   /** The logger of the app and its requests. Absent means no logging (most tests). */
   logger?: Logger;
+  /**
+   * Sentry's settings, for the tunnel that forwards the browser's envelopes and for problem
+   * reports. Absent means Sentry is off: the tunnel drops envelopes, and a report is only logged.
+   */
+  monitoring?: MonitoringSettings;
   /** How often an open event stream checks its session; default `SESSION_RECHECK_MS`. Tests. */
   sessionRecheckMs?: number;
 };
@@ -136,6 +144,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         mailer: deps.mailer,
         publicOrigin: env.PUBLIC_ORIGIN,
       });
+      await api.register(sentryTunnelRoutes, { monitoring: deps.monitoring });
+      await api.register(problemReportRoutes, { monitoring: deps.monitoring });
       await api.register(eventsRoutes, {
         db: deps.db,
         notifications: deps.notifications,

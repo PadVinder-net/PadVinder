@@ -13,6 +13,7 @@
     "@padvinder/api-client": "workspace:*",
     "@padvinder/contracts": "workspace:*",
     "@padvinder/ui": "workspace:*",
+    "@sentry/react": "11.18.0",
     "@tanstack/react-query": "^5.108.2",
     "better-auth": "1.7.27",
     "react": "^19.3.1",

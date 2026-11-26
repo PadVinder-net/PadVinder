@@ -1,0 +1,158 @@
+import * as Sentry from "@sentry/react";
+import { scrubBrowserBreadcrumb, scrubBrowserEvent } from "./scrub-event";
+
+/** The hooks and functions of `react-router` that Sentry's navigation tracing needs. */
+export type RouterTracingHooks = Pick<
+  Parameters<typeof Sentry.reactRouterBrowserTracingIntegration>[0],
+  "useLocation" | "useNavigationType" | "createRoutesFromChildren" | "matchRoutes"
+>;
+
+export type BrowserMonitoringOptions = {
+  /** The `service` tag: the mobile app or the portal. */
+  app: "app" | "portal";
+  /** The `app_version` tag. */
+  appVersion: string;
+  /**
+   * The build's commit, Sentry's release. The tunnel keeps it when it is a full 40-character
+   * commit (an installed app's errors stay under the build it runs) and sets the server's own
+   * otherwise, as for "dev".
+   */
+  release: string;
+  /** React Router's hooks, for spans named after routes. Without them, plain page load spans. */
+  router?: RouterTracingHooks;
+  /** Default: on in a production build only, so never under the Vite dev servers. */
+  enabled?: boolean;
+  /** For tests: instead of the fetch transport. */
+  transport?: Sentry.BrowserOptions["transport"];
+};
+
+// The tunnel ignores the DSN and sends to the server's own; the SDK only needs a valid one.
+export const PLACEHOLDER_DSN = "https://public@padvinder.invalid/1";
+export const TUNNEL_PATH = "/api/sentry-tunnel";
+// One phone in an error loop costs this many events per page load, not hundreds.
+const MAX_ERRORS_PER_PAGE_LOAD = 10;
+
+let enabled = false;
+let errorsThisPageLoad = 0;
+let lastSentErrorId: string | undefined;
+
+/**
+ * Starts Sentry in the browser and answers whether it is on: only in a production build (or with
+ * `enabled`), always through the tunnel, with every kind of data collection off. Call it once,
+ * before the first render.
+ */
+export function startBrowserMonitoring(options: BrowserMonitoringOptions): boolean {
+  if (!(options.enabled ?? import.meta.env.PROD)) return false;
+  errorsThisPageLoad = 0;
+  lastSentErrorId = undefined;
+  // No INP: it is sent as a span of its own (which the tunnel drops), with the tapped element's
+  // selector and the user agent.
+  const webVitals = { ignore: ["inp" as const] };
+  const tracing = options.router
+    ? Sentry.reactRouterBrowserTracingIntegration({ ...options.router, webVitals })
+    : Sentry.browserTracingIntegration({ webVitals });
+  Sentry.init({
+    dsn: PLACEHOLDER_DSN,
+    tunnel: TUNNEL_PATH,
+    enabled: true,
+    ...(options.transport ? { transport: options.transport } : {}),
+    release: options.release,
+    initialScope: { tags: { service: options.app, app_version: options.appVersion } },
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: false,
+      httpBodies: [],
+      urlQueryParams: false,
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false,
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      mcp: { inputs: false, outputs: false },
+    },
+    // Transactions with their spans, which the tunnel accepts and `beforeSendTransaction`
+    // scrubs. The default since 11 ("stream") sends spans one by one.
+    traceLifecycle: "static",
+    tracesSampleRate: 1,
+    // Trace headers only to our own API, so a tap and the request it causes are one trace.
+    tracePropagationTargets: [/^\/api\//],
+    // Without the default Console integration (since 11 the source of console breadcrumbs):
+    // console output can hold names, and the app's own logging is not needed to understand an
+    // issue.
+    integrations: (defaults) => [
+      ...defaults.filter((integration) => integration.name !== "Console"),
+      tracing,
+    ],
+    // A call that failed because there was no connection (Chrome, Safari, Firefox), as the whole
+    // message; the API reports its own 5xx.
+    ignoreErrors: [
+      /^Failed to fetch$/,
+      /^Load failed$/,
+      /^NetworkError when attempting to fetch resource\.?$/,
+    ],
+    beforeSend: (event) => {
+      errorsThisPageLoad += 1;
+      if (errorsThisPageLoad > MAX_ERRORS_PER_PAGE_LOAD) return null;
+      lastSentErrorId = event.event_id;
+      return scrubBrowserEvent(event);
+    },
+    beforeSendTransaction: scrubBrowserEvent,
+    beforeBreadcrumb: scrubBrowserBreadcrumb,
+  });
+  enabled = true;
+  return true;
+}
+
+/** Sets the account's ID as the only user field, or clears it (`null`, after logging out). */
+export function setBrowserMonitoringUser(id: string | null): void {
+  if (!enabled) return;
+  Sentry.setUser(id === null ? null : { id });
+}
+
+/**
+ * The ID of the last error event that was sent (past the ignored errors and the cap), for a
+ * problem report about a crash. Set in `beforeSend`, which runs during the capture call in this
+ * SDK version.
+ */
+export function lastErrorEventId(): string | undefined {
+  return enabled ? lastSentErrorId : undefined;
+}
+
+/**
+ * `eventId` when that error event was sent, else undefined: for the ID that Sentry's ErrorBoundary
+ * hands its fallback, which it also gives for an event the cap dropped or with Sentry off.
+ */
+export function sentErrorEventId(eventId: string | undefined): string | undefined {
+  return eventId !== undefined && eventId === lastErrorEventId() ? eventId : undefined;
+}
+
+// The crashes already reported, with the ID of their event if it was sent. React renders an error
+// element twice in strict mode, and again on every render, so each error is reported once.
+const reportedCrashes = new WeakMap<object, string | undefined>();
+
+/**
+ * Reports a crash that React Router's error element caught (it never reaches the window's error
+ * handler or Sentry's ErrorBoundary), once per error, and answers the ID of its event when it was
+ * sent: a problem report about the crash links to it.
+ */
+export function captureCrash(error: unknown): string | undefined {
+  const reported = typeof error === "object" && error !== null;
+  if (reported && reportedCrashes.has(error)) return reportedCrashes.get(error);
+  const eventId = sentErrorEventId(
+    Sentry.captureException(error, { mechanism: { handled: false, type: "auto.react_router" } }),
+  );
+  if (reported) reportedCrashes.set(error, eventId);
+  return eventId;
+}
+
+/** Stops Sentry and forgets this page load's user and breadcrumbs. For tests. */
+export async function stopBrowserMonitoring(): Promise<void> {
+  if (!enabled) return;
+  enabled = false;
+  await Sentry.close(2000);
+  // The user lives on the isolation scope (`Sentry.setUser`); a cleared user on the current scope
+  // would hide it from later events.
+  Sentry.getIsolationScope().setUser(null).clearBreadcrumbs();
+  Sentry.getCurrentScope().clearBreadcrumbs();
+}

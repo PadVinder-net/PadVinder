@@ -9,7 +9,7 @@ import {
 import { cleanup, screen } from "@testing-library/react";
 import type { RouteObject } from "react-router";
 import { expect, test } from "vitest";
-import { routes } from "./router";
+import { buildRoutes, isDevCrashOutsideRouter, routes } from "./router";
 import { renderPortal } from "./testing/render-portal";
 
 function collectPaths(list: RouteObject[], parent = ""): string[] {
@@ -77,4 +77,18 @@ test("an unknown address shows the not-found page, inside the layout", async () 
   await expectNotFound();
   expect(screen.getByRole("button", { name: "Log uit" })).toBeVisible();
   expect(screen.getByRole("navigation", { name: "Beheer" })).toBeVisible();
+});
+
+test("the crash routes for the end-to-end tests exist only under the dev server", () => {
+  expect(collectPaths(buildRoutes({ dev: true }))).toContain("/dev/crash");
+  expect(collectPaths(buildRoutes({ dev: false })).filter((path) => path.includes("dev"))).toEqual(
+    [],
+  );
+  expect(isDevCrashOutsideRouter("/dev/crash-outside-router", true)).toBe(true);
+  expect(isDevCrashOutsideRouter("/dev/crash-outside-router", false)).toBe(false);
+  expect(isDevCrashOutsideRouter("/dev/crash", true)).toBe(false);
+});
+
+test("the top route has the crash screen as its error element", () => {
+  for (const dev of [true, false]) expect(buildRoutes({ dev })[0]!.errorElement).toBeTruthy();
 });

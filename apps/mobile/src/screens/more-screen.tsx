@@ -2,6 +2,7 @@ import { useLogOut, useMe } from "@padvinder/api-client";
 import { Button, logOutFailedMessage } from "@padvinder/ui";
 import { APP_BUILD, APP_VERSION } from "../app-version";
 import { MoreMenu } from "./more/more-menu";
+import { FlashMessage } from "./more/sub-screen";
 
 /** The Meer tab: the menu, then Log uit and the app version. */
 export function MoreScreen() {
@@ -11,6 +12,10 @@ export function MoreScreen() {
   return (
     <section className="p-4">
       <h1 className="mb-4 text-2xl font-bold">Meer</h1>
+      {/* "Bedankt, je melding is verstuurd." after Meld een probleem. */}
+      <div className="mb-4 empty:hidden">
+        <FlashMessage />
+      </div>
       {me.data ? <MoreMenu me={me.data} /> : null}
       {logOutFailed ? (
         <p role="alert" className="mt-6 text-base text-destructive">

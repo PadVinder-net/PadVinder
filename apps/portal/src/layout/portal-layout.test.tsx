@@ -11,7 +11,7 @@ import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { renderPortal } from "../testing/render-portal";
-import { recordRequests, requestsTo } from "../testing/requests";
+import { errorResponse, recordRequests, requestsTo } from "../testing/requests";
 
 /** What the server sends when someone's rights changed; the layout then asks /api/me again. */
 function emitAccessChanged(userId: string) {
@@ -234,4 +234,65 @@ test("Log uit that fails keeps the user logged in and says so", async () => {
   );
   expect(screen.getByRole("button", { name: "Log uit" })).toBeVisible();
   expect(screen.getByText(meFixture.user.name)).toBeVisible();
+});
+
+const reportBody = (message: string, includeContact: boolean) => ({
+  message,
+  includeContact,
+  page: "/working-groups",
+  appVersion: "dev",
+  app: "portal",
+});
+
+test("Meld een probleem opens the form in a modal and thanks with a toast", async () => {
+  const requests = recordRequests();
+  mockFetch({
+    "/api/me": coordinatorMeFixture,
+    "/api/managed-working-groups": { workingGroups: withoutOpenRequests },
+    "POST /api/problem-reports": new Response(null, { status: 204 }),
+  });
+  renderPortal("/working-groups");
+  await userEvent.click(await screen.findByRole("button", { name: "Meld een probleem" }));
+  const dialog = screen.getByRole("dialog", { name: "Meld een probleem" });
+  // The modal has the title; the form has no second heading.
+  expect(within(dialog).getAllByRole("heading")).toHaveLength(1);
+  expect(within(dialog).getByText(coordinatorMeFixture.user.name)).toBeVisible();
+  expect(within(dialog).getByText(coordinatorMeFixture.user.email)).toBeVisible();
+  expect(within(dialog).getByRole("checkbox")).not.toBeChecked();
+  await userEvent.type(within(dialog).getByLabelText("Wat ging er mis?"), "De tabel is leeg");
+  await userEvent.click(within(dialog).getByRole("checkbox"));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Verstuur" }));
+  expect(await screen.findByText("Bedankt, je melding is verstuurd.")).toBeVisible();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(requestsTo(requests, "POST", "/api/problem-reports").map((r) => r.body)).toEqual([
+    reportBody("De tabel is leeg", true),
+  ]);
+
+  // Opened again, the form starts empty and unticked.
+  await userEvent.click(screen.getByRole("button", { name: "Meld een probleem" }));
+  const again = screen.getByRole("dialog", { name: "Meld een probleem" });
+  expect(within(again).getByLabelText("Wat ging er mis?")).toHaveValue("");
+  expect(within(again).getByRole("checkbox")).not.toBeChecked();
+});
+
+test("a report that was not sent keeps the modal and the text, with the reason", async () => {
+  mockFetch({
+    "/api/me": meFixture,
+    "POST /api/problem-reports": errorResponse(502, "report_not_sent"),
+  });
+  renderPortal("/");
+  // A volunteer sees no navigation, but can report a problem.
+  await userEvent.click(await screen.findByRole("button", { name: "Meld een probleem" }));
+  const dialog = screen.getByRole("dialog", { name: "Meld een probleem" });
+  await userEvent.type(within(dialog).getByLabelText("Wat ging er mis?"), "Leeg");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Verstuur" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "Je melding is niet verstuurd. Probeer het zo nog eens.",
+  );
+  expect(within(dialog).getByLabelText("Wat ging er mis?")).toHaveValue("Leeg");
+
+  // Closed and opened again, the old error is gone.
+  await userEvent.keyboard("{Escape}");
+  await userEvent.click(screen.getByRole("button", { name: "Meld een probleem" }));
+  expect(within(screen.getByRole("dialog")).queryByRole("alert")).toBeNull();
 });
