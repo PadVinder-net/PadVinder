@@ -44,3 +44,31 @@ test.each([
   expect(result.v).not.toMatch(/@b\.test/);
   expect(result.v).toContain("[email]");
 });
+
+function timed(text: string): number {
+  const start = performance.now();
+  scrub(text);
+  return performance.now() - start;
+}
+test("a long run without separators is scrubbed in linear time", () => {
+  expect(timed("a".repeat(64_000))).toBeLessThan(50);
+});
+test("a long line of letters with one @ far away is scrubbed in linear time", () => {
+  expect(timed(`${"a".repeat(32_000)}@${"b".repeat(32_000)}`)).toBeLessThan(50);
+  expect(timed(`x@${"a".repeat(64_000)}`)).toBeLessThan(50);
+});
+const pnpmFrames = [
+  "at Pool.connect (/srv/release/api/node_modules/.pnpm/pg-pool@3.14.0_pg@8.23.1/node_modules/pg-pool/index.js:45:11)",
+  "at Manager.work (/srv/release/worker/node_modules/.pnpm/pg-boss@12.38.2/node_modules/pg-boss/dist/manager.js:401:23)",
+  "at file:///srv/release/api/node_modules/.pnpm/@sentry+node@11.18.0/node_modules/@sentry/node/build/index.js:1:1",
+];
+test.each(pnpmFrames)("keeps a pnpm stack frame as it is: %s", (frame) => {
+  expect(scrub(frame)).toBe(frame);
+  const line = JSON.stringify({ stack: `Error: x\n    ${frame}` });
+  expect(scrub(line)).toBe(line);
+});
+test("still scrubs ordinary addresses and the address of a connection string", () => {
+  expect(scrub("to noor@example.test")).toBe("to [email]");
+  expect(scrub("to a.b+c@sub.example.test.")).toBe("to [email].");
+  expect(scrub("postgres://user:secret@db.host.test:5432/db")).not.toContain("secret@");
+});
