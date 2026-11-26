@@ -130,6 +130,8 @@ test("only its admins and platform admins see an organization", async () => {
         name: "Cast organizationAdmin",
         email: cast.members.organizationAdmin.email.toLowerCase(),
         hasLoggedIn: true,
+        hasPasskey: false,
+        mayResetPasskeys: false,
       },
     ],
   });

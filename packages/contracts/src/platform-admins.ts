@@ -10,6 +10,8 @@ export const platformAdminSchema = z
     email: z.string(),
     /** False for an account made by appointing it, until the person logs in. */
     hasLoggedIn: z.boolean(),
+    /** Whether the person has made a passkey. */
+    hasPasskey: z.boolean(),
   })
   .meta({ id: "PlatformAdmin" });
 export type PlatformAdmin = z.infer<typeof platformAdminSchema>;

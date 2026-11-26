@@ -258,6 +258,8 @@ export type OrganizationAdminInput = {
     name: string;
     email: string;
     hasLoggedIn: boolean;
+    hasPasskey: boolean;
+    mayResetPasskeys: boolean;
 };
 
 export type OrganizationDetailInput = {
@@ -291,6 +293,7 @@ export type PlatformAdminInput = {
     name: string;
     email: string;
     hasLoggedIn: boolean;
+    hasPasskey: boolean;
 };
 
 export type PlatformAdminListResponseInput = {
@@ -594,6 +597,8 @@ export type OrganizationAdmin = {
     name: string;
     email: string;
     hasLoggedIn: boolean;
+    hasPasskey: boolean;
+    mayResetPasskeys: boolean;
 };
 
 export type OrganizationDetail = {
@@ -627,6 +632,7 @@ export type PlatformAdmin = {
     name: string;
     email: string;
     hasLoggedIn: boolean;
+    hasPasskey: boolean;
 };
 
 export type PlatformAdminListResponse = {

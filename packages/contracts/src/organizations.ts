@@ -20,6 +20,10 @@ export const organizationAdminSchema = z
     email: z.string(),
     /** False for an account made by the administration, until the person logs in. */
     hasLoggedIn: z.boolean(),
+    /** Whether the person has made a passkey. */
+    hasPasskey: z.boolean(),
+    /** Whether the actor may remove this admin's passkeys. Filled by the route. */
+    mayResetPasskeys: z.boolean(),
   })
   .meta({ id: "OrganizationAdmin" });
 export type OrganizationAdmin = z.infer<typeof organizationAdminSchema>;

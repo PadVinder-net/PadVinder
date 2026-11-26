@@ -2,6 +2,7 @@ import type { PlatformAdmin } from "@padvinder/contracts";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { users } from "./schema";
+import { userHasPasskey } from "./passkeys";
 import { userHasLoggedIn } from "./users";
 
 /**
@@ -16,6 +17,7 @@ export async function listPlatformAdmins(db: Db): Promise<PlatformAdmin[]> {
       name: users.name,
       email: users.email,
       hasLoggedIn: userHasLoggedIn,
+      hasPasskey: userHasPasskey,
     })
     .from(users)
     .where(and(eq(users.isPlatformAdmin, true), isNull(users.deletedAt)))

@@ -1008,13 +1008,21 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
+          },
+          "mayResetPasskeys": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey",
+          "mayResetPasskeys"
         ]
       },
       "OrganizationDetailInput": {
@@ -1121,13 +1129,17 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey"
         ]
       },
       "PlatformAdminListResponseInput": {
@@ -2345,13 +2357,21 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
+          },
+          "mayResetPasskeys": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey",
+          "mayResetPasskeys"
         ],
         "additionalProperties": false
       },
@@ -2473,13 +2493,17 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey"
         ],
         "additionalProperties": false
       },

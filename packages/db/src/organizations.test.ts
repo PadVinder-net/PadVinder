@@ -11,7 +11,7 @@ import {
 import { getAccess } from "./access";
 import type { AuditActor } from "./audit-log";
 import { getOrganization, listAdministeredOrganizations } from "./organizations";
-import { users } from "./schema";
+import { passkeys, users } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 const system: AuditActor = { kind: "system" };
@@ -108,12 +108,21 @@ test("getOrganization lists the admins by name, without deleted accounts", async
     name: "Beheerders",
     contactEmail: null,
     admins: [
-      { userId: anna.userId, name: "Éva Eerst", email: "anna@example.test", hasLoggedIn: false },
+      {
+        userId: anna.userId,
+        name: "Éva Eerst",
+        email: "anna@example.test",
+        hasLoggedIn: false,
+        hasPasskey: false,
+        mayResetPasskeys: false,
+      },
       {
         userId: organization.adminUserId,
         name: "Zoë Zuid",
         email: "zoe@example.test",
         hasLoggedIn: true,
+        hasPasskey: false,
+        mayResetPasskeys: false,
       },
     ],
   });
@@ -121,4 +130,22 @@ test("getOrganization lists the admins by name, without deleted accounts", async
 
 test("getOrganization is null for an organization that does not exist", async () => {
   expect(await getOrganization(db(), "01900000-0000-7000-8000-000000000000")).toBeNull();
+});
+
+test("getOrganization says who has a passkey", async () => {
+  const { id: organizationId, adminUserId } = await createOrganization(
+    db(),
+    { name: "Sleutels", adminEmail: "sleutel-admin@example.test" },
+    system,
+  );
+  await db().insert(passkeys).values({
+    userId: adminUserId,
+    publicKey: "pk",
+    credentialID: "cred-org-admin",
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+  });
+  const detail = await getOrganization(db(), organizationId);
+  expect(detail?.admins).toMatchObject([{ userId: adminUserId, hasPasskey: true }]);
 });

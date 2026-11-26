@@ -30,7 +30,13 @@ const remove = (who: Who, userId: string) =>
 let n = 0;
 const uniqueAddress = (label: string) => `${label}-${++n}-${uuidv7().slice(-8)}@example.test`;
 
-type Row = { userId: string; name: string; email: string; hasLoggedIn: boolean };
+type Row = {
+  userId: string;
+  name: string;
+  email: string;
+  hasLoggedIn: boolean;
+  hasPasskey: boolean;
+};
 const rows = (res: { json: () => unknown }) =>
   (res.json() as { platformAdmins: Row[] }).platformAdmins;
 
@@ -65,9 +71,16 @@ test("only a platform admin lists them", async () => {
     name: "Cast platformAdmin",
     email: cast.members.platformAdmin.email.toLowerCase(),
     hasLoggedIn: true,
+    hasPasskey: false,
   });
   for (const row of rows(res)) {
-    expect(Object.keys(row).sort()).toEqual(["email", "hasLoggedIn", "name", "userId"]);
+    expect(Object.keys(row).sort()).toEqual([
+      "email",
+      "hasLoggedIn",
+      "hasPasskey",
+      "name",
+      "userId",
+    ]);
   }
 });
 
@@ -105,6 +118,7 @@ test("appointing ' Nieuw@Example.TEST ' makes the account nieuw@example.test, sh
     name: "",
     email: "nieuw@example.test",
     hasLoggedIn: false,
+    hasPasskey: false,
   });
 });
 

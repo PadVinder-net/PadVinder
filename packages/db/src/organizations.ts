@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Access } from "./access";
 import type { Db } from "./client";
 import { organizationAdmins, organizations, users } from "./schema";
+import { userHasPasskey } from "./passkeys";
 import { userHasLoggedIn } from "./users";
 
 export type OrganizationRecord = Organization;
@@ -59,10 +60,15 @@ export async function getOrganization(
       name: users.name,
       email: users.email,
       hasLoggedIn: userHasLoggedIn,
+      hasPasskey: userHasPasskey,
     })
     .from(organizationAdmins)
     .innerJoin(users, eq(users.id, organizationAdmins.userId))
     .where(and(eq(organizationAdmins.organizationId, organizationId), isNull(users.deletedAt)))
     .orderBy(asc(sql`${users.name} collate "nl-NL-x-icu"`), asc(users.id));
-  return { ...organization, admins };
+  // The route decides `mayResetPasskeys`; the database layer never says yes.
+  return {
+    ...organization,
+    admins: admins.map((admin) => ({ ...admin, mayResetPasskeys: false })),
+  };
 }
