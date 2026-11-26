@@ -40,39 +40,46 @@ async function readSession(
     query: { disableRefresh: !renew },
     returnHeaders: true,
   });
-  if (!response) {
-    setMonitoringUser(null);
-    return { actor: null, headers };
-  }
+  if (!response) return { actor: null, headers };
   const { id, name, email, phone } = response.user;
   const access = await getAccess(db, id);
-  if (!access) {
-    setMonitoringUser(null);
-    return { actor: null, headers };
-  }
+  if (!access) return { actor: null, headers };
   const actor: Actor = { userId: id, user: { id, name, email, phone: phone ?? null }, ...access };
-  // Only the account's ID: an error of this request in Sentry names no person.
-  setMonitoringUser(id);
   return { actor, headers };
+}
+
+/**
+ * Makes the actor's account ID (only that) the Sentry user of the current request. Call it only
+ * on a request's own path: elsewhere (a notification callback) the current isolation scope is
+ * the process's, and every later request would inherit the user.
+ */
+function identify(actor: Actor | null): void {
+  setMonitoringUser(actor?.userId ?? null);
 }
 
 /**
  * The actor of the session cookie, or `null` when there is no valid session, for a request that
  * cannot pass on a cookie (an open event stream) or does not need a login (health). It never
- * renews the session: that is left to `requireActor`, which sets the refreshed cookie.
+ * renews the session: that is left to `requireActor`, which sets the refreshed cookie. It makes
+ * the actor the Sentry user of the request, unless `identify` is false: the event stream's
+ * reloads run outside the request (see `identify`).
  */
 export async function loadActor(
   app: FastifyInstance,
   db: Db,
   request: FastifyRequest,
+  options: { identify?: boolean } = {},
 ): Promise<Actor | null> {
-  return (await readSession(app, db, request, { renew: false })).actor;
+  const { actor } = await readSession(app, db, request, { renew: false });
+  if (options.identify ?? true) identify(actor);
+  return actor;
 }
 
 export function addActorLoading(app: FastifyInstance, db: Db): void {
   app.decorateRequest("actor", undefined);
   app.decorate("requireActor", async (request: FastifyRequest, reply: FastifyReply) => {
     const { actor, headers } = await readSession(app, db, request, { renew: true });
+    identify(actor);
     // A renewed session sets a fresh cookie, so an active user stays logged in.
     const setCookies = headers.getSetCookie();
     if (actor && setCookies.length > 0) void reply.header("set-cookie", setCookies);

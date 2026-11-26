@@ -1,12 +1,36 @@
 import type { AddressInfo } from "node:net";
+import type { LiveEvent } from "@padvinder/contracts";
 import { grantPlatformAdmin } from "@padvinder/db";
 import { createLogger } from "@padvinder/logging";
-import { closeMonitoring, flushMonitoring, startServerMonitoring } from "@padvinder/monitoring";
+import { createMemoryMailer } from "@padvinder/mail";
+import {
+  closeMonitoring,
+  flushMonitoring,
+  startServerMonitoring,
+  withSpan,
+} from "@padvinder/monitoring";
 import { createTestTransport } from "@padvinder/monitoring/testing";
+import * as Sentry from "@sentry/node";
 import { afterAll, beforeAll, expect, test } from "vitest";
+import { sendInBackground } from "./mail/send-in-background";
+import type { NotificationHub } from "./realtime/notification-hub";
+import { openEvents } from "./test-open-events";
 import { createTestApp, loginAs, type TestApp } from "./testing/login";
 
 const sentry = createTestTransport();
+
+/** A notification hub whose events the test sends, from outside any request. */
+const listeners = new Set<(event: LiveEvent) => void>();
+const hub: NotificationHub = {
+  subscribe: (_channel, listener) => {
+    const add = listener as (event: LiveEvent) => void;
+    listeners.add(add);
+    return () => listeners.delete(add);
+  },
+  listenerCount: () => listeners.size,
+  close: async () => {},
+};
+
 let ctx: TestApp | undefined;
 let admin: { userId: string; headers: { cookie: string } };
 let origin: string;
@@ -20,8 +44,14 @@ beforeAll(async () => {
   });
   ctx = await createTestApp(
     {},
-    { logger: createLogger({ service: "api", level: "info", destination: { write() {} } }) },
+    {
+      logger: createLogger({ service: "api", level: "info", destination: { write() {} } }),
+      notifications: hub,
+    },
   );
+  ctx.app.get("/api/monitoring-test/anonymous-error", async () => {
+    throw new Error("Failure without a login");
+  });
   admin = await loginAs(ctx, "monitoring-admin@example.test");
   await grantPlatformAdmin(
     ctx.t.db,
@@ -77,4 +107,52 @@ test("a request for /api/health is not traced; one for /api/version is", async (
   const names = sentry.transactions().map((transaction) => transaction.transaction);
   expect(names).toContain("GET /api/version");
   expect(names.filter((name) => name?.includes("/api/health"))).toEqual([]);
+});
+
+test("a reload of the event stream's actor does not make later requests that user's", async () => {
+  const stream = await openEvents(origin, admin.headers);
+  try {
+    expect(stream.status).toBe(200);
+    for (let i = 0; listeners.size === 0 && i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    // As the notification hub does: outside any request. The stream reloads its actor first.
+    for (const listener of listeners) {
+      listener({ type: "access-changed", userId: admin.userId });
+    }
+    expect((await stream.nextEvent()).event).toBe("access-changed");
+  } finally {
+    stream.close();
+  }
+  const before = sentry.events().length;
+  expect((await fetch(`${origin}/api/monitoring-test/anonymous-error`)).status).toBe(500);
+  await flushMonitoring();
+  const events = sentry.events().slice(before);
+  expect(events).toHaveLength(1);
+  expect(events[0]!.user).toBeUndefined();
+});
+
+test("a mail sent in the background is a mail.send transaction of its own", async () => {
+  const mailer = createMemoryMailer();
+  let outerTraceId: string | undefined;
+  await withSpan("outer", "test", {}, async () => {
+    outerTraceId = Sentry.getActiveSpan()?.spanContext().traceId;
+    sendInBackground(mailer, ctx!.app.log, [
+      { to: "mail-span@example.test", subject: "s", text: "t", html: "h", kind: "approved" },
+    ]);
+  });
+  const mailTransaction = async () => {
+    await flushMonitoring();
+    return sentry.transactions().find((transaction) => transaction.transaction === "mail.send");
+  };
+  let found = await mailTransaction();
+  for (let i = 0; found === undefined && i < 50; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    found = await mailTransaction();
+  }
+  expect(mailer.sent).toHaveLength(1);
+  expect(found?.contexts?.trace).toMatchObject({ op: "mail", data: { "mail.kind": "approved" } });
+  expect(outerTraceId).toBeDefined();
+  expect(found!.contexts!.trace!.trace_id).not.toBe(outerTraceId);
+  expect(JSON.stringify(sentry.envelopes())).not.toContain("mail-span@example.test");
 });

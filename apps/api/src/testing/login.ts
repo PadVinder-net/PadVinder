@@ -5,7 +5,7 @@ import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
 import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
-import { createNoopNotificationHub } from "../realtime/notification-hub";
+import { createNoopNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
 export type TestApp = {
@@ -19,11 +19,12 @@ export type TestApp = {
 
 /**
  * An app on its own cloned test database, with `testEnv`, and a mailer and a mail queue that keep
- * mails and jobs in memory. Without `logger` the app does not log.
+ * mails and jobs in memory. Without `logger` the app does not log; without `notifications` no live
+ * event reaches it.
  */
 export async function createTestApp(
   overrides: Partial<ApiEnv> = {},
-  options: { logger?: Logger } = {},
+  options: { logger?: Logger; notifications?: NotificationHub } = {},
 ): Promise<TestApp> {
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
@@ -32,7 +33,7 @@ export async function createTestApp(
     const app = await buildApp({
       env: { ...testEnv, ...overrides },
       db: t.db,
-      notifications: createNoopNotificationHub(),
+      notifications: options.notifications ?? createNoopNotificationHub(),
       mailer,
       queueMail: mailQueue.queueMail,
       ...(options.logger ? { logger: options.logger } : {}),

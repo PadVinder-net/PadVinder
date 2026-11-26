@@ -112,21 +112,33 @@ export function withSpan<T>(
   return Sentry.startSpan({ name, op, attributes }, fn);
 }
 
+/**
+ * Runs `fn` in a span that starts a trace of its own (a transaction), in its own isolation
+ * scope: for work that outlives the request that started it, such as a mail sent in the
+ * background, whose span would otherwise end after the request's transaction was sent.
+ */
+export function runInNewTrace<T>(
+  name: string,
+  op: string,
+  attributes: Record<string, string>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!enabled) return fn();
+  return Sentry.withIsolationScope(() =>
+    Sentry.startNewTrace(() => Sentry.startSpan({ name, op, attributes }, fn)),
+  );
+}
+
 /** Runs a job in a trace of its own, with its name and ID as span attributes and scope tags. */
 export function runJobInSpan<T>(
   job: { name: string; id: string },
   fn: () => Promise<T>,
 ): Promise<T> {
-  if (!enabled) return fn();
   const tags = { "job.name": job.name, "job.id": job.id };
-  return Sentry.withIsolationScope(() =>
-    Sentry.startNewTrace(() =>
-      Sentry.startSpan({ name: job.name, op: "queue.process", attributes: tags }, () => {
-        Sentry.getCurrentScope().setTags(tags);
-        return fn();
-      }),
-    ),
-  );
+  return runInNewTrace(job.name, "queue.process", tags, () => {
+    Sentry.getCurrentScope().setTags(tags);
+    return fn();
+  });
 }
 
 /** Sends what is queued, waiting at most `timeoutMs`. Never rejects. */
