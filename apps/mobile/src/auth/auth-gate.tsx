@@ -6,7 +6,7 @@ import {
   useAuthGate,
   useMe,
 } from "@padvinder/api-client";
-import { AuthGateView } from "@padvinder/ui";
+import { AuthGateView, useBrowserMonitoringUser } from "@padvinder/ui";
 import { useMutationState } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { ApplicantShell } from "./applicant-shell";
@@ -45,6 +45,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const gate = useAuthGate();
   const me = useMe();
   const accountDeleted = useAccountDeleted(Boolean(me.data));
+  // Sentry's user: the account's ID while logged in, none after logging out.
+  useBrowserMonitoringUser(me.data === undefined ? undefined : (me.data?.user.id ?? null));
   return (
     <>
       {me.data ? <AccessLiveUpdates /> : null}

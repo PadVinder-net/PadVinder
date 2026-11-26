@@ -55,7 +55,7 @@ export const JOB_RULES: Record<CiJob, JobRule> = {
   // The stories and what they render. Keep in step with the workspace dependencies of
   // packages/ui (a test checks this).
   visual: {
-    only: ["packages/ui/", "packages/contracts/", "scripts/visual-tests.sh"],
+    only: ["packages/ui/", "packages/contracts/", "packages/logging/", "scripts/visual-tests.sh"],
   },
   e2e: {
     run: ["scripts/load-env.ts"],

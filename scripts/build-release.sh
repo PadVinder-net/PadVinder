@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds all apps and writes a self-contained release to release/, packed as
 # padvinder-release.tar.gz. Everything a server needs is inside; it installs nothing. Needs
-# Docker (sentry-cli injects the debug IDs). release/sourcemaps holds the server bundles' source
-# maps for Sentry (scripts/upload-sourcemaps.sh); the servers do not use it.
+# Docker (sentry-cli injects the debug IDs). release/sourcemaps holds the source maps of the
+# server bundles and of the mobile and portal builds, for Sentry (scripts/upload-sourcemaps.sh);
+# nothing serves or runs them.
 #
 #   scripts/build-release.sh                 refuse to build from a dirty working tree
 #   scripts/build-release.sh --allow-dirty   build anyway (local testing only)
@@ -47,7 +48,8 @@ echo "build-release: removing the old release"
 rm -rf "$release" "$tarball"
 
 echo "build-release: building all apps"
-pnpm build || fail "pnpm build failed."
+# GIT_COMMIT goes into the browser bundles as Sentry's release.
+GIT_COMMIT="$commit" pnpm build || fail "pnpm build failed."
 
 echo "build-release: copying the API and the worker with their production dependencies"
 # Copies each package's files ("files": ["dist"]) and installs only its "dependencies"; the
@@ -57,45 +59,69 @@ pnpm --filter @padvinder/api deploy --prod "$release/api" || fail "pnpm deploy o
 pnpm --filter @padvinder/worker deploy --prod "$release/worker" ||
   fail "pnpm deploy of the worker failed."
 
-echo "build-release: injecting Sentry debug IDs into the server bundles"
-# Writes a debug ID into each bundle and its map, so Sentry finds the map of a stack frame
-# without a release name or a path. Needs Docker, no token.
-"$root/scripts/sentry-cli.sh" sourcemaps inject release/api/dist release/worker/dist ||
-  fail "injecting the Sentry debug IDs failed."
-
-echo "build-release: moving the server source maps to release/sourcemaps"
-# The Deploy workflow uploads release/sourcemaps to Sentry; the servers never need the maps.
-# Sentry needs each map together with its bundle, so the bundle is copied next to it.
-for app in api worker; do
-  dist="$release/$app/dist"
-  maps="$release/sourcemaps/$app"
-  count=0
-  while IFS= read -r -d '' map; do
-    relative="${map#"$dist/"}"
-    bundle="${relative%.map}"
-    [[ -f "$dist/$bundle" ]] || fail "release/$app/dist/$relative has no bundle $bundle next to it."
-    grep -q "_sentryDebugIds" "$dist/$bundle" ||
-      fail "release/$app/dist/$bundle has no Sentry debug ID after injecting."
-    mkdir -p "$maps/$(dirname "$relative")"
-    mv "$map" "$maps/$relative"
-    cp "$dist/$bundle" "$maps/$bundle"
-    # The copy keeps its reference to the map; the bundle that runs would point at nothing.
-    sed -i.bak '/^\/\/# sourceMappingURL=/d' "$dist/$bundle"
-    rm "$dist/$bundle.bak"
-    count=$((count + 1))
-  done < <(find "$dist" -type f -name '*.map' -print0)
-  [[ "$count" -gt 0 ]] || fail "release/$app/dist holds no source maps; the build should make them."
-  leftover="$(find "$dist" -name '*.map' -print -quit)"
-  [[ -z "$leftover" ]] || fail "a source map is still in the release: ${leftover#"$root/"}"
-  referencing="$(grep -rl --include='*.js' '^//# sourceMappingURL=' "$dist" | head -n 1 || true)"
-  [[ -z "$referencing" ]] ||
-    fail "a bundle still references a source map: ${referencing#"$root/"}"
-done
-
 echo "build-release: copying the mobile and portal builds and the migrations"
 cp -R "$root/apps/mobile/dist" "$release/mobile"
 cp -R "$root/apps/portal/dist" "$release/portal"
 cp -R "$root/packages/db/drizzle" "$release/migrations"
+
+# The directories whose bundles run: on the server (api, worker) and in the browser (mobile,
+# portal). Each pair is the directory inside the release and its name under release/sourcemaps.
+served_dirs=(api/dist mobile portal worker/dist)
+map_names=(api mobile portal worker)
+
+echo "build-release: injecting Sentry debug IDs into the bundles"
+# Writes a debug ID into each bundle and its map, so Sentry finds the map of a stack frame
+# without a release name or a path. Needs Docker, no token. A script without a map is left as it
+# is: the service worker (sw.js, workbox-*.js) runs no Sentry, and the PWA's precache manifest
+# was made before this step. The other bundles' file names keep their content hashes; their
+# content changes the same way in every build of the same commit.
+ignore_args=()
+inject_paths=()
+for dir in "${served_dirs[@]}"; do
+  inject_paths+=("release/$dir")
+  while IFS= read -r -d '' script; do
+    [[ -f "$script.map" ]] || ignore_args+=(--ignore "$(basename "$script")")
+  done < <(find "$release/$dir" -type f -name '*.js' -print0)
+done
+"$root/scripts/sentry-cli.sh" sourcemaps inject ${ignore_args[@]+"${ignore_args[@]}"} \
+  "${inject_paths[@]}" || fail "injecting the Sentry debug IDs failed."
+
+echo "build-release: moving the source maps to release/sourcemaps"
+# The Deploy workflow uploads release/sourcemaps to Sentry; neither the servers nor the browsers
+# get the maps. Sentry needs each map together with its bundle, so the bundle is copied next to it.
+for i in "${!served_dirs[@]}"; do
+  dir="${served_dirs[$i]}"
+  served="$release/$dir"
+  maps="$release/sourcemaps/${map_names[$i]}"
+  count=0
+  while IFS= read -r -d '' map; do
+    relative="${map#"$served/"}"
+    bundle="${relative%.map}"
+    [[ -f "$served/$bundle" ]] || fail "release/$dir/$relative has no bundle $bundle next to it."
+    # The browser SDK itself mentions _sentryDebugIds, so the ID comment is what shows the
+    # injection; the map must carry the same ID.
+    debug_id="$(sed -n 's|^//# debugId=||p' "$served/$bundle" | tail -n 1)"
+    if [[ -z "$debug_id" ]] || ! grep -q "_sentryDebugIds" "$served/$bundle"; then
+      fail "release/$dir/$bundle has no Sentry debug ID after injecting."
+    fi
+    grep -q "\"debugId\":\"$debug_id\"" "$map" ||
+      fail "release/$dir/$relative does not carry the debug ID of its bundle."
+    mkdir -p "$maps/$(dirname "$relative")"
+    mv "$map" "$maps/$relative"
+    cp "$served/$bundle" "$maps/$bundle"
+    # The copy keeps its reference to the map; the bundle that runs would point at nothing.
+    # (The Vite builds make hidden maps, without a reference.)
+    sed -i.bak '/^\/\/# sourceMappingURL=/d' "$served/$bundle"
+    rm "$served/$bundle.bak"
+    count=$((count + 1))
+  done < <(find "$served" -type f -name '*.map' -print0)
+  [[ "$count" -gt 0 ]] || fail "release/$dir holds no source maps; the build should make them."
+  leftover="$(find "$served" -name '*.map' -print -quit)"
+  [[ -z "$leftover" ]] || fail "a source map is still in the release: ${leftover#"$root/"}"
+  referencing="$(grep -rlE '^//# sourceMappingURL=|/\*# sourceMappingURL=' "$served" | head -n 1 || true)"
+  [[ -z "$referencing" ]] ||
+    fail "a served file still references a source map: ${referencing#"$root/"}"
+done
 
 # An absolute link would point outside the release once it is copied to a server.
 absolute_link="$(find "$release" -type l -lname '/*' -print -quit)"

@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@padvinder/contracts": "workspace:*",
+    "@padvinder/logging": "workspace:*",
+    "@sentry/react": "11.18.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "radix-ui": "^1.8.1",
@@ -22,6 +24,7 @@
     "tailwind-merge": "^3.7.1"
   },
   "devDependencies": {
+    "@sentry/core": "11.18.0",
     "@storybook/react-vite": "^10.6.8",
     "@tailwindcss/vite": "^4.3.5",
     "@testing-library/dom": "^10.4.2",

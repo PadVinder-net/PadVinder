@@ -124,3 +124,12 @@ export {
   type AuditLogFiltersProps,
   type AuditLogFilterValue,
 } from "./components/audit-log/audit-log-filters";
+export {
+  lastErrorEventId,
+  setBrowserMonitoringUser,
+  startBrowserMonitoring,
+  type BrowserMonitoringOptions,
+  type RouterTracingHooks,
+} from "./monitoring/browser-monitoring";
+export { useBrowserMonitoringUser } from "./monitoring/use-browser-monitoring-user";
+export { reloadOnPreloadError } from "./lib/reload-on-preload-error";

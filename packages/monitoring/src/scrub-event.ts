@@ -14,7 +14,16 @@ const DROPPED_SPAN_ATTRIBUTES = [
 // `request.url`, the pino context's `req.url`, breadcrumb data). Their query and fragment are cut
 // off: Sentry's Fastify instrumentation sets `url.path` to the raw `request.url`, query and all,
 // whatever `urlQueryParams` says.
-const URL_KEYS = new Set(["url.path", "url.full", "http.target", "http.url", "url"]);
+const URL_KEYS: ReadonlySet<string> = new Set([
+  "url.path",
+  "url.full",
+  "http.target",
+  "http.url",
+  "url",
+]);
+// In the data of a navigation breadcrumb (the browser's), `from` and `to` are page URLs too.
+// Elsewhere these keys can hold anything, so they are cut only there.
+const NAVIGATION_URL_KEYS: ReadonlySet<string> = new Set([...URL_KEYS, "from", "to"]);
 // Never sent to Sentry (the SDK's own working data), and large: passed on as it is.
 const UNTOUCHED_KEYS = new Set(["sdkProcessingMetadata"]);
 
@@ -29,17 +38,20 @@ function withoutQuery(url: string): string {
 }
 
 /**
- * Every string through `scrub` (with `%40` read as `@`), URL values without their query and
- * fragment; keys stay as they are. Cycles and deep nesting become markers.
+ * Every string through `scrub` (with `%40` read as `@`), URL values (`key` in `urlKeys`, chosen by
+ * the parent) without their query and fragment; keys stay as they are. Cycles and deep nesting
+ * become markers. `navigationData` marks the `data` object of a navigation breadcrumb.
  */
 function scrubValue(
   value: unknown,
   depth: number,
   ancestors: object[],
   key: string | undefined,
+  urlKeys: ReadonlySet<string> = URL_KEYS,
+  navigationData = false,
 ): unknown {
   if (typeof value === "string") {
-    return scrubText(key !== undefined && URL_KEYS.has(key) ? withoutQuery(value) : value);
+    return scrubText(key !== undefined && urlKeys.has(key) ? withoutQuery(value) : value);
   }
   if (typeof value !== "object" || value === null) return value;
   if (ancestors.includes(value)) return "[circular]";
@@ -50,11 +62,20 @@ function scrubValue(
       return value.map((item) => scrubValue(item, depth + 1, ancestors, undefined));
     }
     const copy: Record<string, unknown> = {};
+    const childUrlKeys = navigationData ? NAVIGATION_URL_KEYS : URL_KEYS;
+    const navigation = (value as { category?: unknown }).category === "navigation";
     for (const [itemKey, item] of Object.entries(value)) {
       copy[itemKey] =
         depth === 0 && UNTOUCHED_KEYS.has(itemKey)
           ? item
-          : scrubValue(item, depth + 1, ancestors, itemKey);
+          : scrubValue(
+              item,
+              depth + 1,
+              ancestors,
+              itemKey,
+              childUrlKeys,
+              navigation && itemKey === "data",
+            );
     }
     return copy;
   } finally {

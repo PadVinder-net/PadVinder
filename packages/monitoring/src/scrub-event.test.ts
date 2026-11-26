@@ -158,3 +158,27 @@ test("passes sdkProcessingMetadata through by reference, unscrubbed", () => {
   expect(result.sdkProcessingMetadata).toBe(metadata);
   expect(result.message).toBe("m");
 });
+
+test("cuts the query and fragment from a navigation breadcrumb's from and to", () => {
+  const navigation = {
+    category: "navigation",
+    data: { from: `/app/more${QUERY}`, to: `/membership-requests${QUERY}` },
+  };
+  const expected = {
+    category: "navigation",
+    data: { from: "/app/more", to: "/membership-requests" },
+  };
+  expect(scrubBreadcrumb(navigation)).toEqual(expected);
+  expect(scrubEvent({ breadcrumbs: [navigation] })).toEqual({ breadcrumbs: [expected] });
+});
+
+test("keeps the query of a from or to that is not a navigation breadcrumb's", () => {
+  const result = scrubEvent({
+    breadcrumbs: [{ category: "console", data: { from: "a?b", to: "c#d" } }],
+    extra: { from: "a?b", data: { to: "c#d" } },
+  });
+  expect(result).toEqual({
+    breadcrumbs: [{ category: "console", data: { from: "a?b", to: "c#d" } }],
+    extra: { from: "a?b", data: { to: "c#d" } },
+  });
+});
