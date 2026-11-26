@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from "fastify";
 import { describeMailError, type Mail, type Mailer } from "@padvinder/mail";
-import { withSpan } from "@padvinder/monitoring";
+import { runInNewTrace } from "@padvinder/monitoring";
 
 /**
  * Sends the mails without waiting for the result: the request must not wait for the mail server.
@@ -10,10 +10,11 @@ import { withSpan } from "@padvinder/monitoring";
 export function sendInBackground(mailer: Mailer, log: FastifyBaseLogger, mails: Mail[]): void {
   for (const mail of mails) {
     const kind = mail.kind ?? "unknown";
-    // `send` may also throw before it returns a promise.
+    // `send` may also throw before it returns a promise. A trace of its own: the request's
+    // transaction is usually sent before the mail is.
     Promise.resolve()
       .then(() =>
-        withSpan("mail.send", "mail", { "mail.kind": kind }, async () => mailer.send(mail)),
+        runInNewTrace("mail.send", "mail", { "mail.kind": kind }, async () => mailer.send(mail)),
       )
       .catch((error: unknown) => {
         log.error({ mailKind: kind, mailError: describeMailError(error) }, "Sending a mail failed");

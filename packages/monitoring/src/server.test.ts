@@ -6,6 +6,7 @@ import { afterEach, expect, test } from "vitest";
 import {
   closeMonitoring,
   flushMonitoring,
+  runInNewTrace,
   runJobInSpan,
   setMonitoringUser,
   startServerMonitoring,
@@ -31,6 +32,7 @@ test("startServerMonitoring without a DSN or transport returns false and sends n
   setMonitoringUser(null);
   await expect(withSpan("off", "test", {}, async () => 42)).resolves.toBe(42);
   await expect(runJobInSpan({ name: "mail", id: "j-1" }, async () => "done")).resolves.toBe("done");
+  await expect(runInNewTrace("off", "test", {}, async () => 7)).resolves.toBe(7);
   await expect(flushMonitoring()).resolves.toBeUndefined();
   await expect(closeMonitoring()).resolves.toBeUndefined();
 });
@@ -114,6 +116,24 @@ test("a job runs in its own trace with its name and id; the heartbeat job is not
   expect(job!.contexts!.trace!.trace_id).not.toBe(around!.contexts!.trace!.trace_id);
   expect(t.transactions().find((tx) => tx.transaction === "heartbeat")).toBeUndefined();
   expect(t.events()[0]!.tags).toMatchObject({ "job.name": "mail", "job.id": "j-1" });
+});
+
+test("runInNewTrace is a transaction in a trace of its own, also inside another span", async () => {
+  const t = createTestTransport();
+  startServerMonitoring({ service: "api", settings, transport: t.transport });
+  let later: Promise<number> | undefined;
+  await withSpan("request", "test", {}, async () => {
+    // Started inside the request, finished after it, as a mail sent in the background.
+    later = new Promise((resolve) => setTimeout(resolve, 20)).then(() =>
+      runInNewTrace("mail.send", "mail", { "mail.kind": "approved" }, async () => 1),
+    );
+  });
+  await expect(later).resolves.toBe(1);
+  await flushMonitoring();
+  const mail = t.transactions().find((tx) => tx.transaction === "mail.send");
+  const request = t.transactions().find((tx) => tx.transaction === "request");
+  expect(mail?.contexts?.trace).toMatchObject({ op: "mail", data: { "mail.kind": "approved" } });
+  expect(mail!.contexts!.trace!.trace_id).not.toBe(request!.contexts!.trace!.trace_id);
 });
 
 test("a request's user agent does not reach Sentry", async () => {

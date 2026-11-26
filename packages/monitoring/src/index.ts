@@ -2,6 +2,7 @@ export { scrubBreadcrumb, scrubEvent } from "./scrub-event";
 export {
   closeMonitoring,
   flushMonitoring,
+  runInNewTrace,
   runJobInSpan,
   setMonitoringUser,
   startServerMonitoring,

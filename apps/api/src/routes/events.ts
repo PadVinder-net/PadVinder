@@ -69,7 +69,8 @@ export const eventsRoutes: FastifyPluginAsyncZod<{
         const number = ++loadsStarted;
         loading++;
         try {
-          const fresh = await loadActor(app, db, request);
+          // Not the Sentry user: a reload runs from a notification or a timer, outside the request.
+          const fresh = await loadActor(app, db, request, { identify: false });
           if (ended || number < newestApplied) return;
           newestApplied = number;
           if (fresh === null) end();
