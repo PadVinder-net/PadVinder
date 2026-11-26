@@ -524,6 +524,16 @@ importers:
         specifier: ^4.23.15
         version: 4.23.15
 
+  packages/logging:
+    dependencies:
+      pino:
+        specifier: ^10.4.0
+        version: 10.4.0
+    devDependencies:
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+
   packages/mail:
     dependencies:
       '@padvinder/db':
