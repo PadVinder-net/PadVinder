@@ -183,7 +183,7 @@ Set by hand, and written down in `infra/alwaysdata/README.md` as a checklist (no
 
 - **`PADVINDER_ENVIRONMENT`:** `production`, `staging` or `development` (the default). Provisioning writes it to the env file. Used for the Sentry environment and the start line.
 - **`SENTRY_DSN`:** a secret in both GitHub environments, written to the env file by provisioning like `SMTP_PASSWORD`, read by the API and the worker. Without it Sentry is off on the server: locally, in tests, in CI and in the container smoke test. Provisioning requires it, like every other secret of the env file.
-- **`SENTRY_BROWSER_DSN`:** the browser project's DSN, a secret in both GitHub environments, written to the env file by provisioning and read by the API only (the tunnel and the problem reports use it; the worker does not). Without it the tunnel answers 204 and drops the envelope, and a problem report is only logged. Provisioning requires it too. The server's Sentry depends only on `SENTRY_DSN`.
+- **`SENTRY_BROWSER_DSN`:** the browser project's DSN, a secret in both GitHub environments, written to the env file by provisioning and read by the API only (the tunnel and the problem reports use it; the worker checks it at start-up through `readMonitoringSettings` but does not use it). Without it the tunnel answers 204 and drops the envelope, and a problem report is only logged. Provisioning requires it too. The server's Sentry depends only on `SENTRY_DSN`.
 - **`SENTRY_AUTH_TOKEN`:** a secret in both GitHub environments, used only by the Deploy workflow's upload step.
 - **The release** is the git commit (`GIT_COMMIT` on the server; the build's commit in the browser bundles). The app's CalVer version and build number go along as tags.
 
@@ -291,11 +291,12 @@ A problem report (`problemReport`, glossary term "Meld een probleem") is a messa
 
 The maintainer, once, in this order:
 
-1. Make the Sentry organization in the EU region, the projects `padvinder-server` and `padvinder-browser` and an organization auth token; do the checklist in "Sentry: the organization".
-2. Set `SENTRY_DSN`, `SENTRY_BROWSER_DSN` and `SENTRY_AUTH_TOKEN` in both GitHub environments.
-3. Merge. Then run Provision with `apply` for staging and for production (it writes `SENTRY_DSN`, `SENTRY_BROWSER_DSN` and `PADVINDER_ENVIRONMENT`), and restart the services or deploy again.
+1. If you already made the project `padvinder`: rename its slug to `padvinder-server` (Settings, Projects, padvinder, General). Its DSN stays the same (a DSN names the project by its number, not its slug) and is `SENTRY_DSN`. Raise or remove its key's rate limit if you set the browser's 300 an hour on it, and remove browser-only inbound filters if you like. Then make `padvinder-browser` and set `SENTRY_BROWSER_DSN`.
+2. Make the Sentry organization in the EU region (if it does not exist), the projects `padvinder-server` and `padvinder-browser` and an organization auth token; do the checklist in "Sentry: the organization".
+3. Set `SENTRY_DSN`, `SENTRY_BROWSER_DSN` and `SENTRY_AUTH_TOKEN` in both GitHub environments.
+4. Merge. Then run Provision with `apply` for staging and for production (it writes `SENTRY_DSN`, `SENTRY_BROWSER_DSN` and `PADVINDER_ENVIRONMENT`), and restart the services or deploy again.
 
-A deploy before step 3 works: without `SENTRY_DSN` the API and the worker run with Sentry off, and without `SENTRY_BROWSER_DSN` the tunnel and the problem reports drop what they get.
+A deploy before step 4 works: without `SENTRY_DSN` the API and the worker run with Sentry off, and without `SENTRY_BROWSER_DSN` the tunnel and the problem reports drop what they get.
 
 ### Verification on Alwaysdata
 

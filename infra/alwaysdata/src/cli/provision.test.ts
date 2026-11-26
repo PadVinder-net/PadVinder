@@ -132,6 +132,7 @@ const expectNoSecrets = (text: string) => {
     monitoring.sentryDsn,
     monitoring.sentryBrowserDsn,
     "dsnkey0123456789",
+    "browserkey012345",
   ]) {
     expect(text).not.toContain(value);
   }

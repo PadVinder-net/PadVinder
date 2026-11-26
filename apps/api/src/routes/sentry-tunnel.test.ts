@@ -277,8 +277,10 @@ test("with only the server DSN set the tunnel answers 204 and forwards nothing",
 });
 
 test("envelopes reach the browser project's server only, with its DSN in the header", async () => {
+  const before = fake.requests().length;
   const res = await postEnvelope(ctx, browserEnvelope());
   expect(res.statusCode).toBe(200);
   expect(other.requests()).toHaveLength(0);
+  expect(fake.requests().length).toBe(before + 1);
   expect(fake.envelopes().at(-1)![0].dsn).toBe(fake.dsn);
 });

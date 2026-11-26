@@ -139,7 +139,7 @@ export function loadInfraConfig(
     }
     if (!isHttpsDsn(value("SENTRY_DSN"))) {
       throw new Error(
-        "SENTRY_DSN must be the DSN of the Sentry project, https://<key>@<host>/<project ID> (Sentry: Settings, Projects, padvinder, Client Keys), or the services do not start",
+        "SENTRY_DSN must be the DSN of the server Sentry project, https://<key>@<host>/<project ID> (Sentry: Settings, Projects, padvinder-server, Client Keys), or the services do not start",
       );
     }
     if (!isHttpsDsn(value("SENTRY_BROWSER_DSN"))) {

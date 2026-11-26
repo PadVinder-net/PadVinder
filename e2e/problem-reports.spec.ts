@@ -3,7 +3,7 @@ import { runAdmin } from "./helpers/admin.ts";
 import { newAddress } from "./helpers/mailpit.ts";
 import { createSession } from "./helpers/session.ts";
 
-// Under the dev server Sentry is off and the API has no SENTRY_DSN: it answers 204 for a report.
+// Under the dev server Sentry is off and the API has no SENTRY_BROWSER_DSN: it answers 204 for a report.
 
 const contactLabel = "Stuur mijn naam en e-mailadres mee, zodat we je kunnen mailen";
 

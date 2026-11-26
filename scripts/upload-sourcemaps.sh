@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Uploads the source maps of a release (release/sourcemaps: the server bundles and the
-# browser bundles with their maps, carrying Sentry debug IDs) to the Sentry projects: the server bundles (api, worker) to
-# padvinder-server, the browser bundles (mobile, portal) to padvinder-browser.
+# browser bundles with their maps, carrying Sentry debug IDs) to the Sentry projects:
+# the server bundles (api, worker) to padvinder-server, the browser bundles (mobile,
+# portal) to padvinder-browser.
 #
 #   scripts/upload-sourcemaps.sh <dir>
 #

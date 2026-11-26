@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { newAddress } from "./helpers/mailpit.ts";
 import { createSession } from "./helpers/session.ts";
 
-// Under the dev server Sentry is off and the API has no SENTRY_DSN: it answers 204 for a report.
+// Under the dev server Sentry is off and the API has no SENTRY_BROWSER_DSN: it answers 204 for a report.
 
 test("Meld een probleem in the navigation opens the form in a modal", async ({ page }) => {
   // Anyone who sees the portal may report, also someone without a role.

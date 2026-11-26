@@ -25,7 +25,8 @@ export type SentryTunnelOptions = {
 /**
  * `POST /sentry-tunnel`: the browser SDK's `tunnel`. Takes an envelope without a login, makes it
  * fit with `prepareBrowserEnvelope` (only our item types, scrubbed, our DSN and environment, the
- * browser's release when it is a full commit, else ours) and forwards it to `SENTRY_BROWSER_DSN`'s ingest address with none of the phone's headers.
+ * browser's release when it is a full commit, else ours) and forwards it to
+ * `SENTRY_BROWSER_DSN`'s ingest address with none of the phone's headers.
  * Sentry's answer comes back for 2xx and 429 (with its rate limit headers, which the SDK obeys),
  * 502 for anything else.
  */
