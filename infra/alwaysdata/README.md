@@ -407,27 +407,28 @@ Staging shares 1 GB of RAM with production. Actions, Staging services, Run workf
 
 ## DNS
 
-DNS for `padvinder.net` is hosted at the registrar, not at Alwaysdata. These are the records as they are on 25 November 2026, as names and types only. Read the values in the registrar's DNS panel; the addresses they must point at are in the Alwaysdata panel (Advanced, Server status, the HTTP servers; see [external addresses](https://help.alwaysdata.com/en/docs/web-hosting/sites/use-external-addresses/)).
+DNS for `padvinder.net` is hosted at the registrar, not at Alwaysdata. These are the records as they are on 26 November 2026, as names and types only. Read the values in the registrar's DNS panel; the addresses they must point at are in the Alwaysdata panel (Advanced, Server status, the HTTP servers; see [external addresses](https://help.alwaysdata.com/en/docs/web-hosting/sites/use-external-addresses/)).
 
-| Name                    | Type | Purpose                                           |
-| ----------------------- | ---- | ------------------------------------------------- |
-| `padvinder.net`         | A    | Production, Alwaysdata HTTP server (IPv4)         |
-| `padvinder.net`         | AAAA | Production, Alwaysdata HTTP server (IPv6)         |
-| `padvinder.net`         | TXT  | SPF                                               |
-| `padvinder.net`         | MX   | Mail for `padvinder.net` (added 25 November 2026) |
-| `_dmarc.padvinder.net`  | TXT  | DMARC (added 25 November 2026)                    |
-| `padvinder.net`         | NS   | The registrar's name servers (3)                  |
-| `staging.padvinder.net` | A    | Staging, Alwaysdata HTTP server (IPv4)            |
-| `staging.padvinder.net` | AAAA | Staging, Alwaysdata HTTP server (IPv6)            |
-| `www.padvinder.net`     | A    | Not in any site's addresses yet                   |
-| `www.padvinder.net`     | AAAA | Not in any site's addresses yet                   |
+| Name                                  | Type | Purpose                                             |
+| ------------------------------------- | ---- | --------------------------------------------------- |
+| `padvinder.net`                       | A    | Production, Alwaysdata HTTP server (IPv4)           |
+| `padvinder.net`                       | AAAA | Production, Alwaysdata HTTP server (IPv6)           |
+| `padvinder.net`                       | TXT  | SPF                                                 |
+| `padvinder.net`                       | MX   | Mail for `padvinder.net` (added 25 November 2026)   |
+| `_dmarc.padvinder.net`                | TXT  | DMARC (added 25 November 2026)                      |
+| `alwaysdata._domainkey.padvinder.net` | TXT  | DKIM, Alwaysdata's key (confirmed 26 November 2026) |
+| `padvinder.net`                       | NS   | The registrar's name servers (3)                    |
+| `staging.padvinder.net`               | A    | Staging, Alwaysdata HTTP server (IPv4)              |
+| `staging.padvinder.net`               | AAAA | Staging, Alwaysdata HTTP server (IPv6)              |
+| `www.padvinder.net`                   | A    | Not in any site's addresses yet                     |
+| `www.padvinder.net`                   | AAAA | Not in any site's addresses yet                     |
 
 There are no CAA records.
 
 **To do for mail** (see "Mail"; the values come from the Alwaysdata panel, Domains, `padvinder.net`, DNS records, and are not written here):
 
 - [x] SPF: the SPF `TXT` record of `padvinder.net` has Alwaysdata's `include:` mechanism (25 November 2026). It is the only SPF record; keep it that way, because a second one makes SPF fail.
-- [ ] DKIM: the `TXT` record Alwaysdata shows for `padvinder.net` (a name under `_domainkey.padvinder.net`).
+- [x] DKIM: the `TXT` record Alwaysdata shows for `padvinder.net`, at `alwaysdata._domainkey.padvinder.net` (confirmed with `dig` on 26 November 2026; Gmail reported `DKIM: PASS` on 25 November 2026).
 - [x] DMARC: `_dmarc.padvinder.net` has a `TXT` record (25 November 2026). "Verification" shows SPF, DKIM and DMARC passing, so a stricter policy is possible when the maintainer decides to.
 - [x] MX: `padvinder.net` has MX records (25 November 2026). Without them, bounces and replies to `noreply@padvinder.net` reach nobody; sending works either way.
 
