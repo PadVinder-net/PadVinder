@@ -290,6 +290,9 @@ importers:
       '@sentry/react':
         specifier: 11.18.0
         version: 11.18.0(react-router@8.5.2(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
+      '@simplewebauthn/browser':
+        specifier: 13.3.0
+        version: 13.3.0
       '@tanstack/react-query':
         specifier: ^5.108.2
         version: 5.108.2(@types/react@19.3.0)(react@19.3.1)
@@ -375,6 +378,9 @@ importers:
       '@sentry/react':
         specifier: 11.18.0
         version: 11.18.0(react-router@8.5.2(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
+      '@simplewebauthn/browser':
+        specifier: 13.3.0
+        version: 13.3.0
       '@tanstack/react-query':
         specifier: ^5.108.2
         version: 5.108.2(@types/react@19.3.0)(react@19.3.1)
@@ -497,6 +503,9 @@ importers:
       '@padvinder/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@simplewebauthn/browser':
+        specifier: 13.3.0
+        version: 13.3.0
       '@tanstack/react-query':
         specifier: ^5.108.2
         version: 5.108.2(@types/react@19.3.0)(react@19.3.1)

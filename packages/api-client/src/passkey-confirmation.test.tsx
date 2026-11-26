@@ -1,0 +1,362 @@
+import {
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { platformAdminMeFixture, passkeysFixture } from "@padvinder/contracts/fixtures";
+import type { MeResponse, PasskeyResult } from "@padvinder/contracts";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { client } from "./generated/client.gen";
+import { listPasskeysOptions } from "./generated/@tanstack/react-query.gen";
+import { authenticateWithPasskey, createPasskey } from "./passkey-client";
+import {
+  backgroundRequestMeta,
+  requestPasskeyConfirmation,
+  usePasskeyConfirmation,
+} from "./passkey-confirmation";
+import { createQueryClient } from "./query-client";
+import { subscribeToServerEvents } from "./server-events";
+import { FakeEventSource } from "./testing";
+
+vi.mock("./passkey-client", () => ({
+  authenticateWithPasskey: vi.fn(),
+  createPasskey: vi.fn(),
+  passkeysSupported: vi.fn(() => true),
+}));
+
+const required = {
+  statusCode: 403,
+  error: "Forbidden",
+  message: "Confirm with a passkey first",
+  code: "passkey_required",
+};
+
+const withPasskey: MeResponse = {
+  ...platformAdminMeFixture,
+  user: { ...platformAdminMeFixture.user, hasPasskey: true },
+};
+const withoutPasskey: MeResponse = platformAdminMeFixture;
+
+/** Whether the server would now accept the requests: set by a successful ceremony. */
+let confirmed = false;
+let me: MeResponse = withPasskey;
+let calls: string[] = [];
+
+const succeed = async (): Promise<PasskeyResult> => {
+  confirmed = true;
+  return { ok: true };
+};
+
+/** One `fetch` for the generated client and for the sign-out call; counts each "METHOD /path". */
+async function answer(input: Request | string | URL, init?: RequestInit): Promise<Response> {
+  const request =
+    input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+  const call = `${request.method} ${new URL(request.url).pathname}`;
+  calls.push(call);
+  switch (call) {
+    case "GET /api/me":
+      return Response.json(me);
+    case "GET /api/passkeys":
+      return Response.json(passkeysFixture);
+    case "POST /api/auth/sign-out":
+      return Response.json({ success: true });
+    default:
+      throw new TypeError(`No mock for ${call}`);
+  }
+}
+
+const count = (call: string) => calls.filter((c) => c === call).length;
+
+beforeEach(() => {
+  confirmed = false;
+  me = withPasskey;
+  calls = [];
+  client.setConfig({ baseUrl: "http://localhost", fetch: answer });
+  vi.stubGlobal("fetch", answer);
+  vi.mocked(authenticateWithPasskey).mockImplementation(succeed);
+  vi.mocked(createPasskey).mockImplementation(succeed);
+});
+
+afterEach(() => {
+  client.setConfig({ baseUrl: "", fetch: globalThis.fetch });
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
+
+function setup<T>(hook: () => T, queryClient: QueryClient = createQueryClient()) {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return { queryClient, ...renderHook(hook, { wrapper }) };
+}
+
+/** A query function the server refuses until a confirmation. */
+function guarded<T>(value: T) {
+  return vi.fn(async () => {
+    if (!confirmed) throw required;
+    return value;
+  });
+}
+
+test("a query that fails with passkey_required opens the modal; after confirm it is refetched and succeeds", async () => {
+  const queryFn = guarded("de leden");
+  const { result } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    members: useQuery({ queryKey: ["members"], queryFn }),
+  }));
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+  expect(result.current.members.isError).toBe(true);
+  expect(result.current.confirmation).toMatchObject({ pending: false, error: null });
+
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(result.current.members.data).toBe("de leden"));
+  expect(result.current.confirmation.open).toBe(false);
+  expect(queryFn).toHaveBeenCalledTimes(2);
+});
+
+/** How often `open` went from false to true over the renders seen. */
+function timesOpened(seen: boolean[]): number {
+  return seen.filter((open, i) => open && !(seen[i - 1] ?? false)).length;
+}
+
+test("three failing queries open the modal once and are all refetched after one confirmation", async () => {
+  const queryFns = [guarded("a"), guarded("b"), guarded("c")];
+  const seenOpen: boolean[] = [];
+  const { result } = setup(() => {
+    const confirmation = usePasskeyConfirmation();
+    seenOpen.push(confirmation.open);
+    return {
+      confirmation,
+      queries: [
+        useQuery({ queryKey: ["a"], queryFn: queryFns[0]! }),
+        useQuery({ queryKey: ["b"], queryFn: queryFns[1]! }),
+        useQuery({ queryKey: ["c"], queryFn: queryFns[2]! }),
+      ],
+    };
+  });
+  await waitFor(() => expect(result.current.queries.every((q) => q.isError)).toBe(true));
+  expect(result.current.confirmation.open).toBe(true);
+
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(result.current.queries.map((q) => q.data)).toEqual(["a", "b", "c"]));
+  expect(timesOpened(seenOpen)).toBe(1);
+  expect(authenticateWithPasskey).toHaveBeenCalledOnce();
+  for (const queryFn of queryFns) expect(queryFn).toHaveBeenCalledTimes(2);
+});
+
+test("a query that fails while the ceremony runs joins the same round", async () => {
+  let finish: (result: PasskeyResult) => void = () => {};
+  vi.mocked(authenticateWithPasskey).mockImplementation(
+    () => new Promise((resolve) => (finish = resolve)),
+  );
+  const first = guarded("eerste");
+  const second = guarded("tweede");
+  let showSecond = false;
+  const seenOpen: boolean[] = [];
+  const { result, rerender } = setup(() => {
+    const confirmation = usePasskeyConfirmation();
+    seenOpen.push(confirmation.open);
+    return {
+      confirmation,
+      first: useQuery({ queryKey: ["first"], queryFn: first }),
+      second: useQuery({ queryKey: ["second"], queryFn: second, enabled: showSecond }),
+    };
+  });
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+  act(() => result.current.confirmation.confirm());
+  expect(result.current.confirmation.pending).toBe(true);
+
+  // Another part of the screen loads, and fails, while the browser's dialog is open.
+  showSecond = true;
+  rerender();
+  await waitFor(() => expect(result.current.second.isError).toBe(true));
+  await act(async () => {
+    confirmed = true;
+    finish({ ok: true });
+  });
+
+  await waitFor(() => expect(result.current.second.data).toBe("tweede"));
+  expect(result.current.first.data).toBe("eerste");
+  expect(result.current.confirmation.open).toBe(false);
+  expect(timesOpened(seenOpen)).toBe(1);
+  expect(authenticateWithPasskey).toHaveBeenCalledOnce();
+});
+
+test("a mutation that failed with passkey_required runs again after confirm, and its useMutation shows success", async () => {
+  const mutationFn = vi.fn(async (name: string) => {
+    if (!confirmed) throw required;
+    return `${name} is toegevoegd`;
+  });
+  const { result } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    add: useMutation({ mutationFn }),
+  }));
+  act(() => result.current.add.mutate("Kim"));
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+  expect(result.current.add.isError).toBe(true);
+
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(result.current.add.isSuccess).toBe(true));
+  expect(result.current.add.data).toBe("Kim is toegevoegd");
+  expect(mutationFn.mock.calls.map(([name]) => name)).toEqual(["Kim", "Kim"]);
+});
+
+test("a query with backgroundRequestMeta never opens the modal", async () => {
+  const queryFn = vi.fn(async () => {
+    throw required;
+  });
+  const mutationFn = vi.fn(async () => {
+    throw required;
+  });
+  const { result } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    badge: useQuery({ queryKey: ["badge"], queryFn, meta: backgroundRequestMeta }),
+    background: useMutation({ mutationFn, meta: backgroundRequestMeta }),
+  }));
+  await waitFor(() => expect(result.current.badge.isError).toBe(true));
+  act(() => result.current.background.mutate());
+  await waitFor(() => expect(result.current.background.isError).toBe(true));
+  expect(result.current.confirmation.open).toBe(false);
+  // Not retried either: the error is the answer.
+  expect(queryFn).toHaveBeenCalledOnce();
+});
+
+test("cancel closes the modal and the query keeps its error", async () => {
+  const queryFn = guarded("de leden");
+  const { result, queryClient } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    members: useQuery({ queryKey: ["members"], queryFn }),
+  }));
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+
+  act(() => result.current.confirmation.cancel());
+
+  expect(result.current.confirmation.open).toBe(false);
+  expect(result.current.members.error).toEqual(required);
+  expect(authenticateWithPasskey).not.toHaveBeenCalled();
+
+  // The cancelled report is forgotten: a later round does not refetch it.
+  act(() => requestPasskeyConfirmation(queryClient));
+  expect(result.current.confirmation.open).toBe(true);
+  await act(async () => result.current.confirmation.confirm());
+  await waitFor(() => expect(result.current.confirmation.open).toBe(false));
+  expect(queryFn).toHaveBeenCalledOnce();
+  expect(result.current.members.error).toEqual(required);
+});
+
+test("confirm twice while pending starts one ceremony", async () => {
+  let finish: (result: PasskeyResult) => void = () => {};
+  vi.mocked(authenticateWithPasskey).mockImplementation(
+    () => new Promise((resolve) => (finish = resolve)),
+  );
+  const { result, queryClient } = setup(() => usePasskeyConfirmation());
+  await waitFor(() => expect(count("GET /api/me")).toBe(1));
+  act(() => requestPasskeyConfirmation(queryClient));
+
+  act(() => {
+    result.current.confirm();
+    result.current.confirm();
+  });
+  act(() => result.current.confirm());
+
+  expect(result.current.pending).toBe(true);
+  expect(authenticateWithPasskey).toHaveBeenCalledOnce();
+  await act(async () => finish({ ok: true }));
+  expect(result.current).toMatchObject({ open: false, pending: false });
+});
+
+test("a failed ceremony keeps the modal open with its error", async () => {
+  vi.mocked(authenticateWithPasskey).mockResolvedValueOnce({ ok: false, error: "cancelled" });
+  const queryFn = guarded("de leden");
+  const { result } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    members: useQuery({ queryKey: ["members"], queryFn }),
+  }));
+  await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+
+  await act(async () => result.current.confirmation.confirm());
+
+  expect(result.current.confirmation).toMatchObject({
+    open: true,
+    pending: false,
+    error: "cancelled",
+  });
+  expect(queryFn).toHaveBeenCalledOnce();
+
+  // A second try clears the error and goes through.
+  await act(async () => result.current.confirmation.confirm());
+  await waitFor(() => expect(result.current.members.data).toBe("de leden"));
+  expect(result.current.confirmation).toMatchObject({ open: false, error: null });
+});
+
+test("without a passkey, confirm creates one; with one, it authenticates", async () => {
+  me = withoutPasskey;
+  const without = setup(() => usePasskeyConfirmation());
+  await waitFor(() => expect(without.result.current.hasPasskey).toBe(false));
+  await waitFor(() => expect(count("GET /api/me")).toBe(1));
+  act(() => requestPasskeyConfirmation(without.queryClient));
+  await act(async () => without.result.current.confirm());
+  expect(createPasskey).toHaveBeenCalledOnce();
+  expect(authenticateWithPasskey).not.toHaveBeenCalled();
+  without.unmount();
+
+  vi.clearAllMocks();
+  me = withPasskey;
+  const withOne = setup(() => usePasskeyConfirmation());
+  await waitFor(() => expect(withOne.result.current.hasPasskey).toBe(true));
+  act(() => requestPasskeyConfirmation(withOne.queryClient));
+  await act(async () => withOne.result.current.confirm());
+  expect(authenticateWithPasskey).toHaveBeenCalledOnce();
+  expect(createPasskey).not.toHaveBeenCalled();
+});
+
+test("after a confirmation me is refetched and the event stream reopens", async () => {
+  FakeEventSource.instances = [];
+  const onOpen = vi.fn();
+  const close = subscribeToServerEvents(
+    { onOpen },
+    { EventSourceImpl: FakeEventSource as unknown as typeof EventSource },
+  );
+  const { result, queryClient } = setup(() => ({
+    confirmation: usePasskeyConfirmation(),
+    passkeys: useQuery(listPasskeysOptions()),
+  }));
+  await waitFor(() => expect(result.current.passkeys.isSuccess).toBe(true));
+  expect(count("GET /api/me")).toBe(1);
+  act(() => requestPasskeyConfirmation(queryClient));
+
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(count("GET /api/me")).toBe(2));
+  await waitFor(() => expect(count("GET /api/passkeys")).toBe(2));
+  const [old, reopened] = FakeEventSource.instances;
+  expect(old!.closed).toBe(true);
+  expect(reopened?.closed).toBe(false);
+  reopened!.onopen?.();
+  expect(onOpen).toHaveBeenCalledOnce();
+  close();
+});
+
+test("logInAgain logs out and closes the modal", async () => {
+  vi.mocked(createPasskey).mockResolvedValueOnce({ ok: false, error: "session_too_old" });
+  me = withoutPasskey;
+  const { result, queryClient } = setup(() => usePasskeyConfirmation());
+  await waitFor(() => expect(count("GET /api/me")).toBe(1));
+  act(() => requestPasskeyConfirmation(queryClient));
+  await act(async () => result.current.confirm());
+  expect(result.current.error).toBe("session_too_old");
+
+  await act(async () => result.current.logInAgain());
+
+  expect(result.current.open).toBe(false);
+  await waitFor(() => expect(count("POST /api/auth/sign-out")).toBe(1));
+  await waitFor(() => expect(count("GET /api/me")).toBe(2));
+});
