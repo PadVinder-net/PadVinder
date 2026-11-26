@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { users, workingGroupMemberships } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance } from "fastify";
-import { Writable } from "node:stream";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
 import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
@@ -15,7 +15,12 @@ import { describeDatabaseError } from "./memberships";
 let t: TestDatabase | undefined;
 let app: FastifyInstance | undefined;
 let cast: Cast;
-const logLines: string[] = [];
+const log = createTestLogger("info");
+let mark = 0;
+const logLines = () => log.text().split("\n").filter(Boolean).slice(mark);
+const clearLog = () => {
+  mark = log.text().split("\n").filter(Boolean).length;
+};
 
 beforeAll(async () => {
   t = await createTestDatabase();
@@ -27,13 +32,7 @@ beforeAll(async () => {
     notifications: createNoopNotificationHub(),
     mailer,
     queueMail: mailQueue.queueMail,
-    logger: true,
-    logStream: new Writable({
-      write(chunk, _encoding, callback) {
-        logLines.push(String(chunk));
-        callback();
-      },
-    }),
+    logger: log.logger,
   });
   const ctx: TestApp = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
@@ -65,11 +64,11 @@ const remove = (membershipId: string) =>
     headers: cast.members.coordinator.headers,
   });
 
-const cleanupLog = () => logLines.filter((line) => line.includes("after a removal failed"));
+const cleanupLog = () => logLines().filter((line) => line.includes("after a removal failed"));
 
 test("a removal that deletes the unused account answers 204 and logs nothing", async () => {
   const member = await addUnusedMember();
-  logLines.length = 0;
+  clearLog();
   expect((await remove(member.membershipId)).statusCode).toBe(204);
   expect(cleanupLog()).toEqual([]);
 });
@@ -83,16 +82,16 @@ test("when deleting the unused account fails, the answer stays 204 and a warning
       when (old.id = '${member.userId}' and new.deleted_at is not null) execute function refuse_deletion();`),
   );
   try {
-    logLines.length = 0;
+    clearLog();
     const res = await remove(member.membershipId);
     expect(res.statusCode).toBe(204);
     expect(res.body).toBe("");
     const [line] = cleanupLog();
     expect(JSON.parse(line!)).toMatchObject({
-      level: 40,
+      level: "warn",
       cleanupError: { code: "P0001" },
     });
-    const log = logLines.join("");
+    const log = logLines().join("");
     expect(log).not.toContain(member.email);
     expect(log).not.toContain("Geheime");
     expect(log).not.toContain("refused for");

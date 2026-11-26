@@ -8,8 +8,8 @@ import {
   MAIL_QUEUE_OPTIONS,
   type Mailer,
 } from "@padvinder/mail";
+import type { Logger } from "@padvinder/logging";
 import type { JobWithMetadata, PgBoss } from "pg-boss";
-import type { Logger } from "../logger";
 
 /** At least this long between two mails, so the mail server never sees a burst. */
 export const MAIL_PAUSE_MS = 2_000;
@@ -68,17 +68,18 @@ export async function registerMailJob(boss: PgBoss, deps: MailJobDeps): Promise<
   };
 
   const handle = async (job: JobWithMetadata<unknown>) => {
+    const jobLogger = logger.child({ job: { name: job.name, id: job.id } });
     const parsed = mailJobSchema.safeParse(job.data);
     if (!parsed.success) {
       // Trying again would not make it valid. The data is not logged: it might hold anything.
-      logger.error("A job in the mail queue is not a valid mail job; dropped");
+      jobLogger.error("A job in the mail queue is not a valid mail job; dropped");
       return;
     }
     const { kind } = parsed.data;
     try {
       const data = await loadMailJobData(db, parsed.data);
       if (data === null) {
-        logger.info("Mail dropped: the receiver or what it is about is gone", { kind });
+        jobLogger.info({ kind }, "Mail dropped: the receiver or what it is about is gone");
         return;
       }
       const mail = buildMailForJob(data, { publicOrigin });
@@ -92,12 +93,12 @@ export async function registerMailJob(boss: PgBoss, deps: MailJobDeps): Promise<
       // retryCount counts the tries before this one, so the last try is the one at retryLimit.
       const failure = { kind, error: describeMailError(error) };
       if (job.retryCount >= job.retryLimit) {
-        logger.error("Mail dropped after the last try", failure);
+        jobLogger.error(failure, "Mail dropped after the last try");
       } else {
-        logger.warn("Mail failed; it will be tried again", {
-          ...failure,
-          tryNumber: job.retryCount + 1,
-        });
+        jobLogger.warn(
+          { ...failure, tryNumber: job.retryCount + 1 },
+          "Mail failed; it will be tried again",
+        );
       }
       // pg-boss stores what the handler throws with the job, and a mail server's message can name
       // the address. Throw only what may be logged, so pg-boss tries the job again.

@@ -1,8 +1,8 @@
 import { createDb } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { PgBoss } from "pg-boss";
-import { afterAll, beforeAll, expect, test, vi } from "vitest";
-import type { Logger } from "../logger";
+import { afterAll, beforeAll, expect, test } from "vitest";
 import { HEARTBEAT_QUEUE, registerHeartbeatJob } from "./heartbeat";
 
 let t: TestDatabase | undefined;
@@ -21,7 +21,7 @@ afterAll(async () => {
 test("a failing handler is logged and the job is not marked completed", async () => {
   const { db, pool } = createDb(t!.url);
   await pool.end(); // Every query now rejects.
-  const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const { logger, entries } = createTestLogger();
 
   await registerHeartbeatJob(boss, db, logger);
   const jobId = await boss.send(HEARTBEAT_QUEUE);
@@ -31,5 +31,12 @@ test("a failing handler is logged and the job is not marked completed", async ()
   await expect
     .poll(async () => (await boss.getJobById(HEARTBEAT_QUEUE, jobId!))?.state, { timeout: 10_000 })
     .toBeOneOf(["retry", "failed"]);
-  expect(logger.error).toHaveBeenCalledWith("Heartbeat job failed", expect.any(Error));
+  expect(entries()).toContainEqual(
+    expect.objectContaining({
+      level: "error",
+      msg: "Heartbeat job failed",
+      job: { name: "heartbeat", id: expect.any(String) },
+      err: expect.objectContaining({ type: "Error" }),
+    }),
+  );
 });

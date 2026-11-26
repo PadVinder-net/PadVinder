@@ -1,5 +1,5 @@
+import { createLogger, installCrashHandlers } from "@padvinder/logging";
 import { loadWorkerEnv, type WorkerEnv } from "./env";
-import { createLogger } from "./logger";
 import { startWorker } from "./start-worker";
 
 let env: WorkerEnv;
@@ -10,7 +10,8 @@ try {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 }
-const logger = createLogger(env.LOG_LEVEL);
+const logger = createLogger({ service: "worker", level: env.LOG_LEVEL });
+installCrashHandlers(logger);
 
 // A terminal Ctrl-C reaches both tsx and the worker, so a repeat within this window is not a force.
 const FORCE_EXIT_AFTER_MS = 1_000;
@@ -31,7 +32,7 @@ async function shutdown(signal: string): Promise<void> {
     await worker?.stop();
     process.exit(0);
   } catch (error) {
-    logger.error("Shutdown failed", error);
+    logger.error({ err: error }, "Shutdown failed");
     process.exit(1);
   }
 }
@@ -42,7 +43,7 @@ process.on("SIGHUP", () => void shutdown("SIGHUP"));
 
 try {
   worker = await startWorker(env, logger);
-  logger.info("Worker started");
+  logger.info({ commit: env.GIT_COMMIT }, "Worker started");
 } catch {
   // startWorker has logged and cleaned up. Exit deliberately so the supervisor restarts us.
   process.exit(1);

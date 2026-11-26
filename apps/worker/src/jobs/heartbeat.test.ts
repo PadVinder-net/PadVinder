@@ -1,13 +1,13 @@
 import { getLatestHeartbeat } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
+import { createTestLogger } from "@padvinder/logging/testing";
 import { PgBoss } from "pg-boss";
-import { afterAll, beforeAll, expect, test, vi } from "vitest";
-import type { Logger } from "../logger";
+import { afterAll, beforeAll, expect, test } from "vitest";
 import { HEARTBEAT_QUEUE, registerHeartbeatJob } from "./heartbeat";
 
 let t: TestDatabase | undefined;
 let boss: PgBoss;
-const logger: Logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+const { logger } = createTestLogger();
 beforeAll(async () => {
   t = await createTestDatabase();
   boss = new PgBoss(t.url);

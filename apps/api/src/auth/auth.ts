@@ -13,6 +13,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { eq } from "drizzle-orm";
+import { scrub } from "@padvinder/logging";
 import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail, describeMailError, type Mailer } from "@padvinder/mail";
@@ -41,10 +42,6 @@ export const LOGIN_CODE_LIMIT_ERRORS: Record<LoginCodeLimit, { code: string; mes
     message: "Too many login codes requested for this address in 24 hours",
   },
 };
-
-// Anything that looks like an email address, to keep addresses out of Better Auth's log lines.
-const EMAIL_LIKE = /[^\s@<>"'(),;:]+@[^\s@<>"'(),;:]+/g;
-const scrub = (text: string) => text.replace(EMAIL_LIKE, "[email]");
 
 /**
  * Passes Better Auth's log lines to our logger. Its `info` lines are hints for developers, so
