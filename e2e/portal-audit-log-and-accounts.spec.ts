@@ -113,7 +113,8 @@ test("an organization admin reads the log of their own organization only", async
     await expect(row.getByRole("cell").nth(1)).toHaveText("Systeem");
   }
 
-  // An admin of one organization gets no organization filter, and no species or accounts.
+  // An admin of one organization gets no organization filter and no species; Accounts holds the
+  // passkey resets in their organization.
   await expect(page.getByRole("combobox", { name: "Organisatie" })).toHaveCount(0);
   await page.getByRole("combobox", { name: "Actie" }).click();
   await expect(page.getByRole("option")).toHaveText([
@@ -122,6 +123,7 @@ test("an organization admin reads the log of their own organization only", async
     "Werkgroepen",
     "Rollen",
     "Leden en aanmeldingen",
+    "Accounts",
   ]);
   await expect(page.getByRole("option", { name: "Soorten" })).toHaveCount(0);
   await page.keyboard.press("Escape");

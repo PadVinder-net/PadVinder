@@ -368,6 +368,16 @@ NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/adm
 - **Provisioning never restarts the services.** When the env file changed it prints `The services must be restarted ...`. Restart with `pnpm infra:services --environment <env> --restart` locally, in the panel (Advanced, Services), or by deploying again.
 - **Logs** are in `/home/<account>/admin/logs/services/<folder>/<service id>-<date>.log` (service output: API and worker, with Alwaysdata's own lines), `/home/<account>/admin/logs/http/` (requests) and `/home/<account>/admin/logs/sites/` (site starts and errors). The service logs are JSON lines with `service`, `level` and `msg`: one line per request at `info`, and health checks only on a warning. Read them over SSH with `jq -R 'fromjson?'`, which skips Alwaysdata's own lines that are not JSON (`pino-pretty` is not in the release, and nothing is installed on the server), or in the panel. The deploy steps are in the GitHub Actions run.
 - **Processes and memory:** the panel, Advanced, Processes. Services run on servers separate from SSH.
+- **A database session** on an environment's database: over SSH, with `psql` and the `DATABASE_URL` of that environment's env file, without printing it:
+
+  ```sh
+  ssh <account>@ssh-<account>.alwaysdata.net
+  psql "$(grep -m 1 '^DATABASE_URL=' padvinder/<env>/.env | cut -d= -f2-)"
+  ```
+
+  Check the database name in the prompt (`<account>_production` or `<account>_staging`) before you type anything. Use it only for what the application offers no way to do, such as the procedures in [`docs/emergency-procedures.md`](../../docs/emergency-procedures.md).
+
+- **The last platform admin lost all passkeys:** follow "The last platform admin lost all passkeys" in [`docs/emergency-procedures.md`](../../docs/emergency-procedures.md), in a database session as above. Another platform admin repairs a platform admin in the portal instead.
 - **Backups:** Alwaysdata makes a daily dump in `/home/<account>/admin/backup/<date>/postgresql/<database>.sql.zst`. A second, hourly copy elsewhere during the season is planned, not built.
 
 - **Mails from staging carry `[STAGING]`.** After the pull request that added `MAIL_SUBJECT_PREFIX` is merged, run Provision for `staging` with `apply` on once (it rewrites the env file with the new line), then restart staging's services (`pnpm infra:services --environment staging --restart`) or wait for the next deploy. Until then staging's mails have no prefix; nothing breaks.
@@ -439,6 +449,8 @@ Record each one in the table above (name and type only) once it exists. `www.pad
 
 Let's Encrypt only issues a certificate when the address already points at Alwaysdata, so DNS comes before the site.
 
+**Passkeys belong to the host name.** The relying party ID of the admins' passkeys is the host name of `PUBLIC_ORIGIN` (`padvinder.net`, `staging.padvinder.net`). A passkey works only on that host name, so moving an environment to another domain makes every passkey there useless. After such a move, a platform admin removes each admin's passkeys (Verwijder toegangssleutels) and the admins add new ones; for the platform admins themselves, see "The last platform admin lost all passkeys" in [`docs/emergency-procedures.md`](../../docs/emergency-procedures.md). Moving to another host with the same domain keeps them.
+
 ## Rebuilding from scratch
 
 ### On a new Alwaysdata account
@@ -479,7 +491,7 @@ Everything is plain Linux processes against a standard PostgreSQL; nothing here 
 
    Or run the container image from `infra/container/Dockerfile` twice, once per program. Run both under a supervisor that restarts them (systemd or similar).
 
-4. **Files:** copy uploads once they exist. **DNS:** point the records above at the new host, and let the proxy get certificates.
+4. **Files:** copy uploads once they exist. **DNS:** point the records above at the new host, and let the proxy get certificates. Keep the domain: the passkeys belong to the host name of `PUBLIC_ORIGIN`, and a new one makes every passkey useless (see "DNS").
 
 ## Verification
 
