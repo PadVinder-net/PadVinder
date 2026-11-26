@@ -16,7 +16,7 @@ export const SENTRY_TUNNEL_BODY_LIMIT = 200 * 1024;
 export const SENTRY_TUNNEL_LIMIT = { max: 120, windowMs: 60_000 };
 
 export type SentryTunnelOptions = {
-  /** Sentry is off without a DSN: the tunnel then answers 204 and drops every envelope. */
+  /** Sentry is off without a browser DSN: the tunnel then answers 204 and drops every envelope. */
   monitoring: MonitoringSettings | undefined;
   /** Tests. Default: `SENTRY_TUNNEL_LIMIT`, in this process's memory. */
   limiter?: WindowLimiter;
@@ -25,7 +25,8 @@ export type SentryTunnelOptions = {
 /**
  * `POST /sentry-tunnel`: the browser SDK's `tunnel`. Takes an envelope without a login, makes it
  * fit with `prepareBrowserEnvelope` (only our item types, scrubbed, our DSN and environment, the
- * browser's release when it is a full commit, else ours) and forwards it to `SENTRY_DSN`'s ingest address with none of the phone's headers.
+ * browser's release when it is a full commit, else ours) and forwards it to
+ * `SENTRY_BROWSER_DSN`'s ingest address with none of the phone's headers.
  * Sentry's answer comes back for 2xx and 429 (with its rate limit headers, which the SDK obeys),
  * 502 for anything else.
  */
@@ -72,16 +73,16 @@ export const sentryTunnelRoutes: FastifyPluginAsyncZod<SentryTunnelOptions> = as
       },
     },
     async (request, reply) => {
-      if (settings?.dsn === undefined) return reply.code(204).send(null);
+      if (settings?.browserDsn === undefined) return reply.code(204).send(null);
       const body = request.body;
       const envelope =
         body instanceof Uint8Array
-          ? prepareBrowserEnvelope(body, { ...settings, dsn: settings.dsn })
+          ? prepareBrowserEnvelope(body, { ...settings, dsn: settings.browserDsn })
           : null;
       if (envelope === null) {
         throw apiError(400, apiErrorCodes.invalidRequest, "The body is not a Sentry envelope");
       }
-      const result = await forwardEnvelope(envelope, settings.dsn);
+      const result = await forwardEnvelope(envelope, settings.browserDsn);
       if (
         result.status === "unreachable" ||
         (result.status !== 429 && (result.status < 200 || result.status > 299))

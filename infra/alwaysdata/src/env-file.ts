@@ -19,6 +19,8 @@ export type LoginSecrets = {
 /** The secret error tracking needs on the server: the Sentry project's DSN. */
 export type MonitoringSecrets = {
   sentryDsn: string;
+  /** The DSN of the browser project, for the tunnel and the problem reports. */
+  sentryBrowserDsn: string;
 };
 
 /**
@@ -50,6 +52,7 @@ export function renderEnvFile(input: {
     "LOG_LEVEL=info",
     `PADVINDER_ENVIRONMENT=${env}`,
     `SENTRY_DSN=${monitoring.sentryDsn}`,
+    `SENTRY_BROWSER_DSN=${monitoring.sentryBrowserDsn}`,
     `PUBLIC_ORIGIN=${environment.publicOrigin}`,
     `AUTH_SECRET=${login.authSecret}`,
     `SMTP_HOST=${smtpHost(account)}`,

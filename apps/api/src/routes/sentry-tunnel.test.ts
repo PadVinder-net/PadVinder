@@ -4,18 +4,34 @@ import { createTestApp, type TestApp } from "../testing/login";
 import { testEnv } from "../test-env";
 
 let fake: Awaited<ReturnType<typeof startFakeSentry>>;
+let other: Awaited<ReturnType<typeof startFakeSentry>>;
 let ctx: TestApp;
 let off: TestApp;
 
 beforeAll(async () => {
   fake = await startFakeSentry();
+  other = await startFakeSentry();
   ctx = await createTestApp(
     {},
-    { monitoring: { dsn: fake.dsn, environment: "staging", release: "rel-1" } },
+    {
+      monitoring: {
+        dsn: other.dsn,
+        browserDsn: fake.dsn,
+        environment: "staging",
+        release: "rel-1",
+      },
+    },
   );
   off = await createTestApp(
     {},
-    { monitoring: { dsn: undefined, environment: "staging", release: "rel-1" } },
+    {
+      monitoring: {
+        dsn: other.dsn,
+        browserDsn: undefined,
+        environment: "staging",
+        release: "rel-1",
+      },
+    },
   );
 });
 
@@ -23,6 +39,7 @@ afterAll(async () => {
   await ctx?.close();
   await off?.close();
   await fake?.close();
+  await other?.close();
 });
 
 beforeEach(() => {
@@ -201,7 +218,14 @@ test("answers 502 when Sentry cannot be reached", async () => {
   await closed.close();
   const app = await createTestApp(
     {},
-    { monitoring: { dsn: closed.dsn, environment: "staging", release: "rel-1" } },
+    {
+      monitoring: {
+        dsn: other.dsn,
+        browserDsn: closed.dsn,
+        environment: "staging",
+        release: "rel-1",
+      },
+    },
   );
   try {
     expect((await postEnvelope(app, browserEnvelope())).statusCode).toBe(502);
@@ -236,4 +260,27 @@ test("takes a body without a content type", async () => {
     payload: Buffer.from(browserEnvelope()),
   });
   expect(res.statusCode).toBe(200);
+});
+
+test("with only the server DSN set the tunnel answers 204 and forwards nothing", async () => {
+  const onlyServer = await createTestApp(
+    {},
+    { monitoring: { dsn: other.dsn, browserDsn: undefined, environment: "staging", release: "r" } },
+  );
+  try {
+    const res = await postEnvelope(onlyServer, browserEnvelope());
+    expect(res.statusCode).toBe(204);
+    expect(other.requests()).toHaveLength(0);
+  } finally {
+    await onlyServer.close();
+  }
+});
+
+test("envelopes reach the browser project's server only, with its DSN in the header", async () => {
+  const before = fake.requests().length;
+  const res = await postEnvelope(ctx, browserEnvelope());
+  expect(res.statusCode).toBe(200);
+  expect(other.requests()).toHaveLength(0);
+  expect(fake.requests().length).toBe(before + 1);
+  expect(fake.envelopes().at(-1)![0].dsn).toBe(fake.dsn);
 });

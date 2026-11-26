@@ -21,7 +21,10 @@ const login = {
   smtpUser: "mailbox-user@example.test",
   smtpPassword: "smtp-password-value",
 };
-const monitoring = { sentryDsn: "https://dsnkey0123456789@o123456.ingest.de.sentry.io/7654321" };
+const monitoring = {
+  sentryDsn: "https://dsnkey0123456789@o123456.ingest.de.sentry.io/7654321",
+  sentryBrowserDsn: "https://browserkey012345@o123456.ingest.de.sentry.io/1234567",
+};
 const config: InfraConfig = {
   environment: "staging",
   account: "acmecorp",
@@ -127,7 +130,9 @@ const expectNoSecrets = (text: string) => {
     login.smtpUser,
     login.smtpPassword,
     monitoring.sentryDsn,
+    monitoring.sentryBrowserDsn,
     "dsnkey0123456789",
+    "browserkey012345",
   ]) {
     expect(text).not.toContain(value);
   }
@@ -492,6 +497,7 @@ test("the Sentry DSN in an error shows as ***", async () => {
   expect(code).toBe(1);
   const text = output.join("\n");
   expect(text).toMatch(/SENTRY_DSN=\*\*\*/);
+  expect(text).toMatch(/SENTRY_BROWSER_DSN=\*\*\*/);
   expectNoSecrets(text);
 });
 
@@ -650,7 +656,9 @@ test("the CLI exits 2 with usage on an unknown flag and 1 on missing variables",
   });
   expect(missing.status).toBe(1);
   expect(missing.stderr).toMatch(/ALWAYSDATA_API_KEY/);
-  expect(missing.stderr).toMatch(/AUTH_SECRET, SMTP_USER, SMTP_PASSWORD, SENTRY_DSN/);
+  expect(missing.stderr).toMatch(
+    /AUTH_SECRET, SMTP_USER, SMTP_PASSWORD, SENTRY_DSN, SENTRY_BROWSER_DSN/,
+  );
   // Inspect writes no env file, so it does without them.
   const inspect = spawnSync(process.execPath, [script, "--environment", "staging", "--inspect"], {
     env: { ...env, ALWAYSDATA_ACCOUNT: "acme" },
@@ -687,7 +695,9 @@ test("without the Sentry DSN it fails before reading or changing anything", asyn
     print: (line) => output.push(line),
   });
   expect(code).toBe(1);
-  expect(output.join("\n")).toMatch(/Provisioning failed: SENTRY_DSN is not set/);
+  expect(output.join("\n")).toMatch(
+    /Provisioning failed: SENTRY_DSN and SENTRY_BROWSER_DSN are not set/,
+  );
   expect(writes()).toEqual([]);
   expect(calls).toEqual([]);
 });
@@ -707,6 +717,7 @@ test("a new login secret rewrites the env file and asks for a restart, without r
   expect(written).toContain(`AUTH_SECRET=${login.authSecret}\n`);
   expect(written).toContain(`SMTP_PASSWORD=${login.smtpPassword}\n`);
   expect(written).toContain(`SENTRY_DSN=${monitoring.sentryDsn}\n`);
+  expect(written).toContain(`SENTRY_BROWSER_DSN=${monitoring.sentryBrowserDsn}\n`);
   expect(written).toContain("PADVINDER_ENVIRONMENT=staging\n");
   expect(calls.find((call) => call.method === "writeFile")?.args[2]).toBe(0o600);
   const text = output.join("\n");

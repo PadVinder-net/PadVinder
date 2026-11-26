@@ -2,6 +2,8 @@
 
 Date: 26 November 2026. Status: approved by the maintainer on 26 November 2026 ("Go ahead and implement"), who reviews it again with the build.
 
+Changed on 26 November 2026: two Sentry projects instead of one (see "Sentry: the organization"). The browser's events and the problem reports go to `padvinder-browser`, the API's and the worker's to `padvinder-server`.
+
 This design replaces issues #3 ("Logging-boilerplate voor API en worker") and #5 ("Better Stack-integratie: uptime, heartbeat en foutmeldingen"). Both were written on 19 November 2026, before the skeleton, the deploy and slice 1 existed; "What the issues asked, and what changed" says what this design keeps, changes and drops of each.
 
 ## Intent
@@ -88,7 +90,7 @@ From [sentry.io/pricing](https://sentry.io/pricing/) on 26 November 2026: one us
 | No personal data from the browser                                      | Kept, and tightened: the phone never talks to Sentry (see "The tunnel")                                                                                                                                                                                                                                                                                                                    |
 | Logs to Better Stack                                                   | Dropped                                                                                                                                                                                                                                                                                                                                                                                    |
 | A status page, if free                                                 | Dropped for now                                                                                                                                                                                                                                                                                                                                                                            |
-| URLs and tokens as GitHub secrets, set on the services by provisioning | Kept: `SENTRY_DSN` through provisioning; `SENTRY_AUTH_TOKEN` for the Deploy workflow                                                                                                                                                                                                                                                                                                       |
+| URLs and tokens as GitHub secrets, set on the services by provisioning | Kept: `SENTRY_DSN` and `SENTRY_BROWSER_DSN` through provisioning; `SENTRY_AUTH_TOKEN` for the Deploy workflow                                                                                                                                                                                                                                                                              |
 
 ## Approaches
 
@@ -160,25 +162,28 @@ A new package `packages/logging` holds the one logger for the API and the worker
 
 ### Sentry: the organization
 
-The maintainer makes one Sentry organization **in the EU region** (Frankfurt; this cannot be changed later) and one project, `padvinder`, for all four parts. Events carry the tag `service` (`api`, `worker`, `app`, `portal`) and the environment (`production`, `staging`). One project means one DSN, one set of alert rules and one view of the quota; issues are grouped by stack trace, so the parts do not mix.
+The maintainer makes one Sentry organization **in the EU region** (Frankfurt; this cannot be changed later) and two projects. `padvinder-server` holds the API and the worker, and the uptime monitor. `padvinder-browser` holds the app and the portal, and the problem reports (they are about what people see). Events carry the tag `service` (`api`, `worker`, `app`, `portal`) and the environment (`production`, `staging`).
+
+Why two: the inbound filters for browser extensions, legacy browsers and web crawlers only make sense for browser events; the alert rules can be tuned per side; and the browser project has its own rate limit on its DSN key, so a flood of errors through the public tunnel cannot crowd out an outage of the server. Traces still join across the two projects, because they share the trace ID. The API and the worker stay in one project: they share a platform, the same packages and one release, and the tag `service` tells them apart.
 
 Set by hand, and written down in `infra/alwaysdata/README.md` as a checklist (not scripted, like the mailbox):
 
 - **Security & Privacy:** do not store IP addresses; the default scrubbers on; an Advanced Data Scrubbing rule that removes email addresses from all fields, as a second net behind our own scrubbing, if the free plan has it.
 - **Show Generative AI Features** off.
-- **Inbound filters:** browser extensions, legacy browsers, web crawlers and localhost. Filtered events do not count against the quota.
-- **Spike protection** on, with its notification.
-- **A rate limit on the project's DSN key** (Client Keys), for example 300 events an hour, if the free plan has it. It caps the total, which spike protection does not: a steady stream of errors from many phones over an evening may never count as a spike.
-- **Alert rules,** mailing the member, for the environment `production` only: a new issue, a resolved issue that comes back, an issue that escalates, the uptime monitor's issue, and every new problem report (Sentry files user feedback as issues of the category Feedback). Staging's issues are recorded but mail nobody. If the free plan cannot mail on feedback, the maintainer reads Sentry's feedback list instead and this design is revisited; PadVinder does not mail reports itself.
-- **The uptime monitor:** `https://padvinder.net/api/health` every minute. Sentry opens an issue after three failures in a row (a status outside 200–299, a timeout or a DNS failure), so an outage mails within about four minutes.
+- **Inbound filters:** browser extensions, legacy browsers and web crawlers on the browser project; localhost on both. Filtered events do not count against the quota.
+- **Spike protection** on in both projects, with its notification.
+- **A rate limit on the DSN key** (Client Keys) of the browser project, for example 300 events an hour, if the free plan has it; the server project's key gets a higher one or none. It caps the total, which spike protection does not: a steady stream of errors from many phones over an evening may never count as a spike.
+- **Alert rules,** mailing the member, for the environment `production` only, in each project: a new issue, a resolved issue that comes back and an issue that escalates; on the server project also the uptime monitor's issue, and on the browser project every new problem report (Sentry files user feedback as issues of the category Feedback). Staging's issues are recorded but mail nobody. If the free plan cannot mail on feedback, the maintainer reads Sentry's feedback list instead and this design is revisited; PadVinder does not mail reports itself.
+- **The uptime monitor,** on the server project: `https://padvinder.net/api/health` every minute. Sentry opens an issue after three failures in a row (a status outside 200–299, a timeout or a DNS failure), so an outage mails within about four minutes.
 - **The weekly report** mail on.
-- **The GitHub integration** for links from stack traces to the code and for suspect commits, if the free plan has it.
+- **The GitHub integration** on both projects, for links from stack traces to the code and for suspect commits, if the free plan has it.
 - An **organization auth token** for uploading source maps.
 
 ### Configuration
 
 - **`PADVINDER_ENVIRONMENT`:** `production`, `staging` or `development` (the default). Provisioning writes it to the env file. Used for the Sentry environment and the start line.
-- **`SENTRY_DSN`:** a secret in both GitHub environments, written to the env file by provisioning like `SMTP_PASSWORD`, read by the API and the worker. Without it Sentry is off: locally, in tests, in CI and in the container smoke test. Provisioning requires it, like every other secret of the env file.
+- **`SENTRY_DSN`:** a secret in both GitHub environments, written to the env file by provisioning like `SMTP_PASSWORD`, read by the API and the worker. Without it Sentry is off on the server: locally, in tests, in CI and in the container smoke test. Provisioning requires it, like every other secret of the env file.
+- **`SENTRY_BROWSER_DSN`:** the browser project's DSN, a secret in both GitHub environments, written to the env file by provisioning and read by the API only (the tunnel and the problem reports use it; the worker checks it at start-up through `readMonitoringSettings` but does not use it). Without it the tunnel answers 204 and drops the envelope, and a problem report is only logged. Provisioning requires it too. The server's Sentry depends only on `SENTRY_DSN`.
 - **`SENTRY_AUTH_TOKEN`:** a secret in both GitHub environments, used only by the Deploy workflow's upload step.
 - **The release** is the git commit (`GIT_COMMIT` on the server; the build's commit in the browser bundles). The app's CalVer version and build number go along as tags.
 
@@ -200,10 +205,10 @@ The API and the worker use `@sentry/node` (11.18.0 on 26 November 2026). Upgrade
 `POST /api/sentry-tunnel` receives the browser SDK's envelopes and forwards them to Sentry.
 
 - **No login needed,** so that errors on the login screen arrive too. The Origin check that guards every state-changing request applies.
-- **It forwards to the server's own DSN only.** It reads the envelope header, ignores the DSN the browser sent, and posts the envelope to the ingest address of `SENTRY_DSN` (`https://o<id>.ingest.de.sentry.io/api/<project>/envelope/`). So the bundles need no DSN, and nobody can use our endpoint to send to another project.
+- **It forwards to the browser project's DSN only.** It reads the envelope header, ignores the DSN the browser sent, and posts the envelope to the ingest address of `SENTRY_BROWSER_DSN` (`https://o<id>.ingest.de.sentry.io/api/<project>/envelope/`). So the bundles need no DSN, and nobody can use our endpoint to send to another project.
 - **None of the phone's headers go along:** no `X-Forwarded-For`, no cookie, no user agent header. Sentry sees the API's address.
 - **Limits:** a maximum body size, and a rate limit per IP address in the style of the login limits (in memory or in `rate_limits`; the builder chooses). A refused envelope answers 429 or 413 and the SDK drops it. The per-IP limit caps one sender, not the total; the total is capped in the browser and by the DSN key's rate limit (see "Browser" and "Sentry: the organization"). Someone deliberately spending the quota through the tunnel is an accepted risk.
-- **Without `SENTRY_DSN`** it answers 204 and drops the envelope.
+- **Without `SENTRY_BROWSER_DSN`** it answers 204 and drops the envelope.
 - **The environment:** the browser bundles cannot know whether they run on staging or production (one release for both). The builder chooses between the tunnel setting `environment` on each item it forwards, and the browser reading it at start from a public field added to `/api/version`.
 
 ### Browser
@@ -275,22 +280,23 @@ A problem report (`problemReport`, glossary term "Meld een probleem") is a messa
 - "Verstuur" is disabled while the message is empty or while sending. On success: "Bedankt, je melding is verstuurd.", and the form closes. On failure the message stays and the text comes from `apiErrorMessage`.
 - No screenshot, no attachment.
 
-**The endpoint:** `POST /api/problem-reports`, behind `requireActor` (401 without a login; every logged-in user may send one, applicants included). The body is strict: `message` (trimmed, 1 to 2,000 characters), `includeContact` (boolean), optional `eventId` (the crash's Sentry event ID), `page` (the path the user was on) and `appVersion`. The API sends it to Sentry as user feedback (`captureFeedback`), with the user `{ id }`, the tag `service` (`app` or `portal`), the environment and the release, and, only when `includeContact` is true, the name and address **from the actor's profile**, never from the body. The message goes through `scrub` (the form tells people to use the checkbox for their address); the opted-in contact address is the one exception to scrubbing. Answers: 204 when Sentry accepted it, or when Sentry is off (then the API logs at `info` that a report arrived, with its length, not its text); 502 `report_not_sent` when Sentry could not be reached, so the user can try again. A rate limit per account (for example 10 an hour) answers 429 `too_many_reports`. It is not a write from the field, so it has no client-generated ID; the disabled button prevents a double send.
+**The endpoint:** `POST /api/problem-reports`, behind `requireActor` (401 without a login; every logged-in user may send one, applicants included). The body is strict: `message` (trimmed, 1 to 2,000 characters), `includeContact` (boolean), optional `eventId` (the crash's Sentry event ID), `page` (the path the user was on) and `appVersion`. The API sends it to the browser project of Sentry as user feedback (`captureFeedback`), with the user `{ id }`, the tag `service` (`app` or `portal`), the environment and the release, and, only when `includeContact` is true, the name and address **from the actor's profile**, never from the body. The message goes through `scrub` (the form tells people to use the checkbox for their address); the opted-in contact address is the one exception to scrubbing. Answers: 204 when Sentry accepted it, or when `SENTRY_BROWSER_DSN` is not set (then the API logs at `info` that a report arrived, with its length, not its text); 502 `report_not_sent` when Sentry could not be reached, so the user can try again. A rate limit per account (for example 10 an hour) answers 429 `too_many_reports`. It is not a write from the field, so it has no client-generated ID; the disabled button prevents a double send.
 
 ### Source maps
 
 - **The release build** (`scripts/build-release.sh`) makes source maps for the Vite builds and the tsdown bundles, injects Sentry's debug IDs into the bundles at build time, before the PWA's precache manifest is made, and moves the maps to `release/sourcemaps/`. The served directories hold no maps and no `sourceMappingURL`. The build needs no token.
-- **The Deploy workflow** uploads `release/sourcemaps/` with `sentry-cli` (pinned) and `SENTRY_AUTH_TOKEN`, in the staging and in the production job, before the switch. Uploading the same maps twice is harmless. A failed upload is a warning in the run, never a failed deploy. Without the token (a local deploy) the step is skipped.
+- **The Deploy workflow** uploads `release/sourcemaps/` with `sentry-cli` (pinned) and `SENTRY_AUTH_TOKEN`: `api` and `worker` to `padvinder-server`, `mobile` and `portal` to `padvinder-browser`, in the staging and in the production job, before the switch. Uploading the same maps twice is harmless. A failed upload is a warning in the run, never a failed deploy. Without the token (a local deploy) the step is skipped.
 
 ### Rolling out
 
 The maintainer, once, in this order:
 
-1. Make the Sentry organization in the EU region, the project `padvinder` and an organization auth token; do the checklist in "Sentry: the organization".
-2. Set `SENTRY_DSN` and `SENTRY_AUTH_TOKEN` in both GitHub environments.
-3. Merge. Then run Provision with `apply` for staging and for production (it writes `SENTRY_DSN` and `PADVINDER_ENVIRONMENT`), and restart the services or deploy again.
+1. If you already made the project `padvinder`: rename its slug to `padvinder-server` (Settings, Projects, padvinder, General). Its DSN stays the same (a DSN names the project by its number, not its slug) and is `SENTRY_DSN`. Raise or remove its key's rate limit if you set the browser's 300 an hour on it, and remove browser-only inbound filters if you like. Then make `padvinder-browser` and set `SENTRY_BROWSER_DSN`.
+2. Make the Sentry organization in the EU region (if it does not exist), the projects `padvinder-server` and `padvinder-browser` and an organization auth token; do the checklist in "Sentry: the organization".
+3. Set `SENTRY_DSN`, `SENTRY_BROWSER_DSN` and `SENTRY_AUTH_TOKEN` in both GitHub environments.
+4. Merge. Then run Provision with `apply` for staging and for production (it writes `SENTRY_DSN`, `SENTRY_BROWSER_DSN` and `PADVINDER_ENVIRONMENT`), and restart the services or deploy again.
 
-A deploy before step 3 works: without `SENTRY_DSN` the API and the worker run with Sentry off.
+A deploy before step 4 works: without `SENTRY_DSN` the API and the worker run with Sentry off, and without `SENTRY_BROWSER_DSN` the tunnel and the problem reports drop what they get.
 
 ### Verification on Alwaysdata
 
@@ -309,7 +315,7 @@ As AGENTS.md requires. The parts that need care:
 - **Scrubbing:** a PostgreSQL unique violation whose `detail` holds an address is logged without the address and without `detail`; the same error reaches Sentry's test transport without the address. `scrub` has unit tests.
 - **The logger:** `service` on every line; a job's lines carry its name and ID; a health request writes no `info` line; request lines have no client address; a crash is logged and reported before the exit.
 - **Sentry on the server,** with a test transport: a 500 from a request with a cookie and a body holding an address gives one issue with the user's ID, the release and the environment, and no cookie, header, body, address or IP address; the trace holds the query spans, without values; `/api/health` gives no trace; an `error` line from the worker gives an issue with the job's tags; a `warn` line gives none.
-- **The tunnel:** forwards to the DSN's ingest address only, whatever DSN the browser sent; sends none of the request's headers on; refuses a body over the limit and a sender over the rate limit; answers 204 without `SENTRY_DSN`; works without a login; tested against a local fake Sentry server.
+- **The tunnel:** forwards to the browser DSN's ingest address only, whatever DSN the browser sent; sends none of the request's headers on; refuses a body over the limit and a sender over the rate limit; answers 204 without `SENTRY_BROWSER_DSN`; works without a login; tested against a local fake Sentry server.
 - **Problem reports:** an `expectStatuses` test with the cast (every logged-in member may send, no cookie gives 401); with `includeContact` the report holds the profile's name and address, without it neither; a body with a name or address field is 400; the message is scrubbed; the rate limit; `eventId` is passed on.
 - **The browser:** component tests and stories for the form (empty, filled, checkbox on, sending, failed) and both crash screens; a test that a tap's breadcrumb holds no name; a test that the eleventh error of a page load is dropped; a Playwright test that sends a problem report from the app and one from the portal, and one that makes the crash screen appear.
 - **The release:** the served directories hold no maps and no `sourceMappingURL`; `release/sourcemaps/` holds them, with debug IDs matching the bundles; the existing smoke test and end-to-end tests still pass (the service worker included).

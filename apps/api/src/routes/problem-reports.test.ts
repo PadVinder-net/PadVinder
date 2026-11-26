@@ -6,6 +6,7 @@ import { createTestApp, loginAs, type TestApp } from "../testing/login";
 import { testEnv } from "../test-env";
 
 let fake: Awaited<ReturnType<typeof startFakeSentry>>;
+let other: Awaited<ReturnType<typeof startFakeSentry>>;
 let ctx: TestApp;
 let off: TestApp;
 let cast: Cast;
@@ -13,15 +14,28 @@ const offLog = createTestLogger("info");
 
 beforeAll(async () => {
   fake = await startFakeSentry();
+  other = await startFakeSentry();
   ctx = await createTestApp(
     {},
-    { monitoring: { dsn: fake.dsn, environment: "staging", release: "rel-1" } },
+    {
+      monitoring: {
+        dsn: other.dsn,
+        browserDsn: fake.dsn,
+        environment: "staging",
+        release: "rel-1",
+      },
+    },
   );
   off = await createTestApp(
     {},
     {
       logger: offLog.logger,
-      monitoring: { dsn: undefined, environment: "staging", release: "rel-1" },
+      monitoring: {
+        dsn: other.dsn,
+        browserDsn: undefined,
+        environment: "staging",
+        release: "rel-1",
+      },
     },
   );
   cast = await createCast(off);
@@ -31,6 +45,7 @@ afterAll(async () => {
   await ctx?.close();
   await off?.close();
   await fake?.close();
+  await other?.close();
 });
 
 beforeEach(() => {
@@ -182,7 +197,14 @@ test("502 report_not_sent when Sentry cannot be reached", async () => {
   await closed.close();
   const app = await createTestApp(
     {},
-    { monitoring: { dsn: closed.dsn, environment: "staging", release: "rel-1" } },
+    {
+      monitoring: {
+        dsn: other.dsn,
+        browserDsn: closed.dsn,
+        environment: "staging",
+        release: "rel-1",
+      },
+    },
   );
   try {
     const person = await newPerson(app);
@@ -219,4 +241,34 @@ test("with Sentry off: 204 and one info line with the message's length, not its 
   expect(lines).toHaveLength(1);
   expect(lines[0]).toMatchObject({ level: "info", messageLength: message.length });
   expect(JSON.stringify(entries)).not.toContain("MARKER-TEXT");
+});
+
+test("a report reaches the browser project's server only", async () => {
+  const person = await newPerson(ctx);
+  const before = fake.requests().length;
+  const res = await send(ctx, person.headers);
+  expect(res.statusCode).toBe(204);
+  expect(fake.requests().length).toBe(before + 1);
+  expect(other.requests()).toHaveLength(0);
+  expect(fake.envelopes().at(-1)![0].dsn).toBe(fake.dsn);
+});
+
+test("with only the server DSN set a report is only logged and answers 204", async () => {
+  const log = createTestLogger("info");
+  const onlyServer = await createTestApp(
+    {},
+    {
+      logger: log.logger,
+      monitoring: { dsn: other.dsn, browserDsn: undefined, environment: "staging", release: "r" },
+    },
+  );
+  try {
+    const person = await newPerson(onlyServer);
+    const res = await send(onlyServer, person.headers);
+    expect(res.statusCode).toBe(204);
+    expect(other.requests()).toHaveLength(0);
+    expect(log.text()).toContain("Sentry is off");
+  } finally {
+    await onlyServer.close();
+  }
 });

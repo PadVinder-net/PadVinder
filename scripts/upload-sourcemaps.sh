@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Uploads the source maps of a release (release/sourcemaps: the server bundles with their maps,
-# carrying Sentry debug IDs) to the Sentry project padvinder.
+# Uploads the source maps of a release (release/sourcemaps: the server bundles and the
+# browser bundles with their maps, carrying Sentry debug IDs) to the Sentry projects:
+# the server bundles (api, worker) to padvinder-server, the browser bundles (mobile,
+# portal) to padvinder-browser.
 #
 #   scripts/upload-sourcemaps.sh <dir>
 #
@@ -39,8 +41,28 @@ fi
 
 export SENTRY_URL="${SENTRY_URL:-https://de.sentry.io}"
 
-echo "upload-sourcemaps: uploading $dir to the Sentry project padvinder at $SENTRY_URL"
 # Read-only: the checkout is used after this step with the deploy credentials.
 # The organization reaches sentry-cli through SENTRY_ORG only, never on its command line: it is a
 # secret, and the logs of the Deploy workflow are public.
-SENTRY_CLI_READONLY=1 "$root/scripts/sentry-cli.sh" sourcemaps upload --project padvinder "$dir"
+upload_to() {
+  local project="$1"
+  shift
+  local dirs=()
+  local name
+  for name in "$@"; do
+    if [[ -d "$dir/$name" ]]; then
+      dirs+=("$dir/$name")
+    else
+      warn "no source maps in $dir/$name; skipping it."
+    fi
+  done
+  [[ ${#dirs[@]} -gt 0 ]] || return 0
+  echo "upload-sourcemaps: uploading ${dirs[*]} to the Sentry project $project at $SENTRY_URL"
+  SENTRY_CLI_READONLY=1 "$root/scripts/sentry-cli.sh" sourcemaps upload --project "$project" "${dirs[@]}"
+}
+
+# Both projects are tried even when the first upload fails; the exit status says if one failed.
+status=0
+upload_to padvinder-server api worker || status=1
+upload_to padvinder-browser mobile portal || status=1
+exit "$status"

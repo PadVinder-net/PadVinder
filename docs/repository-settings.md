@@ -124,7 +124,8 @@ Settings, Environments. The workflows in `.github/workflows/` (`deploy.yml`, `pr
   - `AUTH_SECRET` (a different one per environment)
   - `SMTP_USER`
   - `SMTP_PASSWORD`
-  - `SENTRY_DSN`
+  - `SENTRY_DSN` (the server project's)
+  - `SENTRY_BROWSER_DSN` (the browser project's)
   - `SENTRY_AUTH_TOKEN`
   - `SENTRY_ORG`
 

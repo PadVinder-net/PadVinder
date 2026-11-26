@@ -6,6 +6,11 @@ export type DeploymentEnvironment = (typeof DEPLOYMENT_ENVIRONMENTS)[number];
 export type MonitoringSettings = {
   /** Sentry is off when this is undefined. */
   dsn: string | undefined;
+  /**
+   * The browser project's DSN (`SENTRY_BROWSER_DSN`): where the API's tunnel and problem reports
+   * send. The tunnel and problem reports are off when this is undefined.
+   */
+  browserDsn: string | undefined;
   environment: DeploymentEnvironment;
   /** The git commit of the release. */
   release: string;
@@ -16,12 +21,12 @@ function invalid(variable: string, problem: string): Error {
   return new Error(`Invalid monitoring settings: ${variable}: ${problem}`);
 }
 
-function readDsn(value: string | undefined): string | undefined {
+function readDsn(variable: string, value: string | undefined): string | undefined {
   if (value === undefined || value === "") return undefined;
   try {
     parseDsn(value);
   } catch (error) {
-    throw invalid("SENTRY_DSN", error instanceof DsnError ? error.message : "not a DSN");
+    throw invalid(variable, error instanceof DsnError ? error.message : "not a DSN");
   }
   return value;
 }
@@ -38,12 +43,13 @@ function readEnvironment(value: string | undefined): DeploymentEnvironment {
   return value;
 }
 
-/** Reads `SENTRY_DSN`, `PADVINDER_ENVIRONMENT` and `GIT_COMMIT`. */
+/** Reads `SENTRY_DSN`, `SENTRY_BROWSER_DSN`, `PADVINDER_ENVIRONMENT` and `GIT_COMMIT`. */
 export function readMonitoringSettings(
   source: Record<string, string | undefined>,
 ): MonitoringSettings {
   return {
-    dsn: readDsn(source.SENTRY_DSN),
+    dsn: readDsn("SENTRY_DSN", source.SENTRY_DSN),
+    browserDsn: readDsn("SENTRY_BROWSER_DSN", source.SENTRY_BROWSER_DSN),
     environment: readEnvironment(source.PADVINDER_ENVIRONMENT),
     release: source.GIT_COMMIT || "dev",
   };

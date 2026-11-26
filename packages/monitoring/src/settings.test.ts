@@ -4,6 +4,7 @@ import { readMonitoringSettings } from "./settings";
 test("defaults: off, development, dev", () => {
   expect(readMonitoringSettings({})).toEqual({
     dsn: undefined,
+    browserDsn: undefined,
     environment: "development",
     release: "dev",
   });
@@ -18,7 +19,12 @@ test("reads the DSN, environment and commit", () => {
       PADVINDER_ENVIRONMENT: "staging",
       GIT_COMMIT: "abc",
     }),
-  ).toEqual({ dsn: "https://k@o1.ingest.de.sentry.io/2", environment: "staging", release: "abc" });
+  ).toEqual({
+    dsn: "https://k@o1.ingest.de.sentry.io/2",
+    browserDsn: undefined,
+    environment: "staging",
+    release: "abc",
+  });
   expect(readMonitoringSettings({ SENTRY_DSN: "http://public@127.0.0.1:9/1" }).dsn).toBe(
     "http://public@127.0.0.1:9/1",
   );
@@ -49,4 +55,20 @@ test("a URL that is not a DSN is refused, without its value", () => {
     );
     expect(() => readMonitoringSettings({ SENTRY_DSN: value })).not.toThrow(value);
   }
+});
+
+test("reads the browser DSN, empty counts as unset", () => {
+  expect(
+    readMonitoringSettings({ SENTRY_BROWSER_DSN: "https://b@o1.ingest.de.sentry.io/3" }),
+  ).toMatchObject({
+    dsn: undefined,
+    browserDsn: "https://b@o1.ingest.de.sentry.io/3",
+  });
+  expect(readMonitoringSettings({ SENTRY_BROWSER_DSN: "" }).browserDsn).toBeUndefined();
+});
+
+test("an invalid browser DSN names its variable, never the value", () => {
+  const read = () => readMonitoringSettings({ SENTRY_BROWSER_DSN: "ftp://secret-value@host/1" });
+  expect(read).toThrow(/^Invalid monitoring settings: SENTRY_BROWSER_DSN: /);
+  expect(read).not.toThrow(/secret-value/);
 });
