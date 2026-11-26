@@ -271,3 +271,8 @@ export function otherWorkingGroups(
   if (me.membershipRequest?.status === "pending") taken.add(me.membershipRequest.workingGroup.id);
   return directory.filter((group) => !taken.has(group.id));
 }
+
+/** A platform admin or an admin of at least one organization: who has passkeys. */
+export function hasAdminRole(me: MeResponse): boolean {
+  return me.user.isPlatformAdmin || me.organizationAdminOf.length > 0;
+}

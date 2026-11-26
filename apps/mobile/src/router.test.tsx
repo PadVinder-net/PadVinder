@@ -2,6 +2,7 @@ import {
   coordinatorMeFixture,
   healthyFixture,
   membersWithContactFixture,
+  platformAdminMeFixture,
   requestsForReviewFixture,
   workingGroupsFixture,
 } from "@padvinder/contracts/fixtures";
@@ -54,6 +55,7 @@ test("no route under /more is Dutch, and every sub-screen links back", async () 
   expect(morePaths()).toEqual([
     "",
     "profile",
+    "profile/passkeys",
     "profile/join",
     "membership-requests",
     "membership-requests/:requestId",
@@ -73,6 +75,7 @@ test("no route under /more is Dutch, and every sub-screen links back", async () 
   const subScreens: Array<[string, string]> = [
     ["/app/more/profile", "/app/more"],
     ["/app/more/profile/join", "/app/more/profile"],
+    ["/app/more/profile/passkeys", "/app/more/profile"],
     ["/app/more/membership-requests", "/app/more"],
     [`/app/more/membership-requests/${request.id}`, "/app/more/membership-requests"],
     ["/app/more/members", "/app/more"],
@@ -118,4 +121,10 @@ test("the crash routes for the end-to-end tests exist only under the dev server"
 
 test("the top route has the crash screen as its error element", () => {
   for (const dev of [true, false]) expect(buildRoutes({ dev })[0]!.errorElement).toBeTruthy();
+});
+
+test("the passkeys screen is at /more/profile/passkeys", async () => {
+  mockFetch({ "/api/me": platformAdminMeFixture, "/api/passkeys": { passkeys: [] } });
+  renderApp("/app/more/profile/passkeys");
+  expect(await screen.findByRole("heading", { name: "Toegangssleutels" })).toBeVisible();
 });

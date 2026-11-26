@@ -1,7 +1,6 @@
-import { useMe, useUpdateMe } from "@padvinder/api-client";
+import { hasAdminRole, useMe, useUpdateMe } from "@padvinder/api-client";
 import { Button, connectionMessage, ProfileForm } from "@padvinder/ui";
 import { Link } from "react-router";
-import { hasAdminRole } from "../layout/require-admin-role";
 
 /**
  * The user's own profile (`/profile`): name and phone number, without account deletion (that goes

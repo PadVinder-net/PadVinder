@@ -1,12 +1,6 @@
-import { useMe } from "@padvinder/api-client";
-import type { MeResponse } from "@padvinder/contracts";
+import { hasAdminRole, useMe } from "@padvinder/api-client";
 import type { ReactNode } from "react";
 import { NotFoundPage } from "../pages/not-found-page";
-
-/** A platform admin or an admin of at least one organization: who has passkeys. */
-export function hasAdminRole(me: MeResponse): boolean {
-  return me.user.isPlatformAdmin || me.organizationAdminOf.length > 0;
-}
 
 /**
  * Renders `children` only for someone with an admin role; anyone else sees the not-found page.
