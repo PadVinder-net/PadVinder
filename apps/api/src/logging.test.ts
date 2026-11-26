@@ -49,16 +49,34 @@ test("an unexpected error is logged without the row's address", async () => {
   expect(log.text()).not.toContain("noor@example.test");
 });
 
-test("request lines have service api, a reqId, no address and a scrubbed URL", async () => {
-  await app!.inject("/api/version?email=a@b.test");
-  const incoming = log
-    .entries()
-    .filter((e) => e.msg === "incoming request")
-    .at(-1)!;
-  expect(incoming).toMatchObject({ service: "test", reqId: expect.any(String) });
-  expect(incoming.req).toEqual({
-    method: "GET",
-    url: "/api/version?email=[email]",
-    host: expect.any(String),
+test("one line per request, with method, scrubbed URL, status, response time and reqId", async () => {
+  const before = log.entries().length;
+  const res = await app!.inject("/api/version?email=a@b.test");
+  expect(res.statusCode).toBe(200);
+  const lines = log.entries().slice(before);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toEqual({
+    level: "info",
+    time: expect.any(Number),
+    service: "test",
+    reqId: expect.any(String),
+    req: { method: "GET", url: "/api/version?email=[email]", host: expect.any(String) },
+    res: { statusCode: 200 },
+    responseTime: expect.any(Number),
+    msg: "request completed",
   });
+  expect(log.entries().some((e) => e.msg === "incoming request")).toBe(false);
+  expect(log.text()).not.toContain("a@b.test");
+});
+
+test("a failing request also gets exactly one request line", async () => {
+  const before = log.entries().length;
+  await app!.inject("/api/test-throw");
+  const requestLines = log
+    .entries()
+    .slice(before)
+    .filter((e) => e.msg === "request completed" || e.msg === "incoming request");
+  expect(requestLines).toEqual([
+    expect.objectContaining({ level: "info", res: { statusCode: 500 }, req: expect.any(Object) }),
+  ]);
 });

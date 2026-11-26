@@ -27,7 +27,7 @@ test("the request serializer leaves out address, port and headers", () => {
         host: "padvinder.test",
       },
     },
-    "incoming request",
+    "request completed",
   );
   const req = entries()[0]!.req as Record<string, unknown>;
   expect(req).toEqual({ method: "GET", url: "/api/x?email=[email]", host: "padvinder.test" });

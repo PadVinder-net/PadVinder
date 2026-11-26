@@ -339,9 +339,10 @@ The design is `docs/superpowers/specs/2026-11-22-portal-administration-design.md
 The design is `docs/superpowers/specs/2026-11-26-logging-and-monitoring-design.md`. The code is `packages/logging`.
 
 - **One logger.** The API and the worker log JSON lines through `createLogger({ service, level })` from `@padvinder/logging`; every line has `service`, `level` and `msg`. The level comes from `LOG_LEVEL` (default `info`). Both services also install the crash handlers (`installCrashHandlers`).
-- **Errors go in as `{ err }`.** The `err` serializer (`serializeError`) keeps an allowlist of fields; never put an error's own properties or a request object in a log line yourself.
+- **Errors go in as `{ err }`.** The `err` serializer (`serializeError`) keeps an allowlist of fields and never throws; a thrown value that is not an `Error` is logged as its type and, for an object, its keys only (never its values). Never put an error's own properties or a request object in a log line yourself.
 - **Addresses are scrubbed as a safety net.** `scrub` runs on every finished JSON line through pino's `streamWrite` hook (`packages/logging/src/logger.ts`) and removes email addresses; `serializeError` also scrubs an error's `message`, `stack` and the text fields it keeps. This is a net, not permission: do not log an address (see the last rule below).
-- **Health checks stay quiet.** `/api/health` logs below `info` (its route has `logLevel: "warn"`), so only a warning shows; other requests get one line at `info`.
+- **One line per request.** Fastify's "incoming request" line is off; its log controller (`OneLinePerRequest` in `apps/api/src/app.ts`) writes one line at `info`, "request completed", with `req` (method, URL, host), `res.statusCode`, `responseTime` and `reqId`, never the client's address or headers.
+- **Health checks stay quiet.** `/api/health` logs below `info` (its route has `logLevel: "warn"`, which `request.log` follows), so only a warning shows.
 - **Tests read the log** with `createTestLogger` from `@padvinder/logging/testing` (`entries()` for parsed lines, `text()` for the raw output).
 - **`pnpm dev` pretty-prints** the API and worker logs through `pino-pretty`; staging and production write JSON.
 

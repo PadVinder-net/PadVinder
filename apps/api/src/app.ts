@@ -1,7 +1,13 @@
 import swagger from "@fastify/swagger";
 import type { Db, QueueMail } from "@padvinder/db";
 import type { Logger } from "@padvinder/logging";
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import Fastify, {
+  LogController,
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import {
   jsonSchemaTransform,
   jsonSchemaTransformObject,
@@ -54,15 +60,37 @@ declare module "fastify" {
 }
 
 /**
+ * One log line per request instead of Fastify's two ("incoming request" and "request
+ * completed"): the completed line carries the request too. Fastify's other request logs (a
+ * failing serializer, a stream error) stay. The line goes through `reply.log`, which follows a
+ * route's `logLevel`, so `/api/health` (at `warn`) stays out of the log.
+ */
+class OneLinePerRequest extends LogController {
+  override incomingRequest(): void {}
+
+  override requestCompleted(
+    error: Error | null | undefined,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): void {
+    if (this.isLogDisabled(request)) return;
+    const fields = { req: request, res: reply, responseTime: reply.elapsedTime };
+    if (error) reply.log.error({ ...fields, err: error }, "request errored");
+    else reply.log.info(fields, "request completed");
+  }
+}
+
+/**
  * Builds the Fastify app without starting it and without connecting to the database:
  * `db` is a lazy pool, so OpenAPI generation can pass one that never connects.
  * There is no CORS plugin: only our own pages call the API (same origin).
  */
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { env } = deps;
-  const app = Fastify(
-    deps.logger ? { loggerInstance: deps.logger as FastifyBaseLogger } : { logger: false },
-  );
+  const app = Fastify({
+    ...(deps.logger ? { loggerInstance: deps.logger as FastifyBaseLogger } : { logger: false }),
+    logController: new OneLinePerRequest(),
+  });
 
   // Zod schemas validate requests and serialize responses (also for 503).
   app.setValidatorCompiler(validatorCompiler);
