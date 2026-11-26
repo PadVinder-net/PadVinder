@@ -12,6 +12,7 @@ import { createTestDatabase } from "@padvinder/db/testing";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
+import { forwardLog } from "./auth";
 import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
@@ -425,6 +426,30 @@ test("the code never appears in the log, and Better Auth logs only through ours"
   expect(log).toContain("Better Auth: Unexpected error");
   expect(log).not.toContain(code);
   expect(log).not.toContain("noor@example.test");
+});
+
+test("Better Auth's log lines lose quoted values and addresses, in the message and in errors", () => {
+  const logs = createTestLogger("debug");
+  forwardLog(logs.logger)(
+    "error",
+    'Failed for "secret-in-message" and noor@example.test',
+    new Error('Unexpected challenge "abc123", expected "def456" from sam@example.test'),
+  );
+  const [entry] = logs.entries();
+  expect(entry).toMatchObject({
+    level: "error",
+    msg: expect.stringContaining('Better Auth: Failed for "[redacted]"'),
+    errors: [
+      {
+        type: "Error",
+        message: expect.stringContaining('challenge "[redacted]", expected "[redacted]"'),
+      },
+    ],
+  });
+  const text = logs.text();
+  for (const secret of ["secret-in-message", "abc123", "def456", "noor@example.test", "sam@"]) {
+    expect(text).not.toContain(secret);
+  }
 });
 
 test("a POST from a foreign Origin is refused", async () => {

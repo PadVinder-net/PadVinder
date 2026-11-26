@@ -2,15 +2,17 @@ import {
   accounts,
   findUserNameByEmail,
   normalizeEmail,
+  passkeys,
   rateLimits,
   sessions,
   users,
   verifications,
   type Db,
 } from "@padvinder/db";
+import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { eq } from "drizzle-orm";
 import { scrub } from "@padvinder/logging";
@@ -27,6 +29,20 @@ import {
 export type AuthDeps = { env: ApiEnv; db: Db; mailer: Mailer; log: FastifyBaseLogger };
 
 const DAY_SECONDS = 24 * 60 * 60;
+
+/** The paths whose new session is made by a passkey, so it is stamped as confirmed. */
+const PASSKEY_SESSION_PATHS = new Set([
+  "/passkey/verify-authentication",
+  "/passkey/verify-registration",
+]);
+
+/**
+ * Every double-quoted value in a log message, replaced. SimpleWebAuthn quotes the challenge and
+ * the origin in its errors (`Unexpected authentication response challenge "…", expected "…"`).
+ */
+const redactQuoted = (text: string): string => text.replace(/"[^"]*"/g, '"[redacted]"');
+
+const clean = (text: string): string => scrub(redactQuoted(text));
 
 /**
  * The answer (429) when an address asked for too many login codes. The browser client tells the
@@ -46,17 +62,18 @@ export const LOGIN_CODE_LIMIT_ERRORS: Record<LoginCodeLimit, { code: string; mes
 /**
  * Passes Better Auth's log lines to our logger. Its `info` lines are hints for developers, so
  * they go to `debug`. Arguments are reduced to error names and messages: a database error can
- * carry the row (with an email address) in its details.
+ * carry the row (with an email address) in its details. Quoted values are redacted from the
+ * message and the error messages, then addresses are scrubbed.
  */
 export function forwardLog(log: FastifyBaseLogger) {
   return (level: "debug" | "info" | "warn" | "error", message: string, ...args: unknown[]) => {
     const errors = args
       .filter((arg): arg is Error => arg instanceof Error)
-      .map((error) => ({ type: error.name, message: scrub(error.message) }));
+      .map((error) => ({ type: error.name, message: clean(error.message) }));
     const target = level === "info" ? "debug" : level;
     log[target](
       { errors: errors.length > 0 ? errors : undefined },
-      `Better Auth: ${scrub(message)}`,
+      `Better Auth: ${clean(message)}`,
     );
   };
 }
@@ -81,6 +98,7 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         account: accounts,
         verification: verifications,
         rateLimit: rateLimits,
+        passkey: passkeys,
       },
     }),
     user: {
@@ -112,6 +130,10 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
             "/email-otp/send-verification-otp": IP_LIMITS.sendCode,
             "/sign-in/email-otp": IP_LIMITS.checkCode,
             "/sign-out": false,
+            "/passkey/generate-register-options": IP_LIMITS.passkeyOptions,
+            "/passkey/generate-authenticate-options": IP_LIMITS.passkeyOptions,
+            "/passkey/verify-registration": IP_LIMITS.passkeyVerify,
+            "/passkey/verify-authentication": IP_LIMITS.passkeyVerify,
           },
         }
       : { enabled: false },
@@ -178,9 +200,16 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         create: {
           // Better Auth keeps the IP address and browser of every session for its whole life
           // (180 days). We collect no more personal data than we need, so neither is stored. The
-          // columns stay, because Better Auth expects them.
-          before: async (session) => ({
-            data: { ...session, ipAddress: null, userAgent: null },
+          // columns stay, because Better Auth expects them. A session made by a passkey (a login,
+          // a confirmation, or adding one) is confirmed from now; any other is not.
+          before: async (session, context) => ({
+            data: {
+              ...session,
+              ipAddress: null,
+              userAgent: null,
+              ...(context?.path !== undefined &&
+                PASSKEY_SESSION_PATHS.has(context.path) && { passkeyVerifiedAt: new Date() }),
+            },
           }),
           // A session is made only by a login; a renewal updates the row (it does not come
           // through here). So this is the moment of a login.
@@ -203,6 +232,33 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
     },
     telemetry: { enabled: false },
     plugins: [
+      passkey({
+        rpID: new URL(env.PUBLIC_ORIGIN).hostname,
+        rpName: "PadVinder",
+        origin: env.ALLOWED_ORIGINS,
+        // Always a fingerprint, face or PIN; discoverable, so login needs no address.
+        authenticatorSelection: { residentKey: "required", userVerification: "required" },
+        authentication: {
+          // After the signature check, before the session is made. Better Auth never compares the
+          // passkey's account with the session's; a confirmation with someone else's passkey (two
+          // admins on one laptop) is refused, and the old session stays. Without a session (the
+          // login screen) any account's passkey logs in.
+          async afterVerification({ ctx, clientData }) {
+            const session = await getSessionFromCtx(ctx, { disableRefresh: true });
+            if (!session) return;
+            const [row] = await db
+              .select({ userId: passkeys.userId })
+              .from(passkeys)
+              .where(eq(passkeys.credentialID, clientData.id));
+            if (row?.userId !== session.user.id) {
+              throw APIError.from("FORBIDDEN", {
+                code: "PASSKEY_OF_OTHER_ACCOUNT",
+                message: "This passkey belongs to another account",
+              });
+            }
+          },
+        },
+      }),
       emailOTP({
         otpLength: 6,
         expiresIn: 30 * 60,

@@ -122,7 +122,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(
     async (api) => {
-      await api.register(authRoutes, { auth, origin: env.PUBLIC_ORIGIN });
+      await api.register(authRoutes, {
+        auth,
+        origin: env.PUBLIC_ORIGIN,
+        db: deps.db,
+        queueMail: deps.queueMail,
+      });
       await api.register(healthRoutes, { env, db: deps.db });
       await api.register(versionRoutes, { env });
       await api.register(meRoutes, { db: deps.db });
