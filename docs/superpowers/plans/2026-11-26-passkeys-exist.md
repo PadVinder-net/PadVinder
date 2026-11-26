@@ -90,6 +90,7 @@ Pull request 2 ("Admin power needs them") uses these names from this plan. Its p
 - `apiErrorCodes.passkeyRequired` and `apiErrorMessage("passkey_required")`.
 - `usePasskeyConfirmation()`, `requestPasskeyConfirmation(queryClient)`, `backgroundRequestMeta` and `reopenServerEvents()` (`packages/api-client`); `PasskeyModal` (`packages/ui`); the hosts `apps/portal/src/auth/passkey-confirmation-host.tsx` and `apps/mobile/src/auth/passkey-confirmation-host.tsx`.
 - `MeResponse.adminConfirmedUntil`, which pull request 2's app lists read.
+- `backgroundRequestMeta` is not used anywhere yet: pull request 2 applies it to the Aanmeldingen badge (the sum over `useManagedWorkingGroups`) and the app's Meer counts. Until then, and for any query without it, Annuleer does not stop the modal for good: only window-focus refetches skip a query that failed with `passkey_required` (`refetchOnWindowFocus` in `packages/api-client/src/query-client.ts`), so a live-event refetch (`refetchAdministration` on `access-changed` or `membership-requests-changed`, or when the event stream reopens) of such a query fails again and opens the modal again.
 - `stampSession(ctx, cookie, at)` (`apps/api/src/testing/passkeys.ts`). In this pull request the cast's three admins are stamped at login; pull request 2 adds the unconfirmed members.
 
 ---
