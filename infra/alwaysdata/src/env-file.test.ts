@@ -5,13 +5,18 @@ import { join } from "node:path";
 import { expect, test } from "vitest";
 // Deliberate contract test across packages: the API's own parser must accept the env file.
 import { loadApiEnv } from "../../../apps/api/src/env.ts";
-import { renderEnvFile, type LoginSecrets } from "./env-file.ts";
+import { loadWorkerEnv } from "../../../apps/worker/src/env.ts";
+import { readMonitoringSettings } from "../../../packages/monitoring/src/settings.ts";
+import { renderEnvFile, type LoginSecrets, type MonitoringSecrets } from "./env-file.ts";
 import { environmentNames, environments } from "./environments.ts";
 
 const login: LoginSecrets = {
   authSecret: "a".repeat(64),
   smtpUser: "noreply@padvinder.net",
   smtpPassword: "smtp-password-value",
+};
+const monitoring: MonitoringSecrets = {
+  sentryDsn: "https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
 };
 
 test("renderEnvFile encodes the password in DATABASE_URL", () => {
@@ -20,6 +25,7 @@ test("renderEnvFile encodes the password in DATABASE_URL", () => {
     env: "staging",
     databasePassword: "p@ss/w+rd",
     login,
+    monitoring,
   });
   expect(content).toContain(
     "DATABASE_URL=postgres://acme_staging:p%40ss%2Fw%2Brd@postgresql-acme.alwaysdata.net:5432/acme_staging\n",
@@ -33,6 +39,7 @@ test("renderEnvFile writes one KEY=value per line after a header comment", () =>
     env: "production",
     databasePassword: "secret",
     login,
+    monitoring,
   });
   const lines = content.trimEnd().split("\n");
   expect(lines[0]).toMatch(/^# .*provisioning/i);
@@ -42,6 +49,8 @@ test("renderEnvFile writes one KEY=value per line after a header comment", () =>
     "API_PORT=8300",
     "ALLOWED_ORIGINS=https://padvinder.net",
     "LOG_LEVEL=info",
+    "PADVINDER_ENVIRONMENT=production",
+    "SENTRY_DSN=https://0123456789abcdef@o123456.ingest.de.sentry.io/7654321",
     "PUBLIC_ORIGIN=https://padvinder.net",
     `AUTH_SECRET=${"a".repeat(64)}`,
     "SMTP_HOST=smtp-acme.alwaysdata.net",
@@ -54,26 +63,46 @@ test("renderEnvFile writes one KEY=value per line after a header comment", () =>
 });
 
 test("renderEnvFile uses the staging port and origin", () => {
-  const content = renderEnvFile({ account: "acme", env: "staging", databasePassword: "x", login });
+  const content = renderEnvFile({
+    account: "acme",
+    env: "staging",
+    databasePassword: "x",
+    login,
+    monitoring,
+  });
   expect(content).toContain("API_PORT=8301\n");
   expect(content).toContain("ALLOWED_ORIGINS=https://staging.padvinder.net\n");
   expect(content).toContain("PUBLIC_ORIGIN=https://staging.padvinder.net\n");
+  expect(content).toContain("PADVINDER_ENVIRONMENT=staging\n");
 });
 
 test("staging's env file holds MAIL_SUBJECT_PREFIX=[STAGING]; production's has no such line", () => {
-  const staging = renderEnvFile({ account: "acme", env: "staging", databasePassword: "x", login });
+  const staging = renderEnvFile({
+    account: "acme",
+    env: "staging",
+    databasePassword: "x",
+    login,
+    monitoring,
+  });
   const production = renderEnvFile({
     account: "acme",
     env: "production",
     databasePassword: "x",
     login,
+    monitoring,
   });
   expect(staging.split("\n")).toContain("MAIL_SUBJECT_PREFIX=[STAGING]");
   expect(production).not.toContain("MAIL_SUBJECT_PREFIX");
 });
 
 test("renderEnvFile never sets LOGIN_RATE_LIMITS: the API's default (on) must hold on a server", () => {
-  const content = renderEnvFile({ account: "acme", env: "staging", databasePassword: "x", login });
+  const content = renderEnvFile({
+    account: "acme",
+    env: "staging",
+    databasePassword: "x",
+    login,
+    monitoring,
+  });
   expect(content).not.toContain("LOGIN_RATE_LIMITS");
 });
 
@@ -109,17 +138,21 @@ test("the API accepts the env file as Node reads it, in every environment", () =
       smtpUser: "noreply+login@padvinder.net",
       smtpPassword: "p=ss$w0rd!%&()*+,-./:;<=>?@[]^_{|}~",
     };
+    const dsn = "https://Ab1-_~!$&()*+,;=@o1.ingest.de.sentry.io/2";
     const content = renderEnvFile({
       account: "acme",
       env,
       databasePassword: "p@ss/w+rd #1",
       login: awkward,
+      monitoring: { sentryDsn: dsn },
     });
     const parsed = parseWithNode(content);
     expect(parsed.AUTH_SECRET).toBe(awkward.authSecret);
     expect(parsed.SMTP_USER).toBe(awkward.smtpUser);
     expect(parsed.SMTP_PASSWORD).toBe(awkward.smtpPassword);
     expect(parsed.MAIL_FROM).toBe("PadVinder <noreply@padvinder.net>");
+    expect(parsed.SENTRY_DSN).toBe(dsn);
+    expect(parsed.PADVINDER_ENVIRONMENT).toBe(env);
 
     const apiEnv = loadApiEnv({ ...parsed, GIT_COMMIT: "abc1234" });
     expect(apiEnv.PUBLIC_ORIGIN).toBe(environments[env].publicOrigin);
@@ -127,5 +160,9 @@ test("the API accepts the env file as Node reads it, in every environment", () =
     expect(apiEnv.SMTP_HOST).toBe("smtp-acme.alwaysdata.net");
     expect(apiEnv.SMTP_PORT).toBe(465);
     expect(new URL(apiEnv.DATABASE_URL).password).toBe(encodeURIComponent("p@ss/w+rd #1"));
+    expect(apiEnv.PADVINDER_ENVIRONMENT).toBe(env);
+    expect(loadWorkerEnv({ ...parsed, GIT_COMMIT: "abc1234" }).PADVINDER_ENVIRONMENT).toBe(env);
+    // Both services start Sentry from these settings (main.ts).
+    expect(readMonitoringSettings(parsed)).toMatchObject({ dsn, environment: env });
   }
 });

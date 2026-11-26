@@ -2,10 +2,10 @@
 // Usage: pnpm infra:provision --environment <staging|production> [--apply [--rotate-password]]
 //        pnpm infra:provision --environment <staging|production> --inspect
 // Reads ALWAYSDATA_ACCOUNT, ALWAYSDATA_API_KEY, DATABASE_PASSWORD, AUTH_SECRET, SMTP_USER,
-// SMTP_PASSWORD, SSH_KNOWN_HOSTS_FILE, and DEPLOY_SSH_AGENT_SOCK or DEPLOY_SSH_KEY_FILE from
-// the environment (--inspect only the first two). Its output may land in
-// a public log: every line goes through redactForLog(): secrets are hidden, IP addresses
-// show as <ip> and the account name as <account>.
+// SMTP_PASSWORD, SENTRY_DSN, SSH_KNOWN_HOSTS_FILE, and DEPLOY_SSH_AGENT_SOCK or
+// DEPLOY_SSH_KEY_FILE from the environment (--inspect only the first two). Its output may
+// land in a public log: every line goes through redactForLog(): secrets are hidden, IP
+// addresses show as <ip> and the account name as <account>.
 import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import {
@@ -227,11 +227,12 @@ export const passwordMismatchMessage =
 
 /** Every secret the run knows, to hide in what it prints. */
 function secretsOf(config: InfraConfig): string[] {
-  const { login } = config;
+  const { login, monitoring } = config;
   return [
     config.apiKey,
     config.databasePassword ?? "",
     ...(login ? [login.authSecret, login.smtpUser, login.smtpPassword] : []),
+    ...(monitoring ? [monitoring.sentryDsn] : []),
   ];
 }
 
@@ -268,6 +269,8 @@ export async function runProvision(input: {
     if (login === undefined) {
       throw new Error("AUTH_SECRET, SMTP_USER and SMTP_PASSWORD are not set");
     }
+    const monitoring = config.monitoring;
+    if (monitoring === undefined) throw new Error("SENTRY_DSN is not set");
     const env = args.environment;
     // Read-only, and before anything is written: the services must name the main SSH user.
     const mainSshUserId = await findMainSshUserId(api, config.account);
@@ -286,7 +289,13 @@ export async function runProvision(input: {
     }
 
     const directory = environmentDirectory(env);
-    const content = renderEnvFile({ account: config.account, env, databasePassword, login });
+    const content = renderEnvFile({
+      account: config.account,
+      env,
+      databasePassword,
+      login,
+      monitoring,
+    });
 
     // Read the env file before changing anything, so neither a failing SSH login nor a
     // mismatching password leaves a database password changed without the env file that

@@ -21,12 +21,14 @@ const login = {
   smtpUser: "mailbox-user@example.test",
   smtpPassword: "smtp-password-value",
 };
+const monitoring = { sentryDsn: "https://dsnkey0123456789@o123456.ingest.de.sentry.io/7654321" };
 const config: InfraConfig = {
   environment: "staging",
   account: "acmecorp",
   apiKey,
   databasePassword: password,
   login,
+  monitoring,
   ssh: {
     host: "ssh-acmecorp.alwaysdata.net",
     user: "acmecorp",
@@ -124,6 +126,8 @@ const expectNoSecrets = (text: string) => {
     login.authSecret,
     login.smtpUser,
     login.smtpPassword,
+    monitoring.sentryDsn,
+    "dsnkey0123456789",
   ]) {
     expect(text).not.toContain(value);
   }
@@ -168,6 +172,7 @@ test("with --apply it creates the resources, then writes the env file and the re
           env: "staging",
           databasePassword: password,
           login,
+          monitoring,
         }),
         0o600,
       ],
@@ -197,6 +202,7 @@ test("a restart is asked for only when the env file changed or the password was 
     env: "staging",
     databasePassword: password,
     login,
+    monitoring,
   });
   remoteFiles.set("padvinder/staging/.env", envFile.replace("LOG_LEVEL=info", "LOG_LEVEL=debug"));
   output = [];
@@ -239,6 +245,7 @@ test("--apply refuses a password that differs from the env file's, unless --rota
     env: "staging",
     databasePassword: oldPassword,
     login,
+    monitoring,
   });
   remoteFiles.set("padvinder/staging/.env", oldEnvFile);
   calls = [];
@@ -261,7 +268,13 @@ test("--apply refuses a password that differs from the env file's, unless --rota
   expect(await run(args({ apply: true, rotatePassword: true }))).toBe(0);
   expect(writes().some((r) => r.method === "PATCH")).toBe(true);
   expect(remoteFiles.get("padvinder/staging/.env")).toBe(
-    renderEnvFile({ account: config.account, env: "staging", databasePassword: password, login }),
+    renderEnvFile({
+      account: config.account,
+      env: "staging",
+      databasePassword: password,
+      login,
+      monitoring,
+    }),
   );
   expect(output.join("\n")).toMatch(restartNotice);
   expect(output.join("\n")).not.toContain(oldPassword);
@@ -276,6 +289,7 @@ test("a password mismatch stops before any change through the API", async () => 
       env: "staging",
       databasePassword: "old-secret",
       login,
+      monitoring,
     }),
   );
   // Something else to apply, too.
@@ -461,6 +475,26 @@ test("an SSH failure while writing after the apply exits 1 and says to run again
   expectNoSecrets(text);
 });
 
+test("the Sentry DSN in an error shows as ***", async () => {
+  const failing: Remote = {
+    ...fakeRemote,
+    writeFile: async (_path, content) => {
+      throw new Error(`could not write ${content}`);
+    },
+  };
+  const code = await runProvision({
+    args: args({ apply: true }),
+    config,
+    api,
+    remote: () => failing,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(1);
+  const text = output.join("\n");
+  expect(text).toMatch(/SENTRY_DSN=\*\*\*/);
+  expectNoSecrets(text);
+});
+
 test("an IP address in an SSH error shows as <ip>", async () => {
   const failing: Remote = {
     ...fakeRemote,
@@ -616,7 +650,7 @@ test("the CLI exits 2 with usage on an unknown flag and 1 on missing variables",
   });
   expect(missing.status).toBe(1);
   expect(missing.stderr).toMatch(/ALWAYSDATA_API_KEY/);
-  expect(missing.stderr).toMatch(/AUTH_SECRET, SMTP_USER, SMTP_PASSWORD/);
+  expect(missing.stderr).toMatch(/AUTH_SECRET, SMTP_USER, SMTP_PASSWORD, SENTRY_DSN/);
   // Inspect writes no env file, so it does without them.
   const inspect = spawnSync(process.execPath, [script, "--environment", "staging", "--inspect"], {
     env: { ...env, ALWAYSDATA_ACCOUNT: "acme" },
@@ -643,6 +677,21 @@ test("without the login secrets it fails before reading or changing anything", a
   expect(calls).toEqual([]);
 });
 
+test("without the Sentry DSN it fails before reading or changing anything", async () => {
+  const { monitoring: _, ...withoutMonitoring } = config;
+  const code = await runProvision({
+    args: args({ apply: true }),
+    config: withoutMonitoring,
+    api,
+    remote: () => fakeRemote,
+    print: (line) => output.push(line),
+  });
+  expect(code).toBe(1);
+  expect(output.join("\n")).toMatch(/Provisioning failed: SENTRY_DSN is not set/);
+  expect(writes()).toEqual([]);
+  expect(calls).toEqual([]);
+});
+
 test("a new login secret rewrites the env file and asks for a restart, without rotate-password", async () => {
   remoteFiles.set("padvinder/staging/current", "release");
   const oldEnvFile = renderEnvFile({
@@ -650,12 +699,15 @@ test("a new login secret rewrites the env file and asks for a restart, without r
     env: "staging",
     databasePassword: password,
     login: { ...login, authSecret: "old-auth-secret-old-auth-secret-000000" },
+    monitoring,
   });
   remoteFiles.set("padvinder/staging/.env", oldEnvFile);
   expect(await run(args({ apply: true }))).toBe(0);
   const written = remoteFiles.get("padvinder/staging/.env");
   expect(written).toContain(`AUTH_SECRET=${login.authSecret}\n`);
   expect(written).toContain(`SMTP_PASSWORD=${login.smtpPassword}\n`);
+  expect(written).toContain(`SENTRY_DSN=${monitoring.sentryDsn}\n`);
+  expect(written).toContain("PADVINDER_ENVIRONMENT=staging\n");
   expect(calls.find((call) => call.method === "writeFile")?.args[2]).toBe(0o600);
   const text = output.join("\n");
   expect(text).toMatch(restartNotice);
@@ -670,6 +722,7 @@ test("an env file from before login gets the login lines, with the same database
     env: "staging",
     databasePassword: password,
     login,
+    monitoring,
   });
   const beforeLogin = full
     .split("\n")

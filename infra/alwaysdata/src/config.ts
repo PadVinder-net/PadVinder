@@ -1,4 +1,4 @@
-import type { LoginSecrets } from "./env-file.ts";
+import type { LoginSecrets, MonitoringSecrets } from "./env-file.ts";
 import {
   mailFromAddress,
   smtpHost,
@@ -16,14 +16,16 @@ export type InfraConfig = {
   databasePassword?: string;
   /** Only when requested, like the database password. */
   login?: LoginSecrets;
+  /** Only when requested, like the database password. */
+  monitoring?: MonitoringSecrets;
   /** Only when requested. */
   ssh?: { host: string; user: string; identity: SshIdentity; knownHostsFile: string };
 };
 
 const accountPattern = /^[a-z0-9][a-z0-9_-]*$/;
 
-/** The env file's secrets, in the order errors name them. */
-const loginSecretNames = ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD"] as const;
+/** The env file's secrets besides the database password, in the order errors name them. */
+const envFileSecretNames = ["AUTH_SECRET", "SMTP_USER", "SMTP_PASSWORD", "SENTRY_DSN"] as const;
 /** The API refuses a shorter AUTH_SECRET (apps/api/src/env.ts). */
 const authSecretMinLength = 32;
 /**
@@ -32,6 +34,15 @@ const authSecretMinLength = 32;
  */
 const envFileValuePattern = /^[\x21-\x7e]+$/;
 const envFileUnsafePattern = /["#'\\`]/;
+
+/** Whether a value parses as an https URL; the services refuse a DSN that is no URL. */
+function isHttpsAddress(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Whether SMTP_USER cannot send as `mailFrom`: Alwaysdata's SMTP server sends only as the
@@ -52,14 +63,15 @@ export function loadInfraConfig(
   environment: EnvironmentName,
   options: { envFileSecrets?: boolean; ssh?: boolean } = {},
 ): InfraConfig {
-  // The database password and the login secrets go into the env file together: provisioning
-  // never writes a file without them, because the API refuses to start on it.
+  // The database password, the login secrets and the Sentry DSN go into the env file together:
+  // provisioning never writes a file without them, because the API refuses to start without
+  // the login secrets, and the services would run without error tracking without the DSN.
   const wantSecrets = options.envFileSecrets ?? true;
   const wantSsh = options.ssh ?? true;
   const required = [
     "ALWAYSDATA_ACCOUNT",
     "ALWAYSDATA_API_KEY",
-    ...(wantSecrets ? ["DATABASE_PASSWORD", ...loginSecretNames] : []),
+    ...(wantSecrets ? ["DATABASE_PASSWORD", ...envFileSecretNames] : []),
     ...(wantSsh ? ["SSH_KNOWN_HOSTS_FILE"] : []),
   ];
   const value = (name: string) => source[name] ?? "";
@@ -85,7 +97,7 @@ export function loadInfraConfig(
 
   const config: InfraConfig = { environment, account, apiKey: value("ALWAYSDATA_API_KEY") };
   if (wantSecrets) {
-    for (const name of loginSecretNames) {
+    for (const name of envFileSecretNames) {
       const secret = value(name);
       if (!envFileValuePattern.test(secret) || envFileUnsafePattern.test(secret)) {
         throw new Error(
@@ -103,12 +115,18 @@ export function loadInfraConfig(
         "SMTP_USER must be the mailbox address in mailFrom (src/environments.ts): Alwaysdata's SMTP server sends only as the mailbox it logs in as",
       );
     }
+    if (!isHttpsAddress(value("SENTRY_DSN"))) {
+      throw new Error(
+        "SENTRY_DSN must be the DSN of the Sentry project, an https address (Sentry: Settings, Projects, padvinder, Client Keys), or the services do not start",
+      );
+    }
     config.databasePassword = value("DATABASE_PASSWORD");
     config.login = {
       authSecret: value("AUTH_SECRET"),
       smtpUser: value("SMTP_USER"),
       smtpPassword: value("SMTP_PASSWORD"),
     };
+    config.monitoring = { sentryDsn: value("SENTRY_DSN") };
   }
   if (wantSsh) {
     config.ssh = {
