@@ -3,7 +3,13 @@ import { and, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "../test-env";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, type TestApp } from "../testing/login";
 
 let ctx: TestApp;
@@ -35,7 +41,9 @@ const newBody = (extra: Record<string, unknown> = {}) => {
 
 const everyone = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: 200,
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: 200,
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,
@@ -44,9 +52,11 @@ const everyone = {
   applicant: 200,
   anonymous: 401,
 };
-const adminsOnly = (ok: number) => ({
+const adminsOnly = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 403,
+  organizationAdminUnconfirmed: 403,
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 403,

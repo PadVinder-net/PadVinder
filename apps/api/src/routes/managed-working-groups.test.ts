@@ -7,7 +7,13 @@ import {
 import { and, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
 let ctx: TestApp;
@@ -73,9 +79,11 @@ const entriesFor = (subjectId: string, action: string) =>
     .from(auditLogEntries)
     .where(and(eq(auditLogEntries.subjectId, subjectId), eq(auditLogEntries.action, action)));
 
-const managersOfGroup = (ok: number) => ({
+const managersOfGroup = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: ok,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 404,
@@ -90,7 +98,9 @@ test("everyone logged in gets their own list", async () =>
     cast,
     {
       platformAdmin: 200,
+      platformAdminUnconfirmed: 200,
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: 200,
       coordinator: 200,
       volunteer: 200,
       volunteerOtherGroup: 200,
@@ -140,7 +150,9 @@ test("only the organization's admins and platform admins create a working group"
     cast,
     {
       platformAdmin: 201,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 201,
+      organizationAdminUnconfirmed: "passkey_required",
       coordinator: 404,
       volunteer: 404,
       volunteerOtherGroup: 404,

@@ -144,9 +144,11 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
       const { organizationId } = request.params;
       const target = { organizationId };
       // Both are decided before anything changes: a body with a name from an admin changes nothing.
-      authorize(actor, { action: "organization.changeContact", target });
+      // Rename first: an admin who may not rename at all gets 403 not_allowed, never a request for
+      // a passkey that would not help.
       if (request.body.name !== undefined)
         authorize(actor, { action: "organization.rename", target });
+      authorize(actor, { action: "organization.changeContact", target });
       await mapAdminErrors(
         () =>
           updateOrganization(

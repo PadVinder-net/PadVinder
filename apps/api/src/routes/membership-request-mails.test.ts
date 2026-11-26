@@ -122,9 +122,15 @@ test("without a coordinator it mails the organization's admins", async () => {
   const before = requestMails().length;
   const res = await create(await newApplicant(), group.id);
   expect(res.statusCode).toBe(201);
-  await expect.poll(() => requestMails().length - before).toBe(1);
-  expect(requestMails().at(-1)!.to).toBe(cast.members.organizationAdmin.email.toLowerCase());
-  expect(requestMails().at(-1)!.subject).toBe("Nieuwe aanmelding bij Zonder coördinator");
+  await expect.poll(() => requestMails().length - before).toBe(2);
+  const sent = requestMails().slice(before);
+  expect(sent.map((mail) => mail.to).sort()).toEqual(
+    [
+      cast.members.organizationAdmin.email.toLowerCase(),
+      cast.members.organizationAdminUnconfirmed.email.toLowerCase(),
+    ].sort(),
+  );
+  for (const mail of sent) expect(mail.subject).toBe("Nieuwe aanmelding bij Zonder coördinator");
 });
 
 test("without a coordinator and without an admin it mails nobody and logs the group's ID", async () => {

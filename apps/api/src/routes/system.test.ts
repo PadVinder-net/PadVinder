@@ -18,7 +18,9 @@ test("only a platform admin triggers the test error; it answers 500 internal_err
     cast,
     {
       platformAdmin: 500,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 403,
+      organizationAdminUnconfirmed: 403,
       coordinator: 403,
       volunteer: 403,
       volunteerOtherGroup: 403,

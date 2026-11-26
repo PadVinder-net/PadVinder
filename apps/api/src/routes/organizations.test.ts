@@ -12,7 +12,13 @@ import { and, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "../test-env";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 import { stampSession } from "../testing/passkeys";
 
@@ -62,7 +68,9 @@ async function makeOrganization(extra: Record<string, unknown> = {}) {
 
 const everyone = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: 200,
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: 200,
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,
@@ -71,9 +79,11 @@ const everyone = {
   applicant: 200,
   anonymous: 401,
 };
-const adminsOfIt = (ok: number, admin = ok) => ({
+const adminsOfIt = (ok: number, admin = ok): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: admin,
+  organizationAdminUnconfirmed: admin === ok ? "passkey_required" : admin,
   coordinator: 404,
   volunteer: 404,
   volunteerOtherGroup: 404,
@@ -82,9 +92,11 @@ const adminsOfIt = (ok: number, admin = ok) => ({
   applicant: 404,
   anonymous: 401,
 });
-const platformOnly = (ok: number) => ({
+const platformOnly = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 403,
+  organizationAdminUnconfirmed: 403,
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 403,
@@ -137,6 +149,14 @@ test("only its admins and platform admins see an organization", async () => {
         hasPasskey: false,
         mayResetPasskeys: false,
       },
+      {
+        userId: cast.members.organizationAdminUnconfirmed.userId,
+        name: "Cast organizationAdminUnconfirmed",
+        email: cast.members.organizationAdminUnconfirmed.email.toLowerCase(),
+        hasLoggedIn: true,
+        hasPasskey: false,
+        mayResetPasskeys: true,
+      },
     ],
   });
 });
@@ -157,6 +177,25 @@ test("only a platform admin renames it", async () => {
   );
   const res = await patch(cast.members.platformAdmin, id, { name: uniqueName() });
   expect(res.statusCode).toBe(200);
+});
+
+test("an unconfirmed organization admin sending a name gets 403 not_allowed, also with a contact address", async () => {
+  for (const body of [
+    { name: uniqueName() },
+    { name: uniqueName(), contactEmail: "x@example.test" },
+  ]) {
+    const res = await patch(cast.members.organizationAdminUnconfirmed, cast.organization.id, body);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("not_allowed");
+  }
+});
+
+test("a confirmed organization admin still changes the contact address alone", async () => {
+  const res = await patch(cast.members.organizationAdmin, cast.organization.id, {
+    contactEmail: "alleen@example.test",
+  });
+  expect(res.statusCode).toBe(200);
+  expect(res.json().contactEmail).toBe("alleen@example.test");
 });
 
 test("a body with name and contactEmail from its admin changes nothing", async () => {
@@ -196,9 +235,18 @@ test("only a platform admin removes an admin", async () => {
     const headers = name === "anonymous" ? {} : cast.members[name].headers;
     const target = await spare();
     const res = await removeAdmin({ headers }, org.id, target.userId);
-    // The cast has no admin of this fresh organization: only a platform admin passes.
-    const want = name === "platformAdmin" ? 204 : name === "anonymous" ? 401 : 404;
+    // The cast has no admin of this fresh organization: only a platform admin passes, and an
+    // unconfirmed one is asked for a passkey first.
+    const want =
+      name === "platformAdmin"
+        ? 204
+        : name === "platformAdminUnconfirmed"
+          ? 403
+          : name === "anonymous"
+            ? 401
+            : 404;
     expect(res.statusCode, name).toBe(want);
+    if (name === "platformAdminUnconfirmed") expect(res.json().code).toBe("passkey_required");
   }
   // On the cast organization the admin of it is refused with 403, not 404.
   const own = await removeAdmin(

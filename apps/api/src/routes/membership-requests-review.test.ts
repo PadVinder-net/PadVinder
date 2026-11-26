@@ -17,7 +17,7 @@ import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { openEvents } from "../test-open-events";
-import { createCast, expectStatuses, type Cast } from "../testing/cast";
+import { createCast, expectStatuses, type Cast, type ExpectedStatuses } from "../testing/cast";
 import { loginAs, type TestApp } from "../testing/login";
 
 // A real notification hub, so a test can read the live events from the stream.
@@ -53,9 +53,11 @@ afterAll(async () => {
 
 type Who = { headers: Record<string, string> };
 
-const reviewers = {
+const reviewers: ExpectedStatuses = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 200,
   volunteer: 403,
   volunteerOtherGroup: 404,
@@ -67,7 +69,9 @@ const reviewers = {
 
 const everyone = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: 200,
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: 200,
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,

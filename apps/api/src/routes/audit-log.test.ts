@@ -9,7 +9,7 @@ import type { AuditLogEntry, AuditLogPage } from "@padvinder/contracts";
 import { count, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { createCast, expectStatuses, type Cast } from "../testing/cast";
+import { createCast, expectStatuses, type Cast, type ExpectedStatuses } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
 let ctx: TestApp;
@@ -84,7 +84,9 @@ afterAll(() => ctx.close());
 
 const everyone = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: 200,
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: 200,
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,
@@ -93,9 +95,11 @@ const everyone = {
   applicant: 200,
   anonymous: 401,
 };
-const adminsOfIt = {
+const adminsOfIt: ExpectedStatuses = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 404,
   volunteer: 404,
   volunteerOtherGroup: 404,

@@ -84,7 +84,9 @@ test("who may list the members", async () => {
     cast,
     {
       platformAdmin: 200,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: 200,
       coordinator: 200,
       volunteer: 200,
       volunteerOtherGroup: 404,
@@ -148,7 +150,9 @@ test("who may remove a volunteer", async () => {
     cast,
     {
       platformAdmin: 204,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 204,
+      organizationAdminUnconfirmed: "passkey_required",
       coordinator: 204,
       volunteer: 403,
       volunteerOtherGroup: 404,

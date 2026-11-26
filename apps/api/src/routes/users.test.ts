@@ -22,7 +22,13 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 import { stampSession } from "../testing/passkeys";
 
@@ -47,9 +53,11 @@ const me = (who: Who) => ctx.app.inject({ method: "GET", url: "/api/me", headers
 let n = 0;
 const uniqueAddress = (label: string) => `${label}-${++n}-${uuidv7().slice(-8)}@example.test`;
 
-const platformOnly = (ok: number) => ({
+const platformOnly = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 403,
+  organizationAdminUnconfirmed: 403,
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 403,

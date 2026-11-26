@@ -194,7 +194,9 @@ test("a volunteer, a coordinator and an applicant get 403 not_allowed on both re
     {
       ...refused,
       platformAdmin: 200,
+      platformAdminUnconfirmed: 200,
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: 200,
       organizationAdminOtherOrganization: 200,
     },
     send("/passkey/generate-register-options"),
@@ -205,7 +207,9 @@ test("a volunteer, a coordinator and an applicant get 403 not_allowed on both re
     {
       ...refused,
       platformAdmin: 400,
+      platformAdminUnconfirmed: 400,
       organizationAdmin: 400,
+      organizationAdminUnconfirmed: 400,
       organizationAdminOtherOrganization: 400,
     },
     send("/passkey/verify-registration"),
