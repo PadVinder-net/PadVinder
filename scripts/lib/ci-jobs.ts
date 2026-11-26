@@ -83,6 +83,7 @@ export const JOB_RULES: Record<CiJob, JobRule> = {
       "apps/api/src/main.ts",
       "apps/api/src/run.ts",
       "apps/worker/src/main.ts",
+      "apps/worker/src/run.ts",
       "packages/db/src/migrate.ts",
       ".github/workflows/deploy.yml",
       ".github/workflows/provision.yml",
