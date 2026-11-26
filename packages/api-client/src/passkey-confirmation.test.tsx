@@ -319,6 +319,50 @@ test("without a passkey, confirm creates one; with one, it authenticates", async
   expect(createPasskey).not.toHaveBeenCalled();
 });
 
+test.each([
+  {
+    name: "a passkey that is gone (unknown_passkey) makes the next try create one",
+    stale: withPasskey,
+    fresh: withoutPasskey,
+    error: "unknown_passkey" as const,
+  },
+  {
+    name: "a passkey added elsewhere (confirmation_required) makes the next try authenticate",
+    stale: withoutPasskey,
+    fresh: withPasskey,
+    error: "confirmation_required" as const,
+  },
+])("$name: me is refetched, the error shows", async ({ stale, fresh, error }) => {
+  me = stale;
+  const first = stale.user.hasPasskey ? authenticateWithPasskey : createPasskey;
+  const second = stale.user.hasPasskey ? createPasskey : authenticateWithPasskey;
+  vi.mocked(first).mockResolvedValueOnce({ ok: false, error });
+  const { result, queryClient } = setup(() => usePasskeyConfirmation());
+  await waitFor(() => expect(result.current.hasPasskey).toBe(stale.user.hasPasskey));
+  act(() => requestPasskeyConfirmation(queryClient));
+  me = fresh;
+
+  await act(async () => result.current.confirm());
+
+  expect(result.current).toMatchObject({ open: true, pending: false, error });
+  await waitFor(() => expect(result.current.hasPasskey).toBe(fresh.user.hasPasskey));
+  expect(count("GET /api/me")).toBe(2);
+  await act(async () => result.current.confirm());
+  expect(first).toHaveBeenCalledOnce();
+  expect(second).toHaveBeenCalledOnce();
+  expect(result.current.open).toBe(false);
+});
+
+test("another failed ceremony does not refetch me", async () => {
+  vi.mocked(authenticateWithPasskey).mockResolvedValueOnce({ ok: false, error: "cancelled" });
+  const { result, queryClient } = setup(() => usePasskeyConfirmation());
+  await waitFor(() => expect(count("GET /api/me")).toBe(1));
+  act(() => requestPasskeyConfirmation(queryClient));
+  await act(async () => result.current.confirm());
+  expect(result.current.error).toBe("cancelled");
+  expect(count("GET /api/me")).toBe(1);
+});
+
 test("after a confirmation me is refetched and the event stream reopens", async () => {
   FakeEventSource.instances = [];
   const onOpen = vi.fn();
