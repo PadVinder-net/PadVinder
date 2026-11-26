@@ -30,14 +30,18 @@ export async function startApi(env: ApiEnv, logger: Logger): Promise<RunningApi>
   });
 
   const stop = async () => {
-    await app?.close();
-    await notifications?.close();
-    await mailQueue.stop();
-    // A login code mail still in flight (sent without waiting) can be lost; no retries by design.
-    mailer.close();
-    await pool.end();
-    // Last, so an error while stopping (or the failed start) is still sent.
-    await closeMonitoring();
+    try {
+      await app?.close();
+      await notifications?.close();
+      await mailQueue.stop();
+      // A login code mail still in flight (sent without waiting) can be lost; no retries by design.
+      mailer.close();
+      await pool.end();
+    } finally {
+      // Last, and whatever a step above did, so an error while stopping (or the failed start)
+      // is still sent.
+      await closeMonitoring();
+    }
   };
 
   try {

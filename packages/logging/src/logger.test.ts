@@ -30,7 +30,7 @@ test("the request serializer leaves out address, port and headers", () => {
     "request completed",
   );
   const req = entries()[0]!.req as Record<string, unknown>;
-  expect(req).toEqual({ method: "GET", url: "/api/x?email=[email]", host: "padvinder.test" });
+  expect(req).toEqual({ method: "GET", url: "/api/x", host: "padvinder.test" });
 });
 test("a cyclic object is logged without throwing", () => {
   const { logger, entries } = createTestLogger();

@@ -14,9 +14,10 @@ export type LoggerOptions = {
 
 type RequestLike = { method?: unknown; url?: unknown; host?: unknown; hostname?: unknown };
 
-/** Leaves out the address, port and headers of a request. */
+/** Leaves out the address, port and headers of a request, and the query and fragment of its URL. */
 function serializeRequest(req: RequestLike) {
-  return { method: req.method, url: req.url, host: req.host ?? req.hostname };
+  const url = typeof req.url === "string" ? req.url.split(/[?#]/)[0] : req.url;
+  return { method: req.method, url, host: req.host ?? req.hostname };
 }
 
 export function createLoggerFor(options: {

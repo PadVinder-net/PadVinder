@@ -189,3 +189,38 @@ test.each([
 ])("tracesSampler(%j) is %d", (context, expected) => {
   expect(tracesSampler(context)).toBe(expected);
 });
+
+test("stack frames are relative to the release directory; filename and abs_path agree", async () => {
+  const t = createTestTransport();
+  startServerMonitoring({
+    service: "api",
+    settings,
+    transport: t.transport,
+    root: "/home/someone/padvinder/production/releases/x",
+  });
+  const file = "/home/someone/padvinder/production/releases/x/api/dist/run-abc.js";
+  Sentry.captureEvent({
+    exception: {
+      values: [
+        {
+          type: "Error",
+          value: "boom",
+          stacktrace: {
+            frames: [
+              { filename: file, abs_path: file, lineno: 1 },
+              { filename: "node:internal/process", lineno: 2 },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  await flushMonitoring();
+  const frames = t.events()[0]!.exception!.values![0]!.stacktrace!.frames!;
+  expect(frames[0]).toMatchObject({
+    filename: "app:///api/dist/run-abc.js",
+    abs_path: "app:///api/dist/run-abc.js",
+  });
+  expect(frames[1]!.filename).toBe("node:internal/process");
+  expect(JSON.stringify(t.events())).not.toContain("/home/someone");
+});

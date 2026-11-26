@@ -52,7 +52,10 @@ export async function run(): Promise<void> {
   try {
     api = await startApi(env, logger);
   } catch {
-    // startApi has logged and cleaned up. Exit deliberately so the supervisor restarts us.
+    // startApi has logged and cleaned up. Close again (a no-op when it did), so the "failed to
+    // start" event is sent even when the cleanup threw. Exit deliberately so the supervisor
+    // restarts us.
+    await closeMonitoring();
     process.exit(1);
   }
 }
