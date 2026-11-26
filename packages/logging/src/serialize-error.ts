@@ -13,14 +13,30 @@ export type SerializedError = {
 
 const MAX_CAUSE_DEPTH = 5;
 const MAX_NON_ERROR_LENGTH = 500;
+const UNSERIALIZABLE: SerializedError = { type: "unknown", message: "[unserializable]" };
 
-function describe(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value) ?? String(value);
-  } catch {
-    return String(value);
+function constructorName(value: object): string | undefined {
+  const name: unknown = (value as { constructor?: { name?: unknown } }).constructor?.name;
+  return typeof name === "string" && name.length > 0 ? name : undefined;
+}
+
+/**
+ * A thrown value that is not an Error. A primitive is kept as scrubbed text; an object is
+ * described by its keys only, because its values may be a name or a phone number.
+ */
+function serializeNonError(value: unknown): SerializedError {
+  if (typeof value !== "object" || value === null) {
+    return {
+      type: value === null ? "object" : typeof value,
+      message: scrub(String(value).slice(0, MAX_NON_ERROR_LENGTH)),
+    };
   }
+  return {
+    type: constructorName(value) ?? "object",
+    message: scrub(
+      `object with keys: ${Object.keys(value).join(", ")}`.slice(0, MAX_NON_ERROR_LENGTH),
+    ),
+  };
 }
 
 function text(error: Error, key: string): string | undefined {
@@ -29,26 +45,31 @@ function text(error: Error, key: string): string | undefined {
 }
 
 function serialize(error: unknown, depth: number, seen: Set<unknown>): SerializedError {
-  if (!(error instanceof Error)) {
-    return {
-      type: error === null ? "object" : typeof error,
-      message: scrub(describe(error).slice(0, MAX_NON_ERROR_LENGTH)),
+  try {
+    if (!(error instanceof Error)) return serializeNonError(error);
+    seen.add(error);
+    const message: unknown = error.message;
+    const result: SerializedError = {
+      type: text(error, "name") ?? constructorName(error) ?? "Error",
+      message: scrub(typeof message === "string" ? message : String(message)),
     };
+    const stack = text(error, "stack");
+    if (stack) result.stack = stack;
+    for (const key of ["code", "constraint", "table", "column"] as const) {
+      const value = text(error, key);
+      if (value !== undefined) result[key] = value;
+    }
+    const cause = error.cause;
+    if (cause !== undefined && depth < MAX_CAUSE_DEPTH && !seen.has(cause)) {
+      result.cause = serialize(cause, depth + 1, seen);
+    }
+    return result;
+  } catch {
+    return { ...UNSERIALIZABLE };
   }
-  seen.add(error);
-  const result: SerializedError = { type: error.name, message: scrub(error.message) };
-  if (error.stack) result.stack = scrub(error.stack);
-  for (const key of ["code", "constraint", "table", "column"] as const) {
-    const value = text(error, key);
-    if (value !== undefined) result[key] = value;
-  }
-  const cause = error.cause;
-  if (cause !== undefined && depth < MAX_CAUSE_DEPTH && !seen.has(cause)) {
-    result.cause = serialize(cause, depth + 1, seen);
-  }
-  return result;
 }
 
+/** Never throws: a value that cannot be read becomes `{ type: "unknown", message: "[unserializable]" }`. */
 export function serializeError(error: unknown): SerializedError {
   return serialize(error, 1, new Set());
 }
