@@ -1,4 +1,10 @@
-import { auditLogEntries, workingGroupMemberships } from "@padvinder/db";
+import {
+  auditLogEntries,
+  officialSpeciesIds,
+  recordAudit,
+  workingGroupMemberships,
+} from "@padvinder/db";
+import { AUDIT_LOG_PAGE_SIZE } from "@padvinder/contracts";
 import type { AuditLogEntry, AuditLogPage } from "@padvinder/contracts";
 import { count, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
@@ -165,10 +171,27 @@ test("the platform admin's raw answer holds no email address and no phone number
 });
 
 test("a cursor from the platform admin's page gives the organization admin only their own entries", async () => {
-  // A cursor from the platform admin's page is only a position; it widens nothing.
-  // Far in the future, so every entry lies after it.
-  const cursor = `2999-01-01T00:00:00.000000Z_${uuidv7()}`;
-  const { entries } = await page(cast.members.organizationAdmin.headers, `?cursor=${cursor}`);
+  // Newer entries without an organization, so the platform admin's first page is full and its
+  // cursor points at an entry older than all of them.
+  await ctx.t.db.transaction(async (tx) => {
+    for (let i = 0; i < AUDIT_LOG_PAGE_SIZE; i++) {
+      await recordAudit(tx, {
+        actor: { kind: "system" },
+        organizationId: null,
+        action: "species.updated",
+        subject: { type: "species", id: Object.values(officialSpeciesIds)[0]! },
+        details: { active: true },
+      });
+    }
+  });
+  const first = await page(cast.members.platformAdmin.headers);
+  expect(first.entries).toHaveLength(AUDIT_LOG_PAGE_SIZE);
+  expect(first.nextCursor).not.toBeNull();
+  // The cursor is only a position; borrowed from the platform admin it widens nothing.
+  const { entries } = await page(
+    cast.members.organizationAdmin.headers,
+    `?cursor=${encodeURIComponent(first.nextCursor!)}`,
+  );
   expect(entries.length).toBeGreaterThan(0);
   for (const entry of entries) expect(entry.organization?.id).toBe(cast.organization.id);
 });
