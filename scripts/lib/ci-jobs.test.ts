@@ -125,6 +125,7 @@ describe("jobsFor", () => {
     for (const path of [
       "apps/api/src/migrate.ts",
       "apps/api/src/main.ts",
+      "apps/api/src/run.ts",
       "apps/worker/src/main.ts",
       "packages/db/src/migrate.ts",
     ]) {

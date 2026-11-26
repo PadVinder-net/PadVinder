@@ -20,6 +20,7 @@ export type Relation =
 
 export type Permission =
   | { action: "system.viewDatabaseDetails" }
+  | { action: "system.triggerTestError" }
   | { action: "platform.manageSpecies" }
   | { action: "platform.manageOrganizations" }
   | { action: "platform.managePlatformAdmins" }
@@ -72,6 +73,7 @@ export function decide(actor: Actor, permission: Permission): Decision {
   // Platform-wide: no target, and never `hidden` (the species list is not secret).
   if (
     permission.action === "system.viewDatabaseDetails" ||
+    permission.action === "system.triggerTestError" ||
     permission.action === "platform.manageSpecies" ||
     permission.action === "platform.manageOrganizations" ||
     permission.action === "platform.managePlatformAdmins" ||

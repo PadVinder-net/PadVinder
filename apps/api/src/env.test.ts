@@ -28,6 +28,7 @@ test("parses a valid environment and applies defaults", () =>
     SMTP_PORT: 54325,
     MAIL_FROM: "PadVinder <noreply@padvinder.test>",
     LOGIN_RATE_LIMITS: "on",
+    PADVINDER_ENVIRONMENT: "development",
   }));
 
 test("defaults API_HOST to ::", () => expect(loadApiEnv(valid).API_HOST).toBe("::"));
@@ -138,3 +139,17 @@ test("a prefix with a line break, or over 30 characters, is refused", () => {
     loadApiEnv({ ...valid, MAIL_SUBJECT_PREFIX: "x".repeat(30) }).MAIL_SUBJECT_PREFIX,
   ).toHaveLength(30);
 });
+
+test("reads PADVINDER_ENVIRONMENT; an empty one is the default, development", () => {
+  expect(loadApiEnv({ ...valid, PADVINDER_ENVIRONMENT: "staging" }).PADVINDER_ENVIRONMENT).toBe(
+    "staging",
+  );
+  expect(loadApiEnv({ ...valid, PADVINDER_ENVIRONMENT: "" }).PADVINDER_ENVIRONMENT).toBe(
+    "development",
+  );
+});
+
+test("rejects an unknown PADVINDER_ENVIRONMENT", () =>
+  expect(() => loadApiEnv({ ...valid, PADVINDER_ENVIRONMENT: "prod" })).toThrow(
+    /PADVINDER_ENVIRONMENT/,
+  ));
