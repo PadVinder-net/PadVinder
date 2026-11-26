@@ -52,7 +52,7 @@ padvinder/
 
 A release directory is the unpacked `padvinder-release.tar.gz` (see "Release" in `AGENTS.md`). Each deploy keeps the 5 newest releases plus whatever `current` points at, and removes the rest. Unchanged files are hard-linked from the previous release, so `node_modules` is stored once.
 
-The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`, `ALLOWED_ORIGINS`, `LOG_LEVEL=info`, and what login and mail need (the API and the worker read the same file): `PUBLIC_ORIGIN` (the address in the table above), `AUTH_SECRET`, `SMTP_HOST` (`smtp-<account>.alwaysdata.net`), `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (`PadVinder <noreply@padvinder.net>`, see "Mail"), and on staging only `MAIL_SUBJECT_PREFIX=[STAGING]`. `LOGIN_RATE_LIMITS` is never in it: the API's default is on, and it refuses `off` on an HTTPS origin. Do not edit the file on the server: the next provisioning run overwrites it.
+The env file holds `DATABASE_URL` (with the password), `API_HOST=::`, `API_PORT`, `ALLOWED_ORIGINS`, `LOG_LEVEL=info`, `PADVINDER_ENVIRONMENT` (`production` or `staging`) and `SENTRY_DSN` (see "Sentry"), and what login and mail need (the API and the worker read the same file): `PUBLIC_ORIGIN` (the address in the table above), `AUTH_SECRET`, `SMTP_HOST` (`smtp-<account>.alwaysdata.net`), `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (`PadVinder <noreply@padvinder.net>`, see "Mail"), and on staging only `MAIL_SUBJECT_PREFIX=[STAGING]`. `LOGIN_RATE_LIMITS` is never in it: the API's default is on, and it refuses `off` on an HTTPS origin. Do not edit the file on the server: the next provisioning run overwrites it.
 
 ## The scripts
 
@@ -124,18 +124,22 @@ Settings, Environments in the repository. The step by step for the environments,
 
 - [ ] Environment `staging`. Deployment branches and tags: Selected branches and tags, the branch rule `main` only.
 - [ ] Environment `production`. Required reviewers: the maintainer. "Prevent self-review" off (one maintainer would block himself). Deployment branches and tags: `main` only.
-- [ ] In each environment, these eight secrets:
+- [ ] In each environment, these ten secrets, and in the repository one variable:
 
-| Name                 | Kind   | Staging and production                             | How to make it                                                          |
-| -------------------- | ------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
-| `ALWAYSDATA_API_KEY` | Secret | One token per environment (advised), or one shared | Alwaysdata panel, Profile, Tokens. Needs 2FA on the profile. See below  |
-| `DEPLOY_SSH_KEY`     | Secret | The same key in both                               | `ssh-keygen`, see below. The private key, the whole file, no passphrase |
-| `DATABASE_PASSWORD`  | Secret | Different per environment                          | `openssl rand -hex 32`                                                  |
-| `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                        |
-| `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                                |
-| `AUTH_SECRET`        | Secret | Different per environment                          | `openssl rand -hex 32`. Better Auth signs sessions with it              |
-| `SMTP_USER`          | Secret | The same in both                                   | The mailbox address, `noreply@padvinder.net` (see "Mail")               |
-| `SMTP_PASSWORD`      | Secret | The same in both                                   | The mailbox's password, `openssl rand -hex 32` (see "Mail")             |
+| Name                 | Kind   | Staging and production                             | How to make it                                                                         |
+| -------------------- | ------ | -------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `ALWAYSDATA_API_KEY` | Secret | One token per environment (advised), or one shared | Alwaysdata panel, Profile, Tokens. Needs 2FA on the profile. See below                 |
+| `DEPLOY_SSH_KEY`     | Secret | The same key in both                               | `ssh-keygen`, see below. The private key, the whole file, no passphrase                |
+| `DATABASE_PASSWORD`  | Secret | Different per environment                          | `openssl rand -hex 32`                                                                 |
+| `ALWAYSDATA_ACCOUNT` | Secret | The same in both                                   | The account name                                                                       |
+| `SSH_KNOWN_HOSTS`    | Secret | The same in both                                   | `ssh-keyscan`, see below                                                               |
+| `AUTH_SECRET`        | Secret | Different per environment                          | `openssl rand -hex 32`. Better Auth signs sessions with it                             |
+| `SMTP_USER`          | Secret | The same in both                                   | The mailbox address, `noreply@padvinder.net` (see "Mail")                              |
+| `SMTP_PASSWORD`      | Secret | The same in both                                   | The mailbox's password, `openssl rand -hex 32` (see "Mail")                            |
+| `SENTRY_DSN`         | Secret | Per environment; the same value in both is fine    | The project's DSN: Sentry, Settings, Projects, `padvinder`, Client Keys (see "Sentry") |
+| `SENTRY_AUTH_TOKEN`  | Secret | The same in both                                   | An organization auth token, for uploading source maps (see "Sentry")                   |
+
+- [ ] The repository variable `SENTRY_ORG`: the slug of the Sentry organization (Settings, Variables, Actions). Not a secret; the Deploy workflow reads it as `vars.SENTRY_ORG`.
 
 **Why `main` only, also for staging.** Both environments live on one Alwaysdata account, and there every SSH user and every API token reaches everything: the staging token can read and change production, and the deploy key logs in as the account's main user, which runs and owns both. Whoever can run code in the `staging` environment can therefore read production's secrets and data. So the account is the security boundary, not the environment, and staging is treated as production-sensitive: only reviewed code on `main` may hold the deploy credentials. A branch cannot be tried on staging from GitHub; merge it, or the maintainer deploys it locally with the CLI (see "Running locally").
 
@@ -242,6 +246,40 @@ The workflows reach the environments only from `main`, so the first runs happen 
 7. **Verify** staging: the "Verification" section below.
 8. **Production:** steps 4 and 5 with `production`. Each run waits for your approval, also a plan. The key is already on the main SSH user. Then run Deploy again from `main`, check staging, and approve the production job.
 
+## Sentry
+
+The design is `docs/superpowers/specs/2026-11-26-logging-and-monitoring-design.md`. The API and the worker report errors and traces to Sentry (an organization in the EU region, free Developer plan). The maintainer sets up the organization by hand, once; it is not scripted. The repository is public: never write the organization's slug, the DSN or a token in a file, an issue or a pull request.
+
+- [ ] Make the organization **in the EU region** (Frankfurt; it cannot be changed later) and one project, `padvinder`, for the API, the worker, the app and the portal.
+- [ ] Security & Privacy: do not store IP addresses; the default scrubbers on; an Advanced Data Scrubbing rule that removes email addresses from all fields, if the free plan has it.
+- [ ] Show Generative AI Features off (and no Seer).
+- [ ] Inbound filters on: browser extensions, legacy browsers, web crawlers and localhost.
+- [ ] Spike protection on, with its notification.
+- [ ] A rate limit on the project's DSN key (Client Keys), for example 300 events an hour, if the free plan has it.
+- [ ] Alert rules that mail the member, for the environment `production` only: a new issue, a resolved issue that comes back, an issue that escalates, the uptime monitor's issue, and every new problem report (user feedback). Staging records issues but mails nobody.
+- [ ] The uptime monitor on `https://padvinder.net/api/health`, every minute. An outage mails within about four minutes.
+- [ ] The weekly report mail on.
+- [ ] The GitHub integration (links from stack traces to the code, suspect commits), if the free plan has it.
+- [ ] An organization auth token, for `SENTRY_AUTH_TOKEN`.
+
+How it works on the server:
+
+- **Off without a DSN.** The API and the worker read `SENTRY_DSN` and `PADVINDER_ENVIRONMENT` from the env file. Without a DSN Sentry is off (locally, in tests, in CI, in the container smoke test). An invalid `SENTRY_DSN` (not an `http` or `https` address) or `PADVINDER_ENVIRONMENT` (not `production`, `staging` or `development`) stops the service at once with only that message, before the rest of the environment is checked; the message never holds the value.
+- **Provisioning requires the DSN** like every other secret of the env file, and requires an `https` address: it stops before it changes anything when `SENTRY_DSN` is missing. Set the secret in both environments before the next Provision run (see "Rolling out Sentry").
+- **Source maps.** `pnpm release:build` injects Sentry debug IDs into the server bundles and moves their maps to `release/sourcemaps/`; the servers never use them. The Deploy workflow uploads that directory before it switches releases (`scripts/upload-sourcemaps.sh`, with `SENTRY_AUTH_TOKEN` and `vars.SENTRY_ORG`). The upload has a 5-minute limit and `continue-on-error`: a failed upload never fails a deploy, it only leaves the next errors without readable stack traces. Without `SENTRY_AUTH_TOKEN` (a local deploy) it uploads nothing. The EU region's address, `https://de.sentry.io`, is the default of `SENTRY_URL`.
+- **The sentry-cli image.** `scripts/sentry-cli.sh` runs `getsentry/sentry-cli` in Docker, pinned by tag and digest. The release build pulls it from Docker Hub, so a registry outage fails the release build (try again later). The upload mounts the checkout read-only, because the deploy uses that checkout afterwards with the deploy credentials.
+- **Test error.** A platform admin can make the API throw on purpose: `POST /api/system/test-error` answers 500 and the error arrives in Sentry with the trace of its database query.
+
+## Rolling out Sentry
+
+The maintainer, once, in this order:
+
+1. Make the organization, the project `padvinder` and an organization auth token, and do the checklist in "Sentry".
+2. Set the secrets `SENTRY_DSN` and `SENTRY_AUTH_TOKEN` in both GitHub environments, and the repository variable `SENTRY_ORG`. Do this before the next Provision run: Provision refuses to run until `SENTRY_DSN` is set in that environment.
+3. Merge. Then run Provision with `apply` for staging and for production (it writes `SENTRY_DSN` and `PADVINDER_ENVIRONMENT`), and restart the services (`pnpm infra:services --environment <env> --restart`) or deploy again.
+
+A deploy before step 3 works: without `SENTRY_DSN` the API and the worker run with Sentry off. The sections of "Verification" below say what to check afterwards.
+
 ## Rolling out login
 
 The login pull request makes the API refuse to start without `PUBLIC_ORIGIN`, `AUTH_SECRET`, `SMTP_HOST`, `SMTP_PORT` and `MAIL_FROM`, which only that pull request's provisioning code writes to the env file. The worker did not need them then; since pull request 3a of the portal administration (adding people) it refuses to start without `PUBLIC_ORIGIN`, `SMTP_HOST`, `SMTP_PORT` and `MAIL_FROM` too. Both env files hold them since login was rolled out, so that pull request needs no provisioning: a deploy to an environment whose file lacks them fails its health check (no heartbeat) and switches back. The Provision workflow runs from `main` only, so there are two orders. The first one keeps every deploy green; the second one is the fallback.
@@ -335,15 +373,17 @@ NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/adm
 
 ### Rotation schedule
 
-| Secret                                  | Why                                                                                                 | When                                                                                                                                                                |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALWAYSDATA_API_KEY`                    | Full rights of the profile over the whole account; the public docs do not say whether tokens expire | Every January (before the feature freeze around 1 February, so nothing changes during the season), and at once when a log or a runner may have exposed it           |
-| `DEPLOY_SSH_KEY`                        | Full SSH access to the account                                                                      | Every January, together with the API token                                                                                                                          |
-| `DATABASE_PASSWORD` (per environment)   | Readable on the server in `padvinder/<env>/.env` by anything on the account                         | Every January; at once when someone with access leaves, or on suspicion                                                                                             |
-| `SMTP_PASSWORD` (both environments)     | Sends mail as `noreply@padvinder.net`; readable on the server in both env files                     | Every January, together with the database passwords; at once when someone with access leaves, or on suspicion                                                       |
-| `AUTH_SECRET` (per environment)         | Signs the sessions and encrypts the stored login codes; readable on the server in the env file      | Not on a schedule: rotating it logs every user of that environment out, and open login codes stop working. At once when someone with access leaves, or on suspicion |
-| `ALWAYSDATA_ACCOUNT`, `SSH_KNOWN_HOSTS` | Not real secrets; secrets only to stay out of public logs                                           | Only when the account moves or Alwaysdata changes its host key                                                                                                      |
-| `SMTP_USER`                             | Not a real secret on Alwaysdata (the sender address); a secret for another mail service's login     | Only when the mailbox or the mail service changes                                                                                                                   |
+| Secret                                  | Why                                                                                                    | When                                                                                                                                                                |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALWAYSDATA_API_KEY`                    | Full rights of the profile over the whole account; the public docs do not say whether tokens expire    | Every January (before the feature freeze around 1 February, so nothing changes during the season), and at once when a log or a runner may have exposed it           |
+| `DEPLOY_SSH_KEY`                        | Full SSH access to the account                                                                         | Every January, together with the API token                                                                                                                          |
+| `DATABASE_PASSWORD` (per environment)   | Readable on the server in `padvinder/<env>/.env` by anything on the account                            | Every January; at once when someone with access leaves, or on suspicion                                                                                             |
+| `SMTP_PASSWORD` (both environments)     | Sends mail as `noreply@padvinder.net`; readable on the server in both env files                        | Every January, together with the database passwords; at once when someone with access leaves, or on suspicion                                                       |
+| `AUTH_SECRET` (per environment)         | Signs the sessions and encrypts the stored login codes; readable on the server in the env file         | Not on a schedule: rotating it logs every user of that environment out, and open login codes stop working. At once when someone with access leaves, or on suspicion |
+| `SENTRY_AUTH_TOKEN`                     | Uploads source maps to the Sentry project; no use for anything else, but it writes to the organization | Every January, together with the API token; at once on suspicion                                                                                                    |
+| `SENTRY_DSN` (per environment)          | Lets anyone who has it send events to the project; readable on the server in the env file              | Not on a schedule. On suspicion of abuse: make a new client key in Sentry, set the secret, Provision with `apply`, restart, then delete the old key                 |
+| `ALWAYSDATA_ACCOUNT`, `SSH_KNOWN_HOSTS` | Not real secrets; secrets only to stay out of public logs                                              | Only when the account moves or Alwaysdata changes its host key                                                                                                      |
+| `SMTP_USER`                             | Not a real secret on Alwaysdata (the sender address); a secret for another mail service's login        | Only when the mailbox or the mail service changes                                                                                                                   |
 
 "At once" also covers a lost or compromised laptop that held a key or token, and anyone losing access.
 
@@ -358,6 +398,7 @@ The workflow `rotation-reminder.yml` opens an issue every 1 January with a check
 - **Deploy key:** make a new key pair, add the new public key to the main SSH user `<account>` in the panel, set `DEPLOY_SSH_KEY` in both environments, check that a deploy or a Provision apply works, then remove the old public key in the panel. The key must have no passphrase: the action loads it into ssh-agent without a prompt, and fails with "Could not load DEPLOY_SSH_KEY into ssh-agent" otherwise.
 - **SSH host key** (only if Alwaysdata changes it): make `SSH_KNOWN_HOSTS` again, after checking the fingerprint.
 - **Mailbox password:** make a new one (`openssl rand -hex 32 > smtp-password` in a temporary directory), set `SMTP_PASSWORD` in both environments, change the password of `noreply@padvinder.net` in the panel (Emails, Addresses), then run Provision with `apply` for staging and for production and restart both environments' services (`pnpm infra:services --environment <env> --restart`). From the change in the panel until the restart no login mail goes out; users press "Stuur opnieuw" after it. Do it at a quiet moment.
+- **Sentry:** the auth token: make a new organization auth token in Sentry, set `SENTRY_AUTH_TOKEN` in both environments, then revoke the old one. The DSN: see its row above.
 - **Login secret:** `openssl rand -hex 32 | gh secret set AUTH_SECRET --env <env> ...`, Provision with `apply` (no `rotate-password`: that is for the database password only), then restart the services. Every user of that environment is logged out and must ask for a new code.
 
 ### Turning staging off and on
@@ -484,5 +525,15 @@ Mail from the worker, after the pull request for adding people (3a of the portal
 | A list of twenty addresses arrives in full, about 2 seconds apart, and none in the spam folder                                               | Add twenty addresses of your own (plus-addresses at one provider are fine) in one go; compare the arrival times and look in the spam folder. If Alwaysdata throttles or refuses, the worker's log shows the retries                       | OPEN   |
 | Whether the greeting above the code line ("Hallo {naam},") keeps a phone from offering the code from the mail                                | Ask for a login code on an iPhone and an Android phone with the mail app open; note whether the keyboard offers the code from the mail                                                                                                    | OPEN   |
 | The API's own pg-boss instance (it only sends) makes the queue on a fresh database and stays within its 2 connections                        | After the first add on staging, `select count(*) from pg_stat_activity where datname = current_database()` stays within the plan; the API's log shows no pg-boss errors                                                                   | OPEN   |
+
+Sentry on the server, after "Rolling out Sentry":
+
+| What                                                                                                                                                                                     | How to check                                                                                                                                                                                                                                                | Status |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| A test error on staging arrives in Sentry with the commit, the environment `staging`, the account ID and the trace with its database query; no IP address, cookie or email address in it | Log in to the staging portal as a platform admin, copy the session cookie, then `curl -X POST https://staging.padvinder.net/api/system/test-error -H "Cookie: <cookie>" -H "Origin: https://staging.padvinder.net"` (answers 500). Open the issue in Sentry | OPEN   |
+| The uptime monitor mails within about four minutes of an outage                                                                                                                          | Point a temporary copy of the monitor at a URL that answers 503, or switch staging off (`pnpm infra:services --environment staging --disable`) while a copy watches its health URL; check the mail. Switch production off only outside the season           | OPEN   |
+| The memory of API and worker with Sentry, production and staging, fits in 1 GB                                                                                                           | The panel, Advanced, Processes, after an evening of use; compare with the numbers before Sentry                                                                                                                                                             | OPEN   |
+| The Node.js version on Alwaysdata is at least 24.13, so Sentry's module hooks are stable (Sentry logs a warning at start otherwise)                                                      | `node --version` over SSH, and the service log after a restart has no Sentry warning about the Node.js version                                                                                                                                              | OPEN   |
+| The source maps upload works from the Deploy workflow, and a stack trace in Sentry shows the TypeScript source                                                                           | After a deploy: the step "Upload source maps" is green, and the test error's stack trace shows `.ts` files                                                                                                                                                  | OPEN   |
 
 When a name differs, change it in `src/resources.ts` only, and the fake in `src/testing/fake-api.ts` if its answers differ.
