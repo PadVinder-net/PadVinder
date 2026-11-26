@@ -75,14 +75,14 @@ test("a platform admin appoints a platform admin, reads it in the log and remove
   );
 
   await navigation.getByRole("link", { name: "Hoofdbeheerders" }).click();
-  await row.getByRole("button", { name: /^Acties voor / }).click();
+  await row.getByRole("button", { name: `Acties voor ${appointed}` }).click();
   await page.getByRole("menuitem", { name: "Verwijder als hoofdbeheerder" }).click();
-  // The appointed person never logged in, so has no name yet.
+  // The appointed person never logged in, so has no name yet: the address stands for it.
   const question = page.getByRole("alertdialog", {
-    name: "Deze persoon verwijderen als hoofdbeheerder?",
+    name: `${appointed} verwijderen als hoofdbeheerder?`,
   });
   await question.getByRole("button", { name: "Verwijder" }).click();
-  await expect(page.getByText("Deze persoon is geen hoofdbeheerder meer.")).toBeVisible();
+  await expect(page.getByText(`${appointed} is geen hoofdbeheerder meer.`)).toBeVisible();
   await expect(row).toHaveCount(0);
 });
 

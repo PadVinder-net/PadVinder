@@ -207,15 +207,17 @@ test("removing asks first, and the toast names the person", async () => {
   ]);
 });
 
-test("removing someone without a name says Deze persoon", async () => {
+test("removing someone without a name names them by address", async () => {
   mockFetch(
     routesFor({ [`DELETE ${listPath}/${newAdmin.userId}`]: new Response(null, { status: 204 }) }),
   );
   renderPortal("/platform-admins");
-  const confirm = await askRemove("(nog niet ingelogd)");
-  expect(within(confirm).getByText("Deze persoon verwijderen als hoofdbeheerder?")).toBeVisible();
+  const confirm = await askRemove(newAdmin.email);
+  expect(
+    within(confirm).getByText(`${newAdmin.email} verwijderen als hoofdbeheerder?`),
+  ).toBeVisible();
   await userEvent.click(within(confirm).getByRole("button", { name: "Verwijder" }));
-  expect(await screen.findByText("Deze persoon is geen hoofdbeheerder meer.")).toBeVisible();
+  expect(await screen.findByText(`${newAdmin.email} is geen hoofdbeheerder meer.`)).toBeVisible();
 });
 
 test("removing yourself asks Jezelf verwijderen als hoofdbeheerder? and the page turns into the not-found page", async () => {

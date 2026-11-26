@@ -13,6 +13,7 @@ import {
   apiErrorMessage,
   ConfirmDialog,
   invalidEmailMessage,
+  lastLoggedInPlatformAdminMessage,
   noAccountMessage,
   PersonEmailForm,
   showToast,
@@ -41,7 +42,10 @@ function deleteErrorText(error: unknown, name: string): string {
     return blockers
       .map((blocker) => accountDeletionBlockedForOtherMessage(name, blocker))
       .join(" ");
-  return apiErrorMessage(apiErrorCode(error));
+  const code = apiErrorCode(error);
+  // The text of `DELETE /api/me` would be about the wrong person here.
+  if (code === "last_platform_admin") return lastLoggedInPlatformAdminMessage;
+  return apiErrorMessage(code);
 }
 
 /**

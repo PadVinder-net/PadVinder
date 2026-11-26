@@ -33,7 +33,7 @@ export function PlatformAdminsTable({ admins, onRemove }: PlatformAdminsTablePro
               <TableCell>
                 <div className="flex justify-end">
                   <RowMenu
-                    label={`Acties voor ${name}`}
+                    label={`Acties voor ${admin.name.trim() === "" ? admin.email : admin.name}`}
                     items={[
                       {
                         label: "Verwijder als hoofdbeheerder",

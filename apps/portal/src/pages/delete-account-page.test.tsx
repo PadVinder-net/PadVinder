@@ -231,6 +231,25 @@ test("a blocked deletion shows who must be replaced first, in the dialog, and th
   expect(screen.getByRole("heading", { level: 2, name: sanne.name })).toBeVisible();
 });
 
+test("last_platform_admin on the deletion shows the platform admin text, not the one about you", async () => {
+  mockFetch(
+    routesFor({
+      [`POST ${lookupPath}`]: sanne,
+      [`DELETE ${deletePath(sanne)}`]: Response.json(
+        { statusCode: 409, error: "Conflict", message: "x", code: "last_platform_admin" },
+        { status: 409 },
+      ),
+    }),
+  );
+  renderPortal("/delete-account");
+  await search(sanne.email);
+  const confirm = await askDelete();
+  await userEvent.click(within(confirm).getByRole("button", { name: "Verwijder account" }));
+  expect(
+    await within(confirm).findByText("Er moet een hoofdbeheerder blijven die al eens is ingelogd."),
+  ).toBeVisible();
+});
+
 test("a 404 on the deletion shows Dit bestaat niet meer. in the dialog", async () => {
   mockFetch(
     routesFor({

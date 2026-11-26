@@ -12,9 +12,11 @@ test("the menu of a row calls onRemove with that platform admin", async () => {
   expect(onRemove).toHaveBeenCalledWith(platformAdminsFixture[2]);
 });
 
-test("someone who never logged in shows (nog niet ingelogd), and the menu is named for that text", () => {
+test("someone who never logged in shows (nog niet ingelogd), and the menu is named for the address", () => {
   render(<PlatformAdminsTable admins={platformAdminsFixture} onRemove={() => {}} />);
   expect(screen.getByText("(nog niet ingelogd)")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Acties voor (nog niet ingelogd)" })).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Acties voor nieuwe-hoofdbeheerder@example.test" }),
+  ).toBeVisible();
   expect(screen.getByRole("columnheader", { name: "E-mailadres" })).toBeVisible();
 });

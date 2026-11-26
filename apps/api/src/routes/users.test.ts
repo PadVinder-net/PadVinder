@@ -190,7 +190,7 @@ test("the request log of a lookup holds no address", async () => {
     await grantPlatformAdmin(t.db, { email: "log-hoofdbeheerder@example.test" }, system);
     const from = lines.length;
     const statuses = [];
-    for (const email of ["log-hoofdbeheerder@example.test", "log-niemand@example.test", "noor"]) {
+    for (const email of ["log-hoofdbeheerder@example.test", "log-niemand@example.test", "jan@"]) {
       statuses.push((await lookup(admin, { email }, app)).statusCode);
     }
     expect(statuses).toEqual([200, 404, 400]);

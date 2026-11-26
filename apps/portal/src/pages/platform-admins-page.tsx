@@ -14,7 +14,6 @@ import {
   invalidEmailMessage,
   lastLoggedInPlatformAdminMessage,
   Modal,
-  nameInSentence,
   PersonEmailForm,
   PlatformAdminsTable,
   showToast,
@@ -31,6 +30,10 @@ type AddState = {
   /** The address as the server stores it: trimmed and in lowercase. */
   email: string;
 };
+
+/** Someone who never logged in has no name yet: the address tells two of them apart. */
+const nameOrAddress = (admin: PlatformAdmin) =>
+  admin.name.trim() === "" ? admin.email : admin.name;
 
 type RemoveState = { open: boolean; admin: PlatformAdmin | null };
 
@@ -104,7 +107,7 @@ export function PlatformAdminsPage() {
         showToast(
           own
             ? "Je bent geen hoofdbeheerder meer."
-            : `${nameInSentence(admin.name)} is geen hoofdbeheerder meer.`,
+            : `${nameOrAddress(admin)} is geen hoofdbeheerder meer.`,
         );
       },
       // The dialog shows the text of `remove.error`.
@@ -118,7 +121,7 @@ export function PlatformAdminsPage() {
   const emailRejected = add.error ? rejectsEmail(add.error) : false;
   const step = adding.step === "confirm" && !emailRejected ? "confirm" : "email";
   const ownRemoval = removing.admin !== null && removing.admin.userId === me?.user.id;
-  const removeName = removing.admin ? nameInSentence(removing.admin.name) : "";
+  const removeName = removing.admin ? nameOrAddress(removing.admin) : "";
 
   return (
     <main className="mx-auto max-w-5xl p-4">

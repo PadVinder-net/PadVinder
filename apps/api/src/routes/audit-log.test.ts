@@ -159,6 +159,7 @@ test("the organization admin's raw answer holds no name they may not see", async
   expect(body).not.toContain("Cast organizationAdminOtherOrganization");
   expect(body).not.toContain("Cast coordinatorOtherOrganization");
   expect(body).not.toContain("@");
+  for (const member of Object.values(cast.members)) expect(body).not.toContain(member.userId);
   const keys = keysOf(res.json());
   for (const key of ["email", "phone", "userId", "actorUserId"]) expect(keys).not.toContain(key);
 });
