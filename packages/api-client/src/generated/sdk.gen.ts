@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddMembersData, AddMembersErrors, AddMembersResponses, AddOrganizationAdminData, AddOrganizationAdminErrors, AddOrganizationAdminResponses, ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, CreateOrganizationData, CreateOrganizationErrors, CreateOrganizationResponses, CreateSpeciesData, CreateSpeciesErrors, CreateSpeciesResponses, CreateWorkingGroupData, CreateWorkingGroupErrors, CreateWorkingGroupResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetOrganizationData, GetOrganizationErrors, GetOrganizationResponses, GetVersionData, GetVersionResponses, ListAuditLogEntriesData, ListAuditLogEntriesErrors, ListAuditLogEntriesResponses, ListManagedWorkingGroupsData, ListManagedWorkingGroupsErrors, ListManagedWorkingGroupsResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListOrganizationsData, ListOrganizationsErrors, ListOrganizationsResponses, ListReviewableMembershipRequestsData, ListReviewableMembershipRequestsErrors, ListReviewableMembershipRequestsResponses, ListSpeciesData, ListSpeciesErrors, ListSpeciesResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, RemoveOrganizationAdminData, RemoveOrganizationAdminErrors, RemoveOrganizationAdminResponses, UpdateMeData, UpdateMeErrors, UpdateMembershipData, UpdateMembershipErrors, UpdateMembershipResponses, UpdateMeResponses, UpdateOrganizationData, UpdateOrganizationErrors, UpdateOrganizationResponses, UpdateSpeciesData, UpdateSpeciesErrors, UpdateSpeciesResponses, UpdateWorkingGroupData, UpdateWorkingGroupErrors, UpdateWorkingGroupResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
+import type { AddMembersData, AddMembersErrors, AddMembersResponses, AddOrganizationAdminData, AddOrganizationAdminErrors, AddOrganizationAdminResponses, AddPlatformAdminData, AddPlatformAdminErrors, AddPlatformAdminResponses, ApproveMembershipRequestData, ApproveMembershipRequestErrors, ApproveMembershipRequestResponses, CreateMembershipRequestData, CreateMembershipRequestErrors, CreateMembershipRequestResponses, CreateOrganizationData, CreateOrganizationErrors, CreateOrganizationResponses, CreateSpeciesData, CreateSpeciesErrors, CreateSpeciesResponses, CreateWorkingGroupData, CreateWorkingGroupErrors, CreateWorkingGroupResponses, DeleteMeData, DeleteMeErrors, DeleteMeResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetMeData, GetMeErrors, GetMembershipRequestData, GetMembershipRequestErrors, GetMembershipRequestResponses, GetMeResponses, GetOrganizationData, GetOrganizationErrors, GetOrganizationResponses, GetVersionData, GetVersionResponses, ListAuditLogEntriesData, ListAuditLogEntriesErrors, ListAuditLogEntriesResponses, ListManagedWorkingGroupsData, ListManagedWorkingGroupsErrors, ListManagedWorkingGroupsResponses, ListMembersData, ListMembersErrors, ListMembershipRequestsData, ListMembershipRequestsErrors, ListMembershipRequestsResponses, ListMembersResponses, ListOrganizationsData, ListOrganizationsErrors, ListOrganizationsResponses, ListPlatformAdminsData, ListPlatformAdminsErrors, ListPlatformAdminsResponses, ListReviewableMembershipRequestsData, ListReviewableMembershipRequestsErrors, ListReviewableMembershipRequestsResponses, ListSpeciesData, ListSpeciesErrors, ListSpeciesResponses, ListWorkingGroupsData, ListWorkingGroupsErrors, ListWorkingGroupsResponses, RejectMembershipRequestData, RejectMembershipRequestErrors, RejectMembershipRequestResponses, RemoveMembershipData, RemoveMembershipErrors, RemoveMembershipResponses, RemoveOrganizationAdminData, RemoveOrganizationAdminErrors, RemoveOrganizationAdminResponses, RemovePlatformAdminData, RemovePlatformAdminErrors, RemovePlatformAdminResponses, UpdateMeData, UpdateMeErrors, UpdateMembershipData, UpdateMembershipErrors, UpdateMembershipResponses, UpdateMeResponses, UpdateOrganizationData, UpdateOrganizationErrors, UpdateOrganizationResponses, UpdateSpeciesData, UpdateSpeciesErrors, UpdateSpeciesResponses, UpdateWorkingGroupData, UpdateWorkingGroupErrors, UpdateWorkingGroupResponses, WithdrawMembershipRequestData, WithdrawMembershipRequestErrors, WithdrawMembershipRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -173,6 +173,28 @@ export const createWorkingGroup = <ThrowOnError extends boolean = false>(options
         ...options.headers
     }
 });
+
+/**
+ * The platform admins (platform admins)
+ */
+export const listPlatformAdmins = <ThrowOnError extends boolean = false>(options?: Options<ListPlatformAdminsData, ThrowOnError>): RequestResult<ListPlatformAdminsResponses, ListPlatformAdminsErrors, ThrowOnError> => (options?.client ?? client).get<ListPlatformAdminsResponses, ListPlatformAdminsErrors, ThrowOnError>({ url: '/api/platform-admins', ...options });
+
+/**
+ * Make someone a platform admin (platform admins). Also 200 when they were
+ */
+export const addPlatformAdmin = <ThrowOnError extends boolean = false>(options: Options<AddPlatformAdminData, ThrowOnError>): RequestResult<AddPlatformAdminResponses, AddPlatformAdminErrors, ThrowOnError> => (options.client ?? client).post<AddPlatformAdminResponses, AddPlatformAdminErrors, ThrowOnError>({
+    url: '/api/platform-admins',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Take the platform admin role away (platform admins). Never the last one who has logged in
+ */
+export const removePlatformAdmin = <ThrowOnError extends boolean = false>(options: Options<RemovePlatformAdminData, ThrowOnError>): RequestResult<RemovePlatformAdminResponses, RemovePlatformAdminErrors, ThrowOnError> => (options.client ?? client).delete<RemovePlatformAdminResponses, RemovePlatformAdminErrors, ThrowOnError>({ url: '/api/platform-admins/{userId}', ...options });
 
 /**
  * All species, switched off or not, in Dutch order of the Dutch name

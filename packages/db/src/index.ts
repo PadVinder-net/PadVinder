@@ -11,6 +11,7 @@ export * from "./managed-working-groups";
 export * from "./migrate";
 export * from "./notifications";
 export * from "./organizations";
+export * from "./platform-admins";
 export * from "./schema";
 export * from "./seed";
 export * from "./users";

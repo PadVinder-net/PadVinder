@@ -261,6 +261,21 @@ export type AddOrganizationAdminRequestInput = {
     email: string;
 };
 
+export type PlatformAdminInput = {
+    userId: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+};
+
+export type PlatformAdminListResponseInput = {
+    platformAdmins: Array<PlatformAdminInput>;
+};
+
+export type AddPlatformAdminRequestInput = {
+    email: string;
+};
+
 export type SpeciesInput = {
     id: string;
     dutchName: string;
@@ -545,6 +560,21 @@ export type UpdateOrganizationRequest = {
 };
 
 export type AddOrganizationAdminRequest = {
+    email: string;
+};
+
+export type PlatformAdmin = {
+    userId: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+};
+
+export type PlatformAdminListResponse = {
+    platformAdmins: Array<PlatformAdmin>;
+};
+
+export type AddPlatformAdminRequest = {
     email: string;
 };
 
@@ -1259,6 +1289,111 @@ export type CreateWorkingGroupResponses = {
 };
 
 export type CreateWorkingGroupResponse = CreateWorkingGroupResponses[keyof CreateWorkingGroupResponses];
+
+export type ListPlatformAdminsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/platform-admins';
+};
+
+export type ListPlatformAdminsErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+};
+
+export type ListPlatformAdminsError = ListPlatformAdminsErrors[keyof ListPlatformAdminsErrors];
+
+export type ListPlatformAdminsResponses = {
+    /**
+     * Default Response
+     */
+    200: PlatformAdminListResponse;
+};
+
+export type ListPlatformAdminsResponse = ListPlatformAdminsResponses[keyof ListPlatformAdminsResponses];
+
+export type AddPlatformAdminData = {
+    body: AddPlatformAdminRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/platform-admins';
+};
+
+export type AddPlatformAdminErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+};
+
+export type AddPlatformAdminError = AddPlatformAdminErrors[keyof AddPlatformAdminErrors];
+
+export type AddPlatformAdminResponses = {
+    /**
+     * Default Response
+     */
+    200: PlatformAdminListResponse;
+};
+
+export type AddPlatformAdminResponse = AddPlatformAdminResponses[keyof AddPlatformAdminResponses];
+
+export type RemovePlatformAdminData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/api/platform-admins/{userId}';
+};
+
+export type RemovePlatformAdminErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type RemovePlatformAdminError = RemovePlatformAdminErrors[keyof RemovePlatformAdminErrors];
+
+export type RemovePlatformAdminResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type RemovePlatformAdminResponse = RemovePlatformAdminResponses[keyof RemovePlatformAdminResponses];
 
 export type ListSpeciesData = {
     body?: never;

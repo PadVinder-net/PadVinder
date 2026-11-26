@@ -15,6 +15,7 @@ import {
   normalizeEmail,
   normalizeName,
   removeOrganizationAdmin,
+  removePlatformAdmin,
   revokeCoordinator,
   revokeOrganizationAdmin,
   revokePlatformAdmin,
@@ -1847,4 +1848,98 @@ test("a queue that fails undoes the change: the job is queued in its transaction
     ),
   ).rejects.toThrow("queue down");
   expect(await groupsOf(org.id)).toEqual([]);
+});
+
+/** A platform admin who has logged in, as the login flow leaves them. */
+async function loggedInPlatformAdmin(email: string): Promise<string> {
+  const { userId } = await grantPlatformAdmin(db(), { email }, system);
+  await db()
+    .update(users)
+    .set({ emailVerified: true, lastLoginAt: new Date() })
+    .where(eq(users.id, userId));
+  return userId;
+}
+
+const isPlatformAdmin = async (userId: string) =>
+  (await db().select().from(users).where(eq(users.id, userId)))[0]?.isPlatformAdmin;
+
+test("removePlatformAdmin removes the flag, writes role.platform_admin_revoked and tells the person", async () => {
+  const remover = await loggedInPlatformAdmin("a@example.test");
+  const removed = await loggedInPlatformAdmin("b@example.test");
+  const events = await listenForLiveEvents();
+  try {
+    expect(await removePlatformAdmin(db(), { userId: removed }, asUser(remover))).toEqual({
+      changed: true,
+    });
+    expect(await events.drain()).toEqual([{ type: "access-changed", userId: removed }]);
+  } finally {
+    await events.close();
+  }
+  expect(await isPlatformAdmin(removed)).toBe(false);
+  expect(await isPlatformAdmin(remover)).toBe(true);
+  const [entry] = await db()
+    .select()
+    .from(auditLogEntries)
+    .where(eq(auditLogEntries.action, "role.platform_admin_revoked"));
+  expect(entry).toMatchObject({
+    actorKind: "user",
+    actorUserId: remover,
+    organizationId: null,
+    subjectType: "user",
+    subjectId: removed,
+    details: {},
+  });
+});
+
+test("removing someone who is no platform admin changes nothing and writes no entry", async () => {
+  const remover = await loggedInPlatformAdmin("a@example.test");
+  const other = await loggedInUser("niet@example.test");
+  const before = await entries();
+  const events = await listenForLiveEvents();
+  try {
+    for (const userId of [other, "0192f3c0-0000-7000-8000-00000000dead"]) {
+      expect(await removePlatformAdmin(db(), { userId }, asUser(remover))).toEqual({
+        changed: false,
+      });
+    }
+    expect(await events.drain()).toEqual([]);
+  } finally {
+    await events.close();
+  }
+  expect(await entries()).toEqual(before);
+});
+
+test("the last platform admin who logged in cannot be removed, also not when another was appointed and never logged in", async () => {
+  const only = await loggedInPlatformAdmin("a@example.test");
+  await expect(removePlatformAdmin(db(), { userId: only }, asUser(only))).rejects.toMatchObject({
+    code: "last_platform_admin",
+  });
+  const { userId: neverLoggedIn } = await grantPlatformAdmin(
+    db(),
+    { email: "admn@example.test" },
+    asUser(only),
+  );
+  const before = await entries();
+  await expect(removePlatformAdmin(db(), { userId: only }, asUser(only))).rejects.toMatchObject({
+    code: "last_platform_admin",
+  });
+  expect(await isPlatformAdmin(only)).toBe(true);
+  expect(await entries()).toEqual(before);
+  // The one who never logged in can go: a platform admin who logged in stays.
+  expect(await removePlatformAdmin(db(), { userId: neverLoggedIn }, asUser(only))).toEqual({
+    changed: true,
+  });
+});
+
+test("two platform admins removing each other at the same moment leave one", async () => {
+  const a = await loggedInPlatformAdmin("a@example.test");
+  const b = await loggedInPlatformAdmin("b@example.test");
+  const results = await Promise.allSettled([
+    removePlatformAdmin(db(), { userId: b }, asUser(a)),
+    removePlatformAdmin(db(), { userId: a }, asUser(b)),
+  ]);
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  const [refused] = results.filter((r) => r.status === "rejected");
+  expect((refused as PromiseRejectedResult).reason).toMatchObject({ code: "last_platform_admin" });
+  expect(await db().select().from(users).where(eq(users.isPlatformAdmin, true))).toHaveLength(1);
 });

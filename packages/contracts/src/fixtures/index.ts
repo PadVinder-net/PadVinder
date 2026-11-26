@@ -8,3 +8,4 @@ export * from "./organizations";
 export * from "./managed-working-groups";
 export * from "./add-members";
 export * from "./audit-log";
+export * from "./platform-admins";
