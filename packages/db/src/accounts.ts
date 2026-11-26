@@ -23,6 +23,7 @@ import {
   membershipRequests,
   organizationAdmins,
   organizations,
+  passkeys,
   sessions,
   users,
   verifications,
@@ -291,6 +292,7 @@ export async function deleteAccount(
       .where(eq(users.id, input.userId));
 
     await tx.delete(sessions).where(eq(sessions.userId, input.userId));
+    await tx.delete(passkeys).where(eq(passkeys.userId, input.userId));
     await tx.delete(accounts).where(eq(accounts.userId, input.userId));
     await tx.delete(verifications).where(
       inArray(

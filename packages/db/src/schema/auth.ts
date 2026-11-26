@@ -56,8 +56,33 @@ export const sessions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Ours, not Better Auth's. The moment a passkey was last used for this session; set only by
+    // the session-create hook, never by a client. Null: no passkey used for this session.
+    passkeyVerifiedAt: timestamptz("passkey_verified_at"),
   },
   (table) => [index("sessions_user_id_idx").on(table.userId)],
+);
+
+// Better Auth's passkey model (@better-auth/passkey), keys exactly as it names them.
+export const passkeys = pgTable(
+  "passkeys",
+  {
+    id: id(),
+    name: text("name"),
+    publicKey: text("public_key").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    credentialID: text("credential_id").notNull().unique(),
+    // A WebAuthn counter is 32 bits unsigned, more than `integer` holds.
+    counter: bigint("counter", { mode: "number" }).notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: boolean("backed_up").notNull(),
+    transports: text("transports"),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    aaguid: text("aaguid"),
+  },
+  (table) => [index("passkeys_user_id_idx").on(table.userId)],
 );
 
 export const accounts = pgTable(
