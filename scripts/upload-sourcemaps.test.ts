@@ -23,7 +23,7 @@ beforeAll(async () => {
   await mkdir(maps);
   await writeFile(
     join(bin, "docker"),
-    `#!/usr/bin/env bash\nprintf '%s\\n' "ARGS $*" "ORG \${SENTRY_ORG:-}" >> "${record}"\necho "uploaded"\n`,
+    `#!/usr/bin/env bash\nprintf '%s\\n' "ARGS $*" "ORG \${SENTRY_ORG:-}" >> "${record}"\n[[ -n "\${FAKE_DOCKER_FAIL:-}" && "$*" == *"\${FAKE_DOCKER_FAIL}"* ]] && exit 1\necho "uploaded"\n`,
   );
   await chmod(join(bin, "docker"), 0o755);
   return () => rm(scratch, { recursive: true, force: true });
@@ -97,4 +97,24 @@ test("uploads nothing and exits 0 without a token", async () => {
   const output = upload({ SENTRY_ORG: ORG });
   await expect(readFile(record, "utf8")).rejects.toThrow();
   expect(output).toContain("SENTRY_AUTH_TOKEN is not set");
+});
+
+test("uploads the browser maps even when the server upload fails, and exits 1", async () => {
+  await makeMaps("api", "worker", "mobile", "portal");
+  const result = spawnSync(join(root, "scripts/upload-sourcemaps.sh"), [maps], {
+    cwd: root,
+    env: {
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+      HOME: process.env.HOME ?? "/tmp",
+      SENTRY_AUTH_TOKEN: "token-marker",
+      SENTRY_ORG: ORG,
+      FAKE_DOCKER_FAIL: "padvinder-server",
+    },
+    encoding: "utf8",
+  });
+  expect(result.status).toBe(1);
+  const runs = await runLines();
+  expect(runs).toHaveLength(2);
+  expect(runs[0]).toContain("--project padvinder-server");
+  expect(runs[1]).toContain("--project padvinder-browser");
 });

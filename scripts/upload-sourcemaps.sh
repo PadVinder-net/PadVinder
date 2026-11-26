@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Uploads the source maps of a release (release/sourcemaps: the server bundles with their maps,
-# carrying Sentry debug IDs) to the Sentry projects: the server bundles (api, worker) to
+# Uploads the source maps of a release (release/sourcemaps: the server bundles and the
+# browser bundles with their maps, carrying Sentry debug IDs) to the Sentry projects: the server bundles (api, worker) to
 # padvinder-server, the browser bundles (mobile, portal) to padvinder-browser.
 #
 #   scripts/upload-sourcemaps.sh <dir>
@@ -60,5 +60,8 @@ upload_to() {
   SENTRY_CLI_READONLY=1 "$root/scripts/sentry-cli.sh" sourcemaps upload --project "$project" "${dirs[@]}"
 }
 
-upload_to padvinder-server api worker
-upload_to padvinder-browser mobile portal
+# Both projects are tried even when the first upload fails; the exit status says if one failed.
+status=0
+upload_to padvinder-server api worker || status=1
+upload_to padvinder-browser mobile portal || status=1
+exit "$status"
