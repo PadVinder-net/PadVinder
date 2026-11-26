@@ -15,7 +15,7 @@ A platform admin who lost every passkey (a lost phone, a wiped laptop) is normal
    select id from users where email = '<adres>' and deleted_at is null;
    ```
 
-   It must give exactly one row. Addresses are stored trimmed and in lower case, so type it that way.
+   It must give exactly one row. Addresses are stored trimmed and in lower case, so type it that way. With no row, stop: check the address again with the person, letter by letter, and run the `select` again. Never run the next statement with an empty or guessed ID.
 
 3. **Delete that user's passkeys,** with the ID from step 2, in one statement:
 
@@ -23,14 +23,22 @@ A platform admin who lost every passkey (a lost phone, a wiped laptop) is normal
    delete from passkeys where user_id = '<id>';
    ```
 
-   It answers `DELETE <n>`, the number of passkeys removed. Then close the database session (but see the last paragraph first).
+   It answers `DELETE <n>`, the number of passkeys removed. The sessions are not touched: one confirmed with an old passkey stays confirmed until its window ends (at most 24 hours).
 
-4. **Log in with a code** from the mail, in the portal, and **add a new passkey as a first one** (Profiel, Toegangssleutels, Maak een toegangssleutel). Do it within a day of that login: a first passkey needs a session at most one day old. After a day, log out and log in with a new code first.
+4. **Only when a device may be in someone else's hands** (a stolen phone, a laptop left behind), deal with that user's sessions in the same database session, with the same ID. Either take away the confirmation of every session, as the portal's reset does; the person stays logged in everywhere, but no session can do what needs a passkey:
 
-This writes no audit entry and sends no mail: the statement goes around the application, and the audit log records only what the application does. Write down yourself when and why you did it (in the maintainer's checklist or the issue about the incident). The new passkey writes its own `passkey.added` entry and sends its mail as usual.
+   ```sql
+   update sessions set passkey_verified_at = null where user_id = '<id>';
+   ```
 
-Sessions that were confirmed with the old passkeys stay confirmed until their window ends (at most 24 hours), because the statement does not touch the sessions. When the passkeys were lost with a device that may be in someone else's hands, log that user out everywhere before step 4, in the same database session:
+   Or, when the device itself must lose its access, log the person out everywhere:
 
-```sql
-delete from sessions where user_id = '<id>';
-```
+   ```sql
+   delete from sessions where user_id = '<id>';
+   ```
+
+   Then close the database session.
+
+5. **Log in with a code** from the mail, in the portal, and **add a new passkey as a first one** (Profiel, Toegangssleutels, Maak een toegangssleutel). Do it within a day of that login: a first passkey needs a session at most one day old. After a day, log out and log in with a new code first.
+
+This writes no audit entry and sends no mail: the statements go around the application, and the audit log records only what the application does. Write down yourself when and why you did it (in the maintainer's checklist or the issue about the incident). The new passkey writes its own `passkey.added` entry and sends its mail as usual.
