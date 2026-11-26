@@ -26,7 +26,7 @@ export function AccountSummaryCard({ account, own, onDelete }: AccountSummaryCar
           <p key={organization.id}>Beheerder van {organization.name}</p>
         ))}
         <div>
-          <h3 className="font-medium">Werkgroepen</h3>
+          <h3 className="font-semibold">Werkgroepen</h3>
           {account.workingGroups.length === 0 ? (
             <p>Geen werkgroepen.</p>
           ) : (
