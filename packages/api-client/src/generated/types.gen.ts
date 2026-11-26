@@ -125,6 +125,7 @@ export type HealthResponseInput = {
     worker: {
         lastHeartbeatAt: string | null;
     };
+    passkeyReveals?: Array<'database'>;
 };
 
 export type ManagedWorkingGroupInput = {
@@ -247,6 +248,7 @@ export type MemberInput = {
 
 export type MemberListResponseInput = {
     members: Array<MemberInput>;
+    passkeyReveals?: Array<'email' | 'phone' | 'hasLoggedIn'>;
 };
 
 export type OrganizationInput = {
@@ -476,6 +478,7 @@ export type HealthResponse = {
     worker: {
         lastHeartbeatAt: string | null;
     };
+    passkeyReveals?: Array<'database'>;
 };
 
 export type ManagedWorkingGroup = {
@@ -598,6 +601,7 @@ export type Member = {
 
 export type MemberListResponse = {
     members: Array<Member>;
+    passkeyReveals?: Array<'email' | 'phone' | 'hasLoggedIn'>;
 };
 
 export type Organization = {
@@ -915,6 +919,10 @@ export type ListMembersErrors = {
     /**
      * Default Response
      */
+    403: ApiError;
+    /**
+     * Default Response
+     */
     404: ApiError;
 };
 
@@ -984,6 +992,10 @@ export type ListManagedWorkingGroupsErrors = {
      * Default Response
      */
     401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
 };
 
 export type ListManagedWorkingGroupsError = ListManagedWorkingGroupsErrors[keyof ListManagedWorkingGroupsErrors];
@@ -1138,6 +1150,10 @@ export type ListOrganizationsErrors = {
      * Default Response
      */
     401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
 };
 
 export type ListOrganizationsError = ListOrganizationsErrors[keyof ListOrganizationsErrors];
@@ -1206,6 +1222,10 @@ export type GetOrganizationErrors = {
      * Default Response
      */
     401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
     /**
      * Default Response
      */
@@ -1856,6 +1876,10 @@ export type ListAuditLogEntriesErrors = {
     /**
      * Default Response
      */
+    403: ApiError;
+    /**
+     * Default Response
+     */
     404: ApiError;
 };
 
@@ -1906,6 +1930,10 @@ export type ListReviewableMembershipRequestsErrors = {
      * Default Response
      */
     401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
 };
 
 export type ListReviewableMembershipRequestsError = ListReviewableMembershipRequestsErrors[keyof ListReviewableMembershipRequestsErrors];

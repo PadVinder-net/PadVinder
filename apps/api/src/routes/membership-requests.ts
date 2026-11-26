@@ -201,12 +201,13 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
           "The pending requests of every group the user reviews, with the applicants' contact details. Empty for anyone who reviews nothing",
         response: {
           200: membershipRequestListResponseSchema,
-          ...errorResponses(401),
+          ...errorResponses(401, 403),
         },
       },
     },
     async (request): Promise<MembershipRequestListResponse> => {
       const actor = request.actor!;
+      authorize(actor, { action: "admin.listAdministered" });
       const requests = await listReviewablePendingRequests(db, actor);
       return { membershipRequests: requests.map(toMembershipRequestForReview) };
     },

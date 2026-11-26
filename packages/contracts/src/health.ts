@@ -32,6 +32,8 @@ export const healthResponseSchema = z
       latestMigration: z.object({ name: z.string(), createdAt: timestampSchema }).nullable(),
     }),
     worker: z.object({ lastHeartbeatAt: timestampSchema.nullable() }),
+    /** Fields left out because a passkey confirmation would show them. Absent when none. */
+    passkeyReveals: z.array(z.literal("database")).optional(),
   })
   .meta({ id: "HealthResponse" });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;

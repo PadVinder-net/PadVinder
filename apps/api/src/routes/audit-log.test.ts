@@ -82,11 +82,11 @@ beforeAll(async () => {
 });
 afterAll(() => ctx.close());
 
-const everyone = {
+const everyone: ExpectedStatuses = {
   platformAdmin: 200,
-  platformAdminUnconfirmed: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
-  organizationAdminUnconfirmed: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,
@@ -249,4 +249,21 @@ test("reading writes no entry, and POST, PATCH and DELETE on the path are 404", 
   }
   const [after] = await ctx.t.db.select({ n: count() }).from(auditLogEntries);
   expect(after!.n).toBe(before!.n);
+});
+
+test("an unconfirmed admin asking the log of any organization gets passkey_required, a coordinator the 404", async () => {
+  for (const who of ["organizationAdminUnconfirmed", "platformAdminUnconfirmed"] as const) {
+    const res = await read(
+      cast.members[who].headers,
+      `?organizationId=${cast.otherOrganization.id}`,
+    );
+    // The admin role alone is refused first, whatever the ID: nothing about the record leaks.
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("passkey_required");
+  }
+  const coordinator = await read(
+    cast.members.coordinator.headers,
+    `?organizationId=${cast.otherOrganization.id}`,
+  );
+  expect(coordinator.statusCode).toBe(404);
 });

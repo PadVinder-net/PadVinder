@@ -66,11 +66,11 @@ async function makeOrganization(extra: Record<string, unknown> = {}) {
   };
 }
 
-const everyone = {
+const everyone: ExpectedStatuses = {
   platformAdmin: 200,
-  platformAdminUnconfirmed: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
-  organizationAdminUnconfirmed: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,

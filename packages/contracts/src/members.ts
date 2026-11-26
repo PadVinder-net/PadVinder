@@ -22,6 +22,13 @@ export type Member = z.infer<typeof memberSchema>;
 
 /** The members of one working group, sorted by name. */
 export const memberListResponseSchema = z
-  .object({ members: z.array(memberSchema) })
+  .object({
+    members: z.array(memberSchema),
+    /**
+     * Fields left out of every member because a passkey confirmation would show them. Absent when
+     * nothing is hidden for that reason.
+     */
+    passkeyReveals: z.array(z.enum(["email", "phone", "hasLoggedIn"])).optional(),
+  })
   .meta({ id: "MemberListResponse" });
 export type MemberListResponse = z.infer<typeof memberListResponseSchema>;

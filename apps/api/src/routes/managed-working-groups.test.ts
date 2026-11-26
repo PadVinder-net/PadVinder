@@ -15,6 +15,7 @@ import {
   type ExpectedStatuses,
 } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { recordQueries } from "../testing/query-log";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -98,9 +99,9 @@ test("everyone logged in gets their own list", async () =>
     cast,
     {
       platformAdmin: 200,
-      platformAdminUnconfirmed: 200,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 200,
-      organizationAdminUnconfirmed: 200,
+      organizationAdminUnconfirmed: "passkey_required",
       coordinator: 200,
       volunteer: 200,
       volunteerOtherGroup: 200,
@@ -379,4 +380,59 @@ test("the list everyone chooses from still holds exactly id, name, city and orga
   for (const group of res.json().workingGroups) {
     expect(Object.keys(group).sort()).toEqual(["city", "id", "name", "organization"]);
   }
+});
+
+/**
+ * What an unconfirmed admin's request queries before it answers `passkey_required`: the actor's
+ * own load, which a request that is refused at once (here: removing a passkey needs a recent
+ * confirmation, and nothing is read before `authorize`) shows as the baseline.
+ */
+const baselineQueries = (who: Who) =>
+  recordQueries(ctx.t.pool, async () => {
+    const res = await ctx.app.inject({
+      method: "DELETE",
+      url: `/api/passkeys/${uuidv7()}`,
+      headers: who.headers,
+    });
+    expect(res.json().code).toBe("passkey_required");
+  });
+
+test.each([
+  "/api/managed-working-groups",
+  "/api/organizations",
+  "/api/membership-requests",
+  "/api/audit-log-entries",
+  "/api/audit-log-entries?organizationId=00000000-0000-7000-8000-000000000000",
+  "/api/platform-admins",
+])("%s is passkey_required for an unconfirmed admin and reads nothing", async (path) => {
+  for (const who of [
+    cast.members.platformAdminUnconfirmed,
+    cast.members.organizationAdminUnconfirmed,
+  ]) {
+    if (path === "/api/platform-admins" && who === cast.members.organizationAdminUnconfirmed)
+      continue;
+    const baseline = await baselineQueries(who);
+    expect(baseline.length).toBeGreaterThan(0);
+    let status = 0;
+    let code: string | undefined;
+    const queries = await recordQueries(ctx.t.pool, async () => {
+      const res = await send(who, "GET", path);
+      status = res.statusCode;
+      code = res.json().code;
+    });
+    expect(status).toBe(403);
+    expect(code).toBe("passkey_required");
+    // The same queries as a request that is refused at once: only the actor was loaded.
+    expect(queries).toEqual(baseline);
+  }
+});
+
+test("the spy sees queries: a confirmed admin's list runs more than the actor's load", async () => {
+  const baseline = await baselineQueries(cast.members.platformAdminUnconfirmed);
+  const queries = await recordQueries(ctx.t.pool, async () => {
+    expect(
+      (await send(cast.members.platformAdmin, "GET", "/api/managed-working-groups")).statusCode,
+    ).toBe(200);
+  });
+  expect(queries.length).toBeGreaterThan(baseline.length);
 });

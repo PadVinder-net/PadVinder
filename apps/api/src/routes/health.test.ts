@@ -205,6 +205,7 @@ test("503 with reachable:false when the database hangs, within 5 s", async () =>
       expect(Date.now() - started).toBeLessThan(5_000);
       expect(res.statusCode).toBe(503);
       expect(res.json().database).toEqual(unreachable);
+      expect(res.body).not.toContain("passkeyReveals");
     } finally {
       await app2.close();
     }
@@ -253,3 +254,31 @@ test("a health check with the database down still logs the warning", async () =>
     await down.pool.end();
   }
 }, 15_000);
+
+test("an unconfirmed platform admin gets hidden details and passkeyReveals; a confirmed one the details; nobody else the key", async () => {
+  await recordHeartbeat(t!.db);
+  const get = async (headers: Record<string, string> = {}) =>
+    app!.inject({ url: "/api/health", headers });
+  const unconfirmed = await get(cast.members.platformAdminUnconfirmed.headers);
+  expect(unconfirmed.statusCode).toBe(200);
+  expect(unconfirmed.json().database).toEqual({
+    reachable: true,
+    detailsHidden: true,
+    postgresVersion: null,
+    postgisVersion: null,
+    latestMigration: null,
+  });
+  expect(unconfirmed.json().passkeyReveals).toEqual(["database"]);
+  const confirmed = await get(cast.members.platformAdmin.headers);
+  expect(confirmed.json().database.detailsHidden).toBe(false);
+  expect(confirmed.body).not.toContain("passkeyReveals");
+  for (const headers of [
+    {},
+    cast.members.volunteer.headers,
+    cast.members.organizationAdminUnconfirmed.headers,
+  ]) {
+    const res = await get(headers);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("passkeyReveals");
+  }
+});

@@ -70,12 +70,13 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
       schema: {
         operationId: "listOrganizations",
         summary: "The organizations you administer: all for a platform admin, none for others",
-        response: { 200: organizationListResponseSchema, ...errorResponses(401) },
+        response: { 200: organizationListResponseSchema, ...errorResponses(401, 403) },
       },
     },
-    async (request): Promise<OrganizationListResponse> => ({
-      organizations: await listAdministeredOrganizations(db, request.actor!),
-    }),
+    async (request): Promise<OrganizationListResponse> => {
+      authorize(request.actor!, { action: "admin.listAdministered" });
+      return { organizations: await listAdministeredOrganizations(db, request.actor!) };
+    },
   );
 
   app.get(
@@ -86,7 +87,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
         operationId: "getOrganization",
         summary: "One organization with its admins",
         params: organizationParamsSchema,
-        response: { 200: organizationDetailSchema, ...errorResponses(400, 401, 404) },
+        response: { 200: organizationDetailSchema, ...errorResponses(400, 401, 403, 404) },
       },
     },
     async (request): Promise<OrganizationDetail> => {
