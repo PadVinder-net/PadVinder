@@ -41,6 +41,7 @@ test("the layout shows the items, the name and Log uit", async () => {
     "Aanmeldingen",
     "Organisaties",
     "Soorten",
+    "Logboek",
     "Systeemstatus",
   ]);
   expect(links.map((link) => link.getAttribute("href"))).toEqual([
@@ -48,6 +49,7 @@ test("the layout shows the items, the name and Log uit", async () => {
     "/membership-requests",
     "/organizations",
     "/species",
+    "/audit-log",
     "/system",
   ]);
   expect(screen.getByText("PadVinder")).toBeVisible();

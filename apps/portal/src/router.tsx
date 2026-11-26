@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router";
 import { PortalLayout } from "./layout/portal-layout";
 import { RequirePlatformAdmin } from "./layout/require-platform-admin";
+import { AuditLogPage } from "./pages/audit-log-page";
 import { HomePage } from "./pages/home-page";
 import { MembershipRequestsPage } from "./pages/membership-requests-page";
 import { NotFoundPage } from "./pages/not-found-page";
@@ -29,6 +30,7 @@ export const routes: RouteObject[] = [
           </RequirePlatformAdmin>
         ),
       },
+      { path: "audit-log", element: <AuditLogPage /> },
       {
         path: "system",
         element: (

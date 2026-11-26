@@ -57,6 +57,23 @@ export function neverAnswer(match: (request: Request) => boolean) {
   restorers.push(() => (globalThis.fetch = inner));
 }
 
+/**
+ * Answers every request that `match` picks with `answer(url)`, which sees the query too (mockFetch
+ * answers by path only); every other request goes on to mockFetch.
+ */
+export function answerRequests(
+  match: (url: URL, request: Request) => boolean,
+  answer: (url: URL) => Response | Promise<Response>,
+) {
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    return match(url, request) ? answer(url) : inner(request);
+  };
+  restorers.push(() => (globalThis.fetch = inner));
+}
+
 /** The requests with this method whose path starts with `prefix`. */
 export function requestsTo(requests: RecordedRequest[], method: string, prefix: string) {
   return requests.filter((request) => request.method === method && request.path.startsWith(prefix));

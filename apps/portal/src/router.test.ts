@@ -34,6 +34,7 @@ test("the portal has working group, species, system and not-found pages", () => 
       "/working-groups/:workingGroupId",
       "/membership-requests",
       "/species",
+      "/audit-log",
       "/system",
       "/*",
     ]),
