@@ -149,16 +149,14 @@ function OrganizationDetails({
       closeEdit();
       return;
     }
-    edit.mutate(
-      { organizationId: organization.id, patch },
-      {
-        onSuccess: (saved) => {
-          closeEdit();
-          showToast(`Organisatie ${saved.name} is gewijzigd.`);
-        },
-      },
-    );
+    edit.mutate({ organizationId: organization.id, patch });
   }
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(edit.status, () => {
+    if (!edit.data) return;
+    closeEdit();
+    showToast(`Organisatie ${edit.data.name} is gewijzigd.`);
+  });
 
   function openAdd() {
     add.reset();
@@ -166,16 +164,12 @@ function OrganizationDetails({
   }
 
   function saveAdd(email: string) {
-    add.mutate(
-      { organizationId: organization.id, email },
-      {
-        onSuccess: () => {
-          setAddForm((current) => ({ ...current, open: false }));
-          showToast(`${email} is beheerder van ${organization.name}.`);
-        },
-      },
-    );
+    add.mutate({ organizationId: organization.id, email });
   }
+  useOnSuccess(add.status, () => {
+    setAddForm((current) => ({ ...current, open: false }));
+    showToast(`${add.variables?.email ?? ""} is beheerder van ${organization.name}.`);
+  });
 
   function askRemove(admin: OrganizationAdmin) {
     remove.reset();
@@ -185,18 +179,15 @@ function OrganizationDetails({
   function confirmRemove() {
     const admin = removing.admin;
     if (!admin) return;
-    remove.mutate(
-      { organizationId: organization.id, userId: admin.userId },
-      {
-        onSuccess: () => {
-          setRemoving((current) => ({ ...current, open: false }));
-          showToast(
-            `${nameInSentence(admin.name)} is geen beheerder meer van ${organization.name}.`,
-          );
-        },
-      },
-    );
+    remove.mutate({ organizationId: organization.id, userId: admin.userId });
   }
+  useOnSuccess(remove.status, () => {
+    setRemoving((current) => ({ ...current, open: false }));
+    if (removing.admin)
+      showToast(
+        `${nameInSentence(removing.admin.name)} is geen beheerder meer van ${organization.name}.`,
+      );
+  });
 
   function askReset(admin: OrganizationAdmin) {
     resetPasskeys.reset();

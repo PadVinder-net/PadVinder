@@ -83,13 +83,13 @@ export function PlatformAdminsPage() {
 
   function appoint() {
     const email = adding.email;
-    add.mutate(email, {
-      onSuccess: () => {
-        setAdding((current) => ({ ...current, open: false }));
-        showToast(`${email} is hoofdbeheerder.`);
-      },
-    });
+    add.mutate(email);
   }
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(add.status, () => {
+    setAdding((current) => ({ ...current, open: false }));
+    showToast(`${add.variables ?? ""} is hoofdbeheerder.`);
+  });
 
   function askRemove(admin: PlatformAdmin) {
     remove.reset();
@@ -99,22 +99,27 @@ export function PlatformAdminsPage() {
   function confirmRemove() {
     const admin = removing.admin;
     if (!admin) return;
-    const own = admin.userId === me?.user.id;
-    // Not `mutate`'s callbacks: removing yourself refetches me first, which unmounts this page,
-    // and those callbacks would then not run. The toast still has to say it happened.
-    void remove.mutateAsync(admin.userId).then(
-      () => {
-        setRemoving((current) => ({ ...current, open: false }));
-        showToast(
-          own
-            ? "Je bent geen hoofdbeheerder meer."
-            : `${nameOrAddress(admin)} is geen hoofdbeheerder meer.`,
-        );
-      },
-      // The dialog shows the text of `remove.error`.
-      () => {},
-    );
+    if (admin.userId === me?.user.id) {
+      // Not the state: removing yourself refetches me first, which unmounts this page, and an
+      // effect would then not run. The toast still has to say it happened.
+      void remove.mutateAsync(admin.userId).then(
+        () => {
+          setRemoving((current) => ({ ...current, open: false }));
+          showToast("Je bent geen hoofdbeheerder meer.");
+        },
+        // The dialog shows the text of `remove.error`.
+        () => {},
+      );
+    } else {
+      remove.mutate(admin.userId);
+    }
   }
+  // Someone else's removal closes on the state, so the resend after a confirmation closes it too.
+  useOnSuccess(remove.status, () => {
+    if (!removing.admin || removing.admin.userId === me?.user.id) return;
+    setRemoving((current) => ({ ...current, open: false }));
+    showToast(`${nameOrAddress(removing.admin)} is geen hoofdbeheerder meer.`);
+  });
   const cancelRemove = () => {
     if (!remove.isPending) setRemoving((current) => ({ ...current, open: false }));
   };

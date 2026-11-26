@@ -22,6 +22,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { RequireManagesSomething } from "../layout/require-manages-something";
 import { LoadError } from "./load-error";
+import { useOnSuccess } from "./use-on-success";
 
 const alreadyDecidedMessage = apiErrorMessage("already_decided");
 const goneMessage = "Deze aanmelding bestaat niet meer.";
@@ -204,7 +205,35 @@ function MembershipRequests() {
     showToast(apiErrorMessage(code));
   }
 
+  // The last decision pressed, and the decisions already said: a decision that failed with
+  // `passkey_required` is sent again after the confirmation, and then only the mutation's state
+  // (not the promise of the press) sees its success.
+  const lastDecision = useRef<{
+    request: MembershipRequestForReview;
+    decision: "approve" | "reject";
+  } | null>(null);
+  const said = useRef(new Set<string>());
+  function decided(request: MembershipRequestForReview, decision: "approve" | "reject") {
+    if (said.current.has(request.id)) return;
+    said.current.add(request.id);
+    handled.current.add(request.id);
+    showToast(
+      decision === "approve"
+        ? `${nameInSentence(request.applicant.name)} is toegelaten tot ${request.workingGroup.name}.`
+        : rejectedMessage(request.applicant.name),
+    );
+    closeRequest(request.id);
+  }
+  const saidIfLast = (decision: "approve" | "reject") => () => {
+    const last = lastDecision.current;
+    if (last && last.decision === decision) decided(last.request, decision);
+  };
+  useOnSuccess(approve.status, saidIfLast("approve"));
+  useOnSuccess(reject.status, saidIfLast("reject"));
+
   function decide(request: MembershipRequestForReview, decision: "approve" | "reject") {
+    lastDecision.current = { request, decision };
+    said.current.delete(request.id);
     const mutation = decision === "approve" ? approve : reject;
     (decision === "approve" ? reject : approve).reset();
     // Not `mutate`'s callbacks: those do not run once the page is gone, and a decision that was
@@ -213,15 +242,7 @@ function MembershipRequests() {
     void mutation
       .mutateAsync({ id: request.id })
       .then(
-        () => {
-          handled.current.add(request.id);
-          showToast(
-            decision === "approve"
-              ? `${nameInSentence(request.applicant.name)} is toegelaten tot ${request.workingGroup.name}.`
-              : rejectedMessage(request.applicant.name),
-          );
-          closeRequest(request.id);
-        },
+        () => decided(request, decision),
         (error: unknown) => {
           // Any other error stays in the modal, as the detail's error.
           if (apiErrorCode(error) !== "already_decided") return;
