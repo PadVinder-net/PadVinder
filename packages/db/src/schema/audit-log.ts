@@ -33,5 +33,7 @@ export const auditLogEntries = pgTable(
       table.occurredAt,
     ),
     index("audit_log_entries_subject_type_subject_id_idx").on(table.subjectType, table.subjectId),
+    // The pages of the audit log: newest first, then by ID (`listAuditLogEntries`).
+    index("audit_log_entries_occurred_at_id_idx").on(table.occurredAt, table.id),
   ],
 );

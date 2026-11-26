@@ -47,6 +47,42 @@ export type AccountDeletionBlockedInput = {
     blockers?: Array<AccountDeletionBlockerInput>;
 };
 
+export type AuditActionGroupInput = 'organization' | 'workingGroup' | 'role' | 'membership' | 'account' | 'species';
+
+export type AuditLogPersonInput = {
+    kind: 'named' | 'former_member' | 'deleted_account' | 'platform_admin' | 'system';
+    name?: string;
+    hasLoggedIn?: boolean;
+};
+
+export type AuditLogEntryInput = {
+    id: string;
+    occurredAt: string;
+    action: string;
+    actor: AuditLogPersonInput;
+    person: AuditLogPersonInput | null;
+    organization: {
+        id: string;
+        name: string;
+    } | null;
+    workingGroup: {
+        id: string;
+        name: string;
+    } | null;
+    species: {
+        id: string;
+        dutchName: string;
+    } | null;
+    details: {
+        [key: string]: string | number | boolean | null;
+    };
+};
+
+export type AuditLogPageInput = {
+    entries: Array<AuditLogEntryInput>;
+    nextCursor: string | null;
+};
+
 export type HealthResponseInput = {
     status: 'ok' | 'degraded';
     commit: string;
@@ -296,6 +332,42 @@ export type AccountDeletionBlocked = {
         message: string;
     }>;
     blockers?: Array<AccountDeletionBlocker>;
+};
+
+export type AuditActionGroup = 'organization' | 'workingGroup' | 'role' | 'membership' | 'account' | 'species';
+
+export type AuditLogPerson = {
+    kind: 'named' | 'former_member' | 'deleted_account' | 'platform_admin' | 'system';
+    name?: string;
+    hasLoggedIn?: boolean;
+};
+
+export type AuditLogEntry = {
+    id: string;
+    occurredAt: string;
+    action: string;
+    actor: AuditLogPerson;
+    person: AuditLogPerson | null;
+    organization: {
+        id: string;
+        name: string;
+    } | null;
+    workingGroup: {
+        id: string;
+        name: string;
+    } | null;
+    species: {
+        id: string;
+        dutchName: string;
+    } | null;
+    details: {
+        [key: string]: string | number | boolean | null;
+    };
+};
+
+export type AuditLogPage = {
+    entries: Array<AuditLogEntry>;
+    nextCursor: string | null;
 };
 
 export type HealthResponse = {

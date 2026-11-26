@@ -420,6 +420,38 @@ test("the working group name migration fails when two names in one organization 
   }
 });
 
+test("the audit log index migration applies to a database that holds audit entries", async () => {
+  const { old, cleanUp } = await migratedBefore("_audit_log_occurred_at_id_index");
+  try {
+    const { "Paddentrek Voorbeeldstad": organizationId } = await insertGroups(old.pool, {
+      "Paddentrek Voorbeeldstad": ["Noord"],
+    });
+    for (const moment of ["2026-11-25T12:00:00.123456Z", "2026-11-25T12:00:00.123456Z"]) {
+      await old.pool.query(
+        "insert into audit_log_entries (occurred_at, actor_kind, organization_id, action, subject_type, subject_id) values ($1, 'system', $2, 'organization.created', 'organization', $2)",
+        [moment, organizationId],
+      );
+    }
+
+    await runMigrations(old.url);
+
+    const entries = await old.pool.query("select count(*)::int as n from audit_log_entries");
+    expect(entries.rows).toEqual([{ n: 2 }]);
+    const index = await old.pool.query(
+      "select indexdef from pg_indexes where indexname = 'audit_log_entries_occurred_at_id_idx'",
+    );
+    expect(index.rows).toEqual([
+      {
+        indexdef: expect.stringMatching(
+          /ON public\.audit_log_entries USING btree \(occurred_at, id\)/,
+        ),
+      },
+    ]);
+  } finally {
+    await cleanUp();
+  }
+});
+
 test("refuses a database whose locale is not C.UTF-8, before migrating", async () => {
   const admin = new URL(t!.url);
   // A test database name, so the cleanup drops it if this run is interrupted.

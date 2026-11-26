@@ -1,0 +1,1 @@
+CREATE INDEX "audit_log_entries_occurred_at_id_idx" ON "audit_log_entries" ("occurred_at","id");

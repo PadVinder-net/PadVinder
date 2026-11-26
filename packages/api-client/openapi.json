@@ -181,6 +181,163 @@
           "code"
         ]
       },
+      "AuditActionGroupInput": {
+        "type": "string",
+        "enum": [
+          "organization",
+          "workingGroup",
+          "role",
+          "membership",
+          "account",
+          "species"
+        ]
+      },
+      "AuditLogPersonInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "named",
+              "former_member",
+              "deleted_account",
+              "platform_admin",
+              "system"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "hasLoggedIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "AuditLogEntryInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditLogPersonInput"
+          },
+          "person": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuditLogPersonInput"
+              }
+            ]
+          },
+          "organization": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "workingGroup": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "species": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "dutchName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "dutchName"
+            ]
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ],
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "id",
+          "occurredAt",
+          "action",
+          "actor",
+          "person",
+          "organization",
+          "workingGroup",
+          "species",
+          "details"
+        ]
+      },
+      "AuditLogPageInput": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditLogEntryInput"
+            }
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries",
+          "nextCursor"
+        ]
+      },
       "HealthResponseInput": {
         "type": "object",
         "properties": {
@@ -1135,6 +1292,169 @@
           "error",
           "message",
           "code"
+        ],
+        "additionalProperties": false
+      },
+      "AuditActionGroup": {
+        "type": "string",
+        "enum": [
+          "organization",
+          "workingGroup",
+          "role",
+          "membership",
+          "account",
+          "species"
+        ]
+      },
+      "AuditLogPerson": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "named",
+              "former_member",
+              "deleted_account",
+              "platform_admin",
+              "system"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "hasLoggedIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditLogPerson"
+          },
+          "person": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuditLogPerson"
+              }
+            ]
+          },
+          "organization": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "workingGroup": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "species": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "dutchName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "dutchName"
+            ],
+            "additionalProperties": false
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ],
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "id",
+          "occurredAt",
+          "action",
+          "actor",
+          "person",
+          "organization",
+          "workingGroup",
+          "species",
+          "details"
+        ],
+        "additionalProperties": false
+      },
+      "AuditLogPage": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditLogEntry"
+            }
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries",
+          "nextCursor"
         ],
         "additionalProperties": false
       },
