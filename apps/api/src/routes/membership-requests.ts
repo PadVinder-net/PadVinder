@@ -2,14 +2,17 @@ import {
   apiErrorCodes,
   createMembershipRequestSchema,
   membershipRequestForReviewSchema,
+  membershipRequestListResponseSchema,
   membershipRequestSchema,
   type MembershipRequest,
   type MembershipRequestForReview,
+  type MembershipRequestListResponse,
 } from "@padvinder/contracts";
 import {
   createMembershipRequest,
   decideMembershipRequest,
   getMembershipRequestForReview,
+  listReviewablePendingRequests,
   listRequestNotificationRecipients,
   withdrawMembershipRequest,
   type Db,
@@ -187,6 +190,27 @@ export const membershipRequestRoutes: FastifyPluginAsyncZod<{
   );
   // Reviewing: only a coordinator of the request's group, an admin of its organization or a
   // platform admin. A request that does not exist is the same 404 an outsider gets.
+
+  app.get(
+    "/membership-requests",
+    {
+      preHandler: app.requireActor,
+      schema: {
+        operationId: "listReviewableMembershipRequests",
+        summary:
+          "The pending requests of every group the user reviews, with the applicants' contact details. Empty for anyone who reviews nothing",
+        response: {
+          200: membershipRequestListResponseSchema,
+          ...errorResponses(401),
+        },
+      },
+    },
+    async (request): Promise<MembershipRequestListResponse> => {
+      const actor = request.actor!;
+      const requests = await listReviewablePendingRequests(db, actor);
+      return { membershipRequests: requests.map(toMembershipRequestForReview) };
+    },
+  );
 
   app.get(
     "/membership-requests/:id",

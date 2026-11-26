@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { addMembers, addOrganizationAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
-import type { AddMembersData, AddMembersError, AddMembersResponse2, AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { addMembers, addOrganizationAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listReviewableMembershipRequests, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
+import type { AddMembersData, AddMembersError, AddMembersResponse2, AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListReviewableMembershipRequestsData, ListReviewableMembershipRequestsError, ListReviewableMembershipRequestsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -439,6 +439,24 @@ export const updateSpeciesMutation = (options?: Partial<Options<UpdateSpeciesDat
     };
     return mutationOptions;
 };
+
+export const listReviewableMembershipRequestsQueryKey = (options?: Options<ListReviewableMembershipRequestsData>) => createQueryKey('listReviewableMembershipRequests', options);
+
+/**
+ * The pending requests of every group the user reviews, with the applicants' contact details. Empty for anyone who reviews nothing
+ */
+export const listReviewableMembershipRequestsOptions = (options?: Options<ListReviewableMembershipRequestsData>) => queryOptions<ListReviewableMembershipRequestsResponse, ListReviewableMembershipRequestsError, ListReviewableMembershipRequestsResponse, ReturnType<typeof listReviewableMembershipRequestsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listReviewableMembershipRequests({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listReviewableMembershipRequestsQueryKey(options)
+});
 
 /**
  * Ask to join a working group. Sending the same id again returns the stored request

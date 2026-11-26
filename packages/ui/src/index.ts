@@ -16,6 +16,8 @@ export { formatDate, formatDateTime } from "./lib/format";
 export { displayName, nameInSentence } from "./lib/display-name";
 export { parseEmailLines, type EmailLines } from "./lib/email-lines";
 export { normalizeCode } from "./lib/code";
+export { isPhoneScreen } from "./lib/is-phone";
+export { isUuid } from "./lib/is-uuid";
 export { capitalizeFirst } from "./lib/text";
 export { CodeForm, type CodeFormProps } from "./components/login/code-form";
 export { EmailForm, type EmailFormProps } from "./components/login/email-form";
@@ -54,6 +56,10 @@ export {
   MembershipRequestDetail,
   type MembershipRequestDetailProps,
 } from "./components/joining/membership-request-detail";
+export {
+  MembershipRequestTable,
+  type MembershipRequestTableProps,
+} from "./components/joining/membership-request-table";
 export { MemberList, type MemberListProps } from "./components/members/member-list";
 export { MemberDetail, type MemberDetailProps } from "./components/members/member-detail";
 export { ProfileForm, type ProfileFormProps } from "./components/profile/profile-form";

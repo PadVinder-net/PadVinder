@@ -1,6 +1,7 @@
 import type { MembershipRequestStatus, WorkingGroupSummary } from "@padvinder/contracts";
-import { and, asc, count, desc, eq, gte, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { Db, DbTransaction } from "./client";
+import type { Access } from "./access";
 import { recordAudit } from "./audit-log";
 import { notifyAccessChanged, notifyMembershipRequestsChanged } from "./notifications";
 import {
@@ -74,13 +75,25 @@ export type DecideMembershipRequestResult =
 async function selectRequestsForReview(
   db: Db | DbTransaction,
   where: SQL | undefined,
-  options: { order?: "oldest" | "newest"; limit?: number; forUpdate?: boolean } = {},
+  options: {
+    order?: "oldest" | "newest" | "by-group";
+    limit?: number;
+    forUpdate?: boolean;
+  } = {},
 ): Promise<MembershipRequestReviewRecord[]> {
   // The id breaks a tie: two requests that arrived in the same microsecond.
   const order =
-    options.order === "oldest"
-      ? [asc(membershipRequests.receivedAt), asc(membershipRequests.id)]
-      : [desc(membershipRequests.receivedAt), desc(membershipRequests.id)];
+    options.order === "by-group"
+      ? [
+          asc(sql`${organizations.name} collate "nl-NL-x-icu"`),
+          asc(sql`${workingGroups.name} collate "nl-NL-x-icu"`),
+          asc(workingGroups.id),
+          asc(membershipRequests.receivedAt),
+          asc(membershipRequests.id),
+        ]
+      : options.order === "oldest"
+        ? [asc(membershipRequests.receivedAt), asc(membershipRequests.id)]
+        : [desc(membershipRequests.receivedAt), desc(membershipRequests.id)];
   let query = db
     .select({
       id: membershipRequests.id,
@@ -365,6 +378,33 @@ export async function listPendingMembershipRequests(
     ),
     { order: "oldest" },
   );
+}
+
+/**
+ * The pending requests of every working group the user reviews, with their applicants: all groups
+ * for a platform admin; otherwise the groups of the organizations they administer (inactive groups
+ * too) and the groups they coordinate (`getAccess` already leaves out inactive ones). This is the
+ * scope of `workingGroup.reviewRequests`. Each request once, grouped by organization and working
+ * group name in Dutch order, oldest first within a group.
+ */
+export async function listReviewablePendingRequests(
+  db: Db,
+  access: Access,
+): Promise<MembershipRequestReviewRecord[]> {
+  const pending = eq(membershipRequests.status, "pending");
+  if (access.isPlatformAdmin) {
+    return selectRequestsForReview(db, pending, { order: "by-group" });
+  }
+  const coordinatedIds = access.memberships
+    .filter((membership) => membership.isCoordinator)
+    .map((membership) => membership.workingGroupId);
+  const scopes: SQL[] = [];
+  if (access.adminOfOrganizationIds.length > 0) {
+    scopes.push(inArray(workingGroups.organizationId, access.adminOfOrganizationIds));
+  }
+  if (coordinatedIds.length > 0) scopes.push(inArray(workingGroups.id, coordinatedIds));
+  if (scopes.length === 0) return [];
+  return selectRequestsForReview(db, and(pending, or(...scopes)), { order: "by-group" });
 }
 
 /**

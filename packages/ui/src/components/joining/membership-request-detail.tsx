@@ -13,6 +13,10 @@ export type MembershipRequestDetailProps = {
   pending: boolean;
   /** A message from the server, in Dutch. */
   error?: string;
+  /** Ask first before rejecting (the app). The portal's modal turns it off. Default true. */
+  confirmReject?: boolean;
+  /** Show the name as a heading. A modal whose title holds the name turns it off. Default true. */
+  heading?: boolean;
 };
 
 export function MembershipRequestDetail({
@@ -21,12 +25,14 @@ export function MembershipRequestDetail({
   onReject,
   pending,
   error,
+  confirmReject = true,
+  heading = true,
 }: MembershipRequestDetailProps) {
   const [asking, setAsking] = useState(false);
   const name = displayName(request.applicant.name);
   return (
     <section className="flex flex-col gap-4 text-lg">
-      <h2 className="text-2xl font-semibold">{name}</h2>
+      {heading ? <h2 className="text-2xl font-semibold">{name}</h2> : null}
       <dl className="flex flex-col gap-3">
         <ContactRows email={request.applicant.email} phone={request.applicant.phone} />
         <DetailRow label="Werkgroep">{request.workingGroup.name}</DetailRow>
@@ -34,7 +40,7 @@ export function MembershipRequestDetail({
       <p>Aangemeld op {formatDate(request.requestedAt)}</p>
       {request.status === "pending" ? (
         <>
-          <FieldError id="request-error" message={asking ? undefined : error} />
+          <FieldError id="request-error" message={confirmReject && asking ? undefined : error} />
           <WideButton type="button" pending={pending} onClick={onApprove}>
             Keur goed
           </WideButton>
@@ -42,21 +48,23 @@ export function MembershipRequestDetail({
             type="button"
             variant="outline"
             pending={pending}
-            onClick={() => setAsking(true)}
+            onClick={confirmReject ? () => setAsking(true) : onReject}
           >
             Wijs af
           </WideButton>
-          <ConfirmDialog
-            open={asking}
-            title="Aanmelding afwijzen?"
-            text={`${nameInSentence(request.applicant.name)} krijgt hierover een mail.`}
-            confirmLabel="Wijs af"
-            destructive
-            pending={pending}
-            error={error}
-            onConfirm={onReject}
-            onCancel={() => setAsking(false)}
-          />
+          {confirmReject ? (
+            <ConfirmDialog
+              open={asking}
+              title="Aanmelding afwijzen?"
+              text={`${nameInSentence(request.applicant.name)} krijgt hierover een mail.`}
+              confirmLabel="Wijs af"
+              destructive
+              pending={pending}
+              error={error}
+              onConfirm={onReject}
+              onCancel={() => setAsking(false)}
+            />
+          ) : null}
         </>
       ) : (
         <p>Deze aanmelding is al behandeld.</p>

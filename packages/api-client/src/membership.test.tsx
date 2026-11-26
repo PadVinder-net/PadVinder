@@ -6,7 +6,7 @@ import {
   requestsForReviewFixture,
   workingGroupsFixture,
 } from "@padvinder/contracts/fixtures";
-import { renderHook } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { client } from "./generated/client.gen";
@@ -26,6 +26,7 @@ import {
   useApproveMembershipRequest,
   useCreateMembershipRequest,
   useDeleteAccount,
+  useReviewableMembershipRequests,
   useRejectMembershipRequest,
   useRemoveMembership,
   useWithdrawMembershipRequest,
@@ -300,6 +301,14 @@ test("removing a member refetches the member lists", async () => {
   expect(new URL(requests[0]!.url).pathname).toBe(`/api/memberships/${membershipId}`);
   expect(isInvalidated(queryClient, memberListKey)).toBe(true);
   expect(isInvalidated(queryClient, requestListKey)).toBe(false);
+});
+
+test("the reviewer's list returns the open requests", async () => {
+  const requests = answerWith(Response.json({ membershipRequests: requestsForReviewFixture }));
+  const { result } = setup(() => useReviewableMembershipRequests());
+  await waitFor(() => expect(result.current.data).toBeDefined());
+  expect(result.current.data?.membershipRequests).toEqual(requestsForReviewFixture);
+  expect(new URL(requests[0]!.url).pathname).toBe("/api/membership-requests");
 });
 
 describe("useDeleteAccount", () => {

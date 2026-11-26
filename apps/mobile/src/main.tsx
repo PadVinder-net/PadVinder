@@ -6,19 +6,26 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import { AuthGate } from "./auth/auth-gate";
 import { VersionGate } from "./components/version-gate";
 import { appBasename, routes } from "./router";
+import { portalUrlForThisBrowser } from "./hooks/send-to-portal";
 import "./index.css";
 
-const queryClient = createQueryClient();
-const router = createBrowserRouter(routes, { basename: appBasename });
+// A link meant for the other app goes there before anything renders, so before any login.
+const forwardTo = portalUrlForThisBrowser();
+if (forwardTo) {
+  window.location.replace(forwardTo);
+} else {
+  const queryClient = createQueryClient();
+  const router = createBrowserRouter(routes, { basename: appBasename });
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <VersionGate>
-        <AuthGate>
-          <RouterProvider router={router} />
-        </AuthGate>
-      </VersionGate>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <VersionGate>
+          <AuthGate>
+            <RouterProvider router={router} />
+          </AuthGate>
+        </VersionGate>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}

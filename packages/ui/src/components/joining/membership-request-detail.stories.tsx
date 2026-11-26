@@ -46,3 +46,5 @@ export const DeletedApplicant: Story = {
 export const NamelessApplicant: Story = {
   args: { request: { ...noor!, applicant: { ...noor!.applicant, name: "" } } },
 };
+/** In the portal's modal: the title holds the name, and rejecting needs no second question. */
+export const WithoutConfirm: Story = { args: { confirmReject: false, heading: false } };

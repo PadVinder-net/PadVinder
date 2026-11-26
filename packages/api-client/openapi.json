@@ -3420,6 +3420,32 @@
             }
           }
         }
+      },
+      "get": {
+        "operationId": "listReviewableMembershipRequests",
+        "summary": "The pending requests of every group the user reviews, with the applicants' contact details. Empty for anyone who reviews nothing",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipRequestListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/membership-requests/{id}/withdraw": {

@@ -256,3 +256,20 @@ test("the portal's requests page sends a phone to the app", ...);
 - [ ] **Step 4: Update `infra/alwaysdata/README.md`.** "Verification": a new row, open: what an iPhone and an Android phone do with the link in the request mail (installed app or browser).
 - [ ] **Step 5: Check the CI rules,** then run everything: `pnpm check && pnpm build && pnpm test:e2e && pnpm test:visual:docker`. Expected: PASS.
 - [ ] **Step 6: Commit.** `git commit -m "Add end-to-end tests for requests in the portal, and document the forwarding"`
+
+## Deviations
+
+Recorded while building, 26 November 2026. One line each: what, and why.
+
+- Task 1: `listReviewablePendingRequests` holds exactly the requests whose group `workingGroup.reviewRequests` allows, so the list never offers a request whose approval would be 403 or 404: a platform admin gets every group, an organization admin every group of their organizations (also the inactive ones), a coordinator the active groups they coordinate. The order is organization, working group (both in Dutch order), then oldest first by arrival.
+- Task 3: with `showOrganization` a group's heading is `{werkgroep} ({organisatie})`; the portal had no other form for the pair. The tables use `table-fixed` with a half-width name column, so the date column lines up across the groups.
+- Task 4: an address with a request that the loaded list lacks asks `GET /api/membership-requests/{id}` once. When that answers a request that is still pending (the list is older than the request), the page reloads the list instead of saying "Deze aanmelding is al behandeld.": the modal opens once the list holds it, and only a list that still lacks it gives that toast. A pending request is not handled.
+- Task 4: when that lookup fails on the connection, the page shows the connection text as a toast and keeps `?request` in the address, so a reload tries again.
+- Task 4: opening a row adds a history entry, so Back closes the modal; closing or deciding replaces it, so Back never opens a decided request again.
+- Task 4: after a decision the page also refetches the managed working groups, so the count in the navigation follows without waiting for the live event. A decision that finishes after the user left the page still shows its toast there and leaves the address alone; a late answer of the lookup does nothing once the address moved on (react-router's `setSearchParams` updater sees the address of the render that made it, so the page compares with refs).
+- Task 4: when the live event of the page's own decision arrives before its answer, the modal keeps showing the request until the answer, which gives only the decision's toast.
+- Task 5: both apps check the request ID with a UUID pattern (any case) and lowercase it; in the app a link with an ID that is not a UUID goes to the portal's list, without the ID. The forwarding accepts a trailing slash.
+- Task 6: `join` and `requestLinkFromMail` moved from `e2e/joining.spec.ts` into a new `e2e/helpers/joining.ts`, shared with `e2e/portal-membership-requests.spec.ts`, instead of `e2e/helpers/mailpit.ts`: `join` drives the picker, which is not about Mailpit.
+- Task 6: `infra/alwaysdata/README.md` has no row for what phones do with the request mail's link: the maintainer moved that check to the maintainer checklist, GitHub issue #29, because the README is about the infrastructure.
+- Final review: the page lowercases the request ID from the address, and an ID that is not a UUID (`isUuid`, shared from `@padvinder/ui`, also used by both forwarders) gives "Deze aanmelding bestaat niet meer." without asking the API; the approve and reject mutations are reset when no modal is open, so reopening a request after a failed decision shows no old error.
+- Accepted, not changed: `isPhoneScreen` reads the device's screen, as the plan asks; a browser that scales `screen` with the page zoom (reported for Firefox) may treat a strongly zoomed laptop as a phone and send the requests page to the app. Requests of a switched-off working group show in an admin's list without a mark, as the decision endpoints allow deciding them.

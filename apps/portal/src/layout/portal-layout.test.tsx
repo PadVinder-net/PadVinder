@@ -1,5 +1,6 @@
 import { FakeEventSource, mockFetch } from "@padvinder/api-client/testing";
 import {
+  coordinatorMeFixture,
   healthyFixture,
   managedWorkingGroupsFixture,
   meFixture,
@@ -10,6 +11,7 @@ import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { renderPortal } from "../testing/render-portal";
+import { recordRequests, requestsTo } from "../testing/requests";
 
 /** What the server sends when someone's rights changed; the layout then asks /api/me again. */
 function emitAccessChanged(userId: string) {
@@ -19,19 +21,31 @@ function emitAccessChanged(userId: string) {
   });
 }
 
+/** The managed working groups without any open request. */
+const withoutOpenRequests = managedWorkingGroupsFixture.map((group) => ({
+  ...group,
+  pendingRequestCount: 0,
+}));
+
 test("the layout shows the items, the name and Log uit", async () => {
-  mockFetch({ "/api/me": platformAdminMeFixture, "/api/health": healthyFixture });
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    "/api/health": healthyFixture,
+    "/api/managed-working-groups": { workingGroups: withoutOpenRequests },
+  });
   renderPortal("/system");
   const navigation = await screen.findByRole("navigation", { name: "Beheer" });
   const links = within(navigation).getAllByRole("link");
   expect(links.map((link) => link.textContent)).toEqual([
     "Werkgroepen",
+    "Aanmeldingen",
     "Organisaties",
     "Soorten",
     "Systeemstatus",
   ]);
   expect(links.map((link) => link.getAttribute("href"))).toEqual([
     "/working-groups",
+    "/membership-requests",
     "/organizations",
     "/species",
     "/system",
@@ -40,6 +54,32 @@ test("the layout shows the items, the name and Log uit", async () => {
   expect(screen.getByText(platformAdminMeFixture.user.name)).toBeVisible();
   expect(screen.getByRole("button", { name: "Log uit" })).toBeVisible();
   expect(await screen.findByRole("heading", { level: 1, name: "Systeemstatus" })).toBeVisible();
+});
+
+test("the layout shows the number of open requests, and nothing at zero", async () => {
+  const routesByUrl: Record<string, unknown> = {
+    "/api/me": coordinatorMeFixture,
+    // Noord has two open requests, the other groups none.
+    "/api/managed-working-groups": { workingGroups: managedWorkingGroupsFixture },
+  };
+  mockFetch(routesByUrl);
+  renderPortal("/working-groups");
+  const link = await screen.findByRole("link", { name: "Aanmeldingen, 2 open" });
+  expect(link).toHaveAttribute("href", "/membership-requests");
+  expect(within(link).getByText("2")).toBeVisible();
+
+  routesByUrl["/api/managed-working-groups"] = { workingGroups: withoutOpenRequests };
+  emitAccessChanged(coordinatorMeFixture.user.id);
+  const plain = await screen.findByRole("link", { name: "Aanmeldingen" });
+  expect(plain.textContent).toBe("Aanmeldingen");
+});
+
+test("a volunteer's layout does not ask for the managed working groups", async () => {
+  mockFetch({ "/api/me": meFixture });
+  const requests = recordRequests();
+  renderPortal("/");
+  expect(await screen.findByText(meFixture.user.name)).toBeVisible();
+  expect(requestsTo(requests, "GET", "/api/managed-working-groups")).toEqual([]);
 });
 
 test("the current item is marked as the current page, not only by color", async () => {

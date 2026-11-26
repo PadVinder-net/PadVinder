@@ -1293,6 +1293,31 @@ export type UpdateSpeciesResponses = {
 
 export type UpdateSpeciesResponse = UpdateSpeciesResponses[keyof UpdateSpeciesResponses];
 
+export type ListReviewableMembershipRequestsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/membership-requests';
+};
+
+export type ListReviewableMembershipRequestsErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+};
+
+export type ListReviewableMembershipRequestsError = ListReviewableMembershipRequestsErrors[keyof ListReviewableMembershipRequestsErrors];
+
+export type ListReviewableMembershipRequestsResponses = {
+    /**
+     * Default Response
+     */
+    200: MembershipRequestListResponse;
+};
+
+export type ListReviewableMembershipRequestsResponse = ListReviewableMembershipRequestsResponses[keyof ListReviewableMembershipRequestsResponses];
+
 export type CreateMembershipRequestData = {
     body: CreateMembershipRequestInput;
     path?: never;

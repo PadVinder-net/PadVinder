@@ -11,6 +11,7 @@ import {
   listManagedWorkingGroupsQueryKey,
   listOrganizationsQueryKey,
   listMembershipRequestsQueryKey,
+  listReviewableMembershipRequestsQueryKey,
 } from "./generated/@tanstack/react-query.gen";
 import { FakeEventSource } from "./testing";
 
@@ -30,6 +31,7 @@ const organizationId = requestsForReviewFixture[0]!.workingGroup.organization.id
 const southEastId = requestsForReviewFixture[2]!.workingGroup.id;
 const northListKey = listMembershipRequestsQueryKey({ path: { workingGroupId: northId } });
 const southEastListKey = listMembershipRequestsQueryKey({ path: { workingGroupId: southEastId } });
+const reviewableKey = listReviewableMembershipRequestsQueryKey();
 const managedKey = listManagedWorkingGroupsQueryKey();
 const organizationsKey = listOrganizationsQueryKey();
 const organizationKey = getOrganizationQueryKey({ path: { organizationId } });
@@ -41,6 +43,7 @@ function setup() {
   queryClient.setQueryData(northListKey, { membershipRequests: [] });
   queryClient.setQueryData(southEastListKey, { membershipRequests: [] });
   queryClient.setQueryData(requestKey, requestsForReviewFixture[0]);
+  queryClient.setQueryData(reviewableKey, { membershipRequests: [] });
   queryClient.setQueryData(managedKey, { workingGroups: [] });
   queryClient.setQueryData(organizationsKey, { organizations: [] });
   queryClient.setQueryData(organizationKey, null);
@@ -70,6 +73,19 @@ test("membership-requests-changed refetches the requests of that working group",
   expect(isInvalidated(queryClient, requestKey)).toBe(true);
   expect(isInvalidated(queryClient, southEastListKey)).toBe(false);
   expect(isInvalidated(queryClient, getMeQueryKey())).toBe(false);
+});
+
+test("membership-requests-changed refetches the reviewer's list, whatever the working group", () => {
+  const { queryClient } = setup();
+  emit("membership-requests-changed", {
+    type: "membership-requests-changed",
+    workingGroupId: northId,
+    organizationId,
+  });
+  expect(isInvalidated(queryClient, reviewableKey)).toBe(true);
+  queryClient.setQueryData(reviewableKey, { membershipRequests: [] });
+  latestSource().onopen?.();
+  expect(isInvalidated(queryClient, reviewableKey)).toBe(true);
 });
 
 test("a reopened stream refetches me and the request lists", () => {
