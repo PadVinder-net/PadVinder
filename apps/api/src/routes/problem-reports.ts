@@ -14,7 +14,7 @@ import { createWindowLimiter, type WindowLimiter } from "../rate-limit/window-li
 export const PROBLEM_REPORT_LIMIT = { max: 10, windowMs: 60 * 60_000 };
 
 export type ProblemReportOptions = {
-  /** Sentry is off without a DSN: a report is then only logged, with its length. */
+  /** Sentry is off without a browser DSN: a report is then only logged, with its length. */
   monitoring: MonitoringSettings | undefined;
   /** Tests. Default: `PROBLEM_REPORT_LIMIT`, keyed by account ID, in this process's memory. */
   limiter?: WindowLimiter;
@@ -50,7 +50,7 @@ export const problemReportRoutes: FastifyPluginAsyncZod<ProblemReportOptions> = 
         throw apiError(429, apiErrorCodes.tooManyReports, "Too many problem reports this hour");
       }
       const body = request.body;
-      if (settings?.dsn === undefined) {
+      if (settings?.browserDsn === undefined) {
         // Never the text: it is the user's own words.
         request.log.info(
           { messageLength: body.message.length },
@@ -68,11 +68,11 @@ export const problemReportRoutes: FastifyPluginAsyncZod<ProblemReportOptions> = 
         app: body.app,
         appVersion: scrub(body.appVersion),
         userId: actor.userId,
-        dsn: settings.dsn,
+        dsn: settings.browserDsn,
         environment: settings.environment,
         release: settings.release,
       });
-      const result = await forwardEnvelope(envelope, settings.dsn);
+      const result = await forwardEnvelope(envelope, settings.browserDsn);
       if (result.status === "unreachable" || result.status < 200 || result.status > 299) {
         request.log.warn({ sentryStatus: result.status }, "Sentry did not take a problem report");
         throw apiError(502, apiErrorCodes.reportNotSent, "Sentry did not take the report");

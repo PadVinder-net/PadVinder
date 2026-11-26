@@ -41,7 +41,12 @@ beforeAll(async () => {
   // Before the app, as main.ts does.
   startServerMonitoring({
     service: "api",
-    settings: { dsn: undefined, environment: "development", release: "test" },
+    settings: {
+      dsn: undefined,
+      browserDsn: undefined,
+      environment: "development",
+      release: "test",
+    },
     transport: sentry.transport,
   });
   ctx = await createTestApp(

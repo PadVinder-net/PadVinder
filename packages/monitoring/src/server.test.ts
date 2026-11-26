@@ -15,7 +15,12 @@ import {
 } from "./server";
 import { createTestTransport } from "./testing";
 
-const settings = { dsn: undefined, environment: "staging", release: "abc" } as const;
+const settings = {
+  dsn: undefined,
+  browserDsn: undefined,
+  environment: "staging",
+  release: "abc",
+} as const;
 const silent = { write() {} };
 
 afterEach(async () => {
