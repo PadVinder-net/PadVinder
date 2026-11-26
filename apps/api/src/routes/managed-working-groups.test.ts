@@ -402,7 +402,6 @@ test.each([
   "/api/organizations",
   "/api/membership-requests",
   "/api/audit-log-entries",
-  "/api/audit-log-entries?organizationId=00000000-0000-7000-8000-000000000000",
   "/api/platform-admins",
 ])("%s is passkey_required for an unconfirmed admin and reads nothing", async (path) => {
   for (const who of [
@@ -435,4 +434,24 @@ test("the spy sees queries: a confirmed admin's list runs more than the actor's 
     ).toBe(200);
   });
   expect(queries.length).toBeGreaterThan(baseline.length);
+});
+
+test("the audit log of one organization answers 404 or passkey_required and reads nothing", async () => {
+  const unknown = "00000000-0000-7000-8000-000000000000";
+  const cases = [
+    [cast.members.organizationAdminUnconfirmed, cast.otherOrganization.id, 404],
+    [cast.members.organizationAdminUnconfirmed, unknown, 404],
+    [cast.members.organizationAdminUnconfirmed, cast.organization.id, 403],
+    [cast.members.platformAdminUnconfirmed, cast.organization.id, 403],
+    [cast.members.platformAdminUnconfirmed, unknown, 403],
+  ] as const;
+  for (const [who, id, status] of cases) {
+    const baseline = await baselineQueries(who);
+    let got = 0;
+    const queries = await recordQueries(ctx.t.pool, async () => {
+      got = (await send(who, "GET", `/api/audit-log-entries?organizationId=${id}`)).statusCode;
+    });
+    expect(got).toBe(status);
+    expect(queries).toEqual(baseline);
+  }
 });

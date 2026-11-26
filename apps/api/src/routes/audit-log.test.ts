@@ -251,13 +251,17 @@ test("reading writes no entry, and POST, PATCH and DELETE on the path are 404", 
   expect(after!.n).toBe(before!.n);
 });
 
-test("an unconfirmed admin asking the log of any organization gets passkey_required, a coordinator the 404", async () => {
-  for (const who of ["organizationAdminUnconfirmed", "platformAdminUnconfirmed"] as const) {
-    const res = await read(
-      cast.members[who].headers,
-      `?organizationId=${cast.otherOrganization.id}`,
-    );
-    // The admin role alone is refused first, whatever the ID: nothing about the record leaks.
+test("an unconfirmed organization admin asking another organization gets 404, their own passkey_required; a platform admin passkey_required for any", async () => {
+  const unknown = "00000000-0000-7000-8000-000000000000";
+  const admin = cast.members.organizationAdminUnconfirmed.headers;
+  for (const id of [cast.otherOrganization.id, unknown]) {
+    expect((await read(admin, `?organizationId=${id}`)).statusCode).toBe(404);
+  }
+  const own = await read(admin, `?organizationId=${cast.organization.id}`);
+  expect(own.statusCode).toBe(403);
+  expect(own.json().code).toBe("passkey_required");
+  for (const id of [cast.organization.id, cast.otherOrganization.id, unknown]) {
+    const res = await read(cast.members.platformAdminUnconfirmed.headers, `?organizationId=${id}`);
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe("passkey_required");
   }
