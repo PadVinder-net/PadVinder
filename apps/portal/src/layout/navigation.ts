@@ -23,7 +23,11 @@ export function navigationFor(me: MeResponse): NavItem[] {
   }
   if (me.user.isPlatformAdmin) items.push({ label: "Soorten", to: "/species" });
   if (readsAuditLog(me)) items.push({ label: "Logboek", to: "/audit-log" });
-  if (me.user.isPlatformAdmin) items.push({ label: "Systeemstatus", to: "/system" });
+  if (me.user.isPlatformAdmin) {
+    items.push({ label: "Hoofdbeheerders", to: "/platform-admins" });
+    items.push({ label: "Account verwijderen", to: "/delete-account" });
+    items.push({ label: "Systeemstatus", to: "/system" });
+  }
   return items;
 }
 

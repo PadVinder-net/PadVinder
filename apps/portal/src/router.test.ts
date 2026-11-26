@@ -1,10 +1,12 @@
 import { mockFetch } from "@padvinder/api-client/testing";
 import {
+  applicantMeFixture,
   meFixture,
   platformAdminMeFixture,
+  twoOrganizationsMeFixture,
   workerStaleFixture,
 } from "@padvinder/contracts/fixtures";
-import { screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import type { RouteObject } from "react-router";
 import { expect, test } from "vitest";
 import { routes } from "./router";
@@ -35,6 +37,8 @@ test("the portal has working group, species, system and not-found pages", () => 
       "/membership-requests",
       "/species",
       "/audit-log",
+      "/platform-admins",
+      "/delete-account",
       "/system",
       "/*",
     ]),
@@ -51,6 +55,20 @@ test("a volunteer who opens /system sees the not-found page", async () => {
   await expectNotFound();
   expect(screen.queryByRole("heading", { name: "Systeemstatus" })).toBeNull();
   expect(calls).not.toContain("/api/health");
+});
+
+test("an organization admin who opens /platform-admins or /delete-account sees the not-found page", async () => {
+  const organizationAdminMe = {
+    ...applicantMeFixture,
+    organizationAdminOf: twoOrganizationsMeFixture.organizationAdminOf,
+  };
+  for (const path of ["/platform-admins", "/delete-account"]) {
+    const { calls } = mockFetch({ "/api/me": organizationAdminMe });
+    renderPortal(path);
+    await expectNotFound();
+    expect(calls).not.toContain("/api/platform-admins");
+    cleanup();
+  }
 });
 
 test("an unknown address shows the not-found page, inside the layout", async () => {
