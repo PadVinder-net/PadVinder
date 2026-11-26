@@ -1,7 +1,8 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useQueryClient, type Mutation, type Query, type QueryClient } from "@tanstack/react-query";
 import type { PasskeyError, PasskeyResult } from "@padvinder/contracts";
 import { logOut } from "./auth-client";
+import { apiErrorCode } from "./error-messages";
 import type { GetMeResponse } from "./generated";
 import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
 import { refetchMe, useMe } from "./me-query";
@@ -14,6 +15,27 @@ import { reopenServerEvents } from "./server-events";
  * it leaves out what it could not load.
  */
 export const backgroundRequestMeta = { background: true } as const;
+
+/** Whether an error is the API's `passkey_required`: only a confirmation is missing. */
+export function isPasskeyRequired(error: unknown): boolean {
+  return apiErrorCode(error) === "passkey_required";
+}
+
+/**
+ * Whether a query waits for a passkey confirmation: its last fetch failed with `passkey_required`
+ * and no fetch runs now. Refetches the person did not ask for (window focus, live events, a
+ * reopened event stream, a mutation's refetch of its lists) leave it alone, so after Annuleer the
+ * modal does not open again on its own: it keeps its error until the person asks again (an
+ * explicit `refetch`, or opening the screen again) or confirms, which refetches every query. A
+ * query whose refetch already runs (after a confirmation) still holds the old error, but does not
+ * wait: a mutation's refetch restarts it, so it does not end with data from before the mutation.
+ * The me query never waits: it does not answer `passkey_required`.
+ */
+export function waitsForPasskey(query: {
+  state: { error: unknown; fetchStatus: "fetching" | "paused" | "idle" };
+}): boolean {
+  return query.state.fetchStatus === "idle" && isPasskeyRequired(query.state.error);
+}
 
 function isBackground(meta: Record<string, unknown> | undefined): boolean {
   return meta?.background === true;
@@ -204,17 +226,33 @@ const EXPIRY_MARGIN_MS = 1000;
 const EXPIRY_RECHECK_MS = 60 * 1000;
 
 /**
- * Refetches me when `adminConfirmedUntil` passes, so the screens that read it (the app's lists,
- * which then name the groups of administered organizations without loading them) fall back without
- * a reload. One timer, set again whenever me is fetched. Mounted by both apps' confirmation hosts.
+ * Follows `adminConfirmedUntil` in me, for both apps' confirmation hosts:
+ *
+ * - When it passes, me is refetched, so the screens that read it (the app's lists, which then name
+ *   the groups of administered organizations without loading them) fall back without a reload.
+ *   One timer, set again whenever me is fetched.
+ * - When it moves later (from none, or to a later moment: a confirmation in another tab, which
+ *   shares the session cookie), the queries that wait for a passkey (`waitsForPasskey`) are
+ *   refetched, so this tab's screens load without a reload. After a confirmation in this tab they
+ *   are already fetching, so nothing is fetched twice.
  */
 export function useAdminConfirmationExpiry(): void {
   const queryClient = useQueryClient();
   const me = useMe();
-  const until = me.data?.adminConfirmedUntil ?? null;
+  // `undefined` while me has not loaded, so its first answer is not a change.
+  const until = me.data === undefined ? undefined : (me.data?.adminConfirmedUntil ?? null);
   const fetchedAt = me.dataUpdatedAt;
+  const previous = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (until === null) return;
+    const before = previous.current;
+    previous.current = until;
+    if (before === undefined || until === undefined || until === null) return;
+    if (before === null || new Date(until).getTime() > new Date(before).getTime()) {
+      void queryClient.invalidateQueries({ predicate: waitsForPasskey });
+    }
+  }, [queryClient, until]);
+  useEffect(() => {
+    if (until === undefined || until === null) return;
     const left = new Date(until).getTime() - Date.now();
     // A device clock ahead of the server's: me still says confirmed, so look again later.
     const delay = left > 0 ? left + EXPIRY_MARGIN_MS : EXPIRY_RECHECK_MS;

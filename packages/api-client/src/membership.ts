@@ -24,7 +24,7 @@ import {
   listReviewableMembershipRequestsOptions,
 } from "./generated/@tanstack/react-query.gen";
 import { clearOtherUserData, refetchMe } from "./me-query";
-import { waitsForPasskey } from "./query-client";
+import { waitsForPasskey } from "./passkey-confirmation";
 
 /** The operation a query belongs to: the `_id` the generated query keys carry. */
 function operationOf(query: Query): string | undefined {

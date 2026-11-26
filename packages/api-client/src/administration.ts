@@ -34,8 +34,7 @@ import {
 import { apiErrorCode } from "./error-messages";
 import { refetchMe } from "./me-query";
 import { refetchMembers } from "./membership";
-import { backgroundRequestMeta } from "./passkey-confirmation";
-import { waitsForPasskey } from "./query-client";
+import { backgroundRequestMeta, waitsForPasskey } from "./passkey-confirmation";
 
 /**
  * The working groups the user manages: all of them for a platform admin, those of their

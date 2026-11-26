@@ -32,7 +32,8 @@ import {
   useAdminConfirmationExpiry,
   usePasskeyConfirmation,
 } from "./passkey-confirmation";
-import { useMe } from "./me-query";
+import { refetchMe, useMe } from "./me-query";
+import { refetchMembers } from "./membership";
 import { createQueryClient } from "./query-client";
 import { subscribeToServerEvents } from "./server-events";
 import { FakeEventSource } from "./testing";
@@ -623,6 +624,45 @@ test("useManagedWorkingGroups({ background: true }) never opens the modal", asyn
   expect(result.current.confirmation.open).toBe(false);
 });
 
+test("after a confirmation, a resent mutation's refetch restarts the list that is still loading", async () => {
+  const key = listMembersQueryKey({ path: { workingGroupId: "groep" } });
+  const server = ["Ans"];
+  // A list GET reads the members when it starts and answers a moment later.
+  const list = vi.fn(async () => {
+    if (!confirmed) throw required;
+    const members = [...server];
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return members;
+  });
+  const add = vi.fn(async (name: string) => {
+    if (!confirmed) throw required;
+    server.push(name);
+  });
+  confirmed = true;
+  const queryClient = createQueryClient();
+  const { result } = setup(
+    () => ({
+      confirmation: usePasskeyConfirmation(),
+      members: useQuery({ queryKey: key, queryFn: list }),
+      add: useMutation({ mutationFn: add, onSettled: () => refetchMembers(queryClient) }),
+    }),
+    queryClient,
+  );
+  await waitFor(() => expect(result.current.members.data).toEqual(["Ans"]));
+  // The confirmation runs out: the list's refetch and the mutation both need a passkey.
+  confirmed = false;
+  await act(async () => void (await result.current.members.refetch()));
+  act(() => result.current.add.mutate("Kim"));
+  await waitFor(() => expect(result.current.add.isError).toBe(true));
+  expect(result.current.confirmation.open).toBe(true);
+
+  await act(async () => result.current.confirmation.confirm());
+
+  await waitFor(() => expect(result.current.add.isSuccess).toBe(true));
+  await waitFor(() => expect(result.current.members.isFetching).toBe(false));
+  expect(result.current.members.data).toEqual(["Ans", "Kim"]);
+});
+
 describe("useAdminConfirmationExpiry", () => {
   afterEach(() => vi.useRealTimers());
 
@@ -649,5 +689,63 @@ describe("useAdminConfirmationExpiry", () => {
     // Nothing to wait for any more.
     await act(async () => vi.advanceTimersByTimeAsync(48 * 60 * 60 * 1000));
     expect(meFetches()).toBe(before + 1);
+  });
+  test("with a device clock ahead of the server's, me is asked again after a minute, not in a loop", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // The server still says confirmed; by the device's clock that moment has passed.
+    me = { ...withPasskey, adminConfirmedUntil: new Date(Date.now() - 60 * 1000).toISOString() };
+    const { result } = setup(() => {
+      useAdminConfirmationExpiry();
+      return useMe();
+    });
+    await waitFor(() => expect(result.current.data).toEqual(me));
+    const meFetches = () => count("GET /api/me");
+    const before = meFetches();
+
+    await act(async () => vi.advanceTimersByTimeAsync(59 * 1000));
+    expect(meFetches()).toBe(before);
+    await act(async () => vi.advanceTimersByTimeAsync(2 * 1000));
+    await waitFor(() => expect(meFetches()).toBe(before + 1));
+    // And then again a minute later, not at once.
+    await act(async () => vi.advanceTimersByTimeAsync(30 * 1000));
+    expect(meFetches()).toBe(before + 1);
+    await act(async () => vi.advanceTimersByTimeAsync(31 * 1000));
+    await waitFor(() => expect(meFetches()).toBe(before + 2));
+  });
+
+  test("a confirmation in another tab refetches the queries that wait for a passkey", async () => {
+    me = { ...withPasskey, adminConfirmedUntil: null };
+    const waiting = guarded("de leden");
+    const other = vi.fn(async () => "de soorten");
+    const { result, queryClient } = setup(() => {
+      useAdminConfirmationExpiry();
+      return {
+        confirmation: usePasskeyConfirmation(),
+        members: useQuery({ queryKey: ["members"], queryFn: waiting }),
+        species: useQuery({ queryKey: ["species"], queryFn: other }),
+      };
+    });
+    await waitFor(() => expect(result.current.confirmation.open).toBe(true));
+    act(() => result.current.confirmation.cancel());
+    await waitFor(() => expect(count("GET /api/me")).toBe(1));
+
+    // Me again, unchanged: nothing waits for it.
+    await act(async () => refetchMe(queryClient));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(waiting).toHaveBeenCalledOnce();
+
+    // The other tab confirmed: the session cookie is confirmed, and me says so here too.
+    confirmed = true;
+    me = {
+      ...withPasskey,
+      adminConfirmedUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    };
+    await act(async () => refetchMe(queryClient));
+
+    await waitFor(() => expect(result.current.members.data).toBe("de leden"));
+    expect(waiting).toHaveBeenCalledTimes(2);
+    // What did not wait is left alone.
+    expect(other).toHaveBeenCalledOnce();
+    expect(result.current.confirmation.open).toBe(false);
   });
 });

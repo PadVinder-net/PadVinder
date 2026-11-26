@@ -1,8 +1,12 @@
 import { MutationCache, QueryCache, QueryClient, type Query } from "@tanstack/react-query";
 import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
-import { apiErrorCode } from "./error-messages";
 import { clearOtherUserData } from "./me-query";
-import { cancelPasskeyConfirmation, reportPasskeyRequired } from "./passkey-confirmation";
+import {
+  cancelPasskeyConfirmation,
+  isPasskeyRequired,
+  reportPasskeyRequired,
+  waitsForPasskey,
+} from "./passkey-confirmation";
 
 /**
  * The generated client rejects with the parsed response body, so a 401 shows as the stable error
@@ -15,19 +19,6 @@ function isNotLoggedIn(error: unknown): boolean {
     ((error as { code?: unknown }).code === "not_logged_in" ||
       (error as { statusCode?: unknown }).statusCode === 401)
   );
-}
-
-const isPasskeyRequired = (error: unknown) => apiErrorCode(error) === "passkey_required";
-
-/**
- * Whether a query waits for a passkey confirmation: its current error is `passkey_required`.
- * Refetches the person did not ask for (window focus, live events, a reopened event stream) leave
- * it alone, so after Annuleer the modal does not open again on its own: it keeps its error until
- * the person asks again (an explicit `refetch`, or opening the screen again) or confirms, which
- * refetches every query. The me query never waits: it does not answer `passkey_required`.
- */
-export function waitsForPasskey(query: { state: { error: unknown } }): boolean {
-  return isPasskeyRequired(query.state.error);
 }
 
 /** TanStack Query's default of three retries, but none for what only a confirmation solves. */
