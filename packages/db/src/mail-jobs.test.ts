@@ -4,7 +4,13 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { deleteAccount } from "./accounts";
 import { createOrganization, createWorkingGroup, grantOrganizationAdmin } from "./admin";
 import { loadMailJobData, mailJobSchema, type MailJob } from "./mail-jobs";
-import { organizationAdmins, users, workingGroupMemberships, workingGroups } from "./schema";
+import {
+  organizationAdmins,
+  passkeys,
+  users,
+  workingGroupMemberships,
+  workingGroups,
+} from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 const system = { kind: "system" } as const;
@@ -348,5 +354,92 @@ test("the admin row is gone: null", async () => {
     );
   expect(
     await loadMailJobData(t!.db, { kind: "organization-admin", userId: admin.id, organizationId }),
+  ).toBeNull();
+});
+
+async function addPasskey(userId: string): Promise<string> {
+  const [row] = await t!.db
+    .insert(passkeys)
+    .values({
+      userId,
+      publicKey: "pk",
+      credentialID: randomUUID(),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+      createdAt: new Date("2026-11-26T13:05:00Z"),
+    })
+    .returning({ id: passkeys.id });
+  return row!.id;
+}
+
+test("a passkey job with an extra key is refused", () => {
+  const added = { kind: "passkey-added", userId: randomUUID(), passkeyId: randomUUID() };
+  const removed = { kind: "passkeys-removed", userId: randomUUID(), byUserId: randomUUID() };
+  expect(mailJobSchema.parse(added)).toEqual(added);
+  expect(mailJobSchema.parse(removed)).toEqual(removed);
+  for (const extra of [{ name: "Carla" }, { email: "c@example.test" }, { credentialID: "x" }]) {
+    expect(mailJobSchema.safeParse({ ...added, ...extra }).success).toBe(false);
+    expect(mailJobSchema.safeParse({ ...removed, ...extra }).success).toBe(false);
+  }
+});
+
+test("passkey-added is dropped when the passkey or the account is gone", async () => {
+  const user = await addUser("Noor");
+  const passkeyId = await addPasskey(user.id);
+  expect(
+    await loadMailJobData(t!.db, { kind: "passkey-added", userId: user.id, passkeyId }),
+  ).toEqual({
+    kind: "passkey-added",
+    to: user.email,
+    recipientName: "Noor",
+    addedAt: new Date("2026-11-26T13:05:00Z"),
+  });
+  await t!.db.delete(passkeys).where(eq(passkeys.id, passkeyId));
+  expect(
+    await loadMailJobData(t!.db, { kind: "passkey-added", userId: user.id, passkeyId }),
+  ).toBeNull();
+
+  const other = await addUser("Anna");
+  const otherPasskey = await addPasskey(other.id);
+  await deleteUser(other.id);
+  expect(
+    await loadMailJobData(t!.db, {
+      kind: "passkey-added",
+      userId: other.id,
+      passkeyId: otherPasskey,
+    }),
+  ).toBeNull();
+});
+
+test("passkeys-removed counts the passkeys left when it is sent", async () => {
+  const user = await addUser("Noor");
+  const by = await addUser("Carla");
+  await addPasskey(user.id);
+  await addPasskey(user.id);
+  const own = await loadMailJobData(t!.db, {
+    kind: "passkeys-removed",
+    userId: user.id,
+    byUserId: user.id,
+  });
+  expect(own).toEqual({
+    kind: "passkeys-removed",
+    to: user.email,
+    recipientName: "Noor",
+    byOther: false,
+    byName: null,
+    remaining: 2,
+  });
+  await t!.db.delete(passkeys).where(eq(passkeys.userId, user.id));
+  expect(
+    await loadMailJobData(t!.db, { kind: "passkeys-removed", userId: user.id, byUserId: by.id }),
+  ).toMatchObject({ byOther: true, byName: "Carla", remaining: 0 });
+  await deleteUser(by.id);
+  expect(
+    await loadMailJobData(t!.db, { kind: "passkeys-removed", userId: user.id, byUserId: by.id }),
+  ).toMatchObject({ byOther: true, byName: null });
+  await deleteUser(user.id);
+  expect(
+    await loadMailJobData(t!.db, { kind: "passkeys-removed", userId: user.id, byUserId: by.id }),
   ).toBeNull();
 });

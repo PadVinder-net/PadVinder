@@ -19,6 +19,7 @@ export {
   type SmtpSettings,
 } from "./mailer";
 export { buildApprovedMail, buildNewRequestMail, buildRejectedMail } from "./membership-mails";
+export { buildPasskeyAddedMail, buildPasskeysRemovedMail } from "./passkey-mails";
 export {
   createMemoryMailQueue,
   createQueueMail,

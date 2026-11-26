@@ -76,3 +76,31 @@ test("the first coordinator's mail has the coordinator sentence", () => {
   );
   expect(mail.text).toContain("Carla heeft je coördinator gemaakt van werkgroep Noord");
 });
+
+test("the passkey mails are picked by kind, without a link", () => {
+  const added = buildMailForJob(
+    {
+      kind: "passkey-added",
+      to: "noor@example.test",
+      recipientName: "Noor",
+      addedAt: new Date("2026-11-26T13:05:00Z"),
+    },
+    origins,
+  );
+  expect(added.kind).toBe("passkey-added");
+  expect(added.text).not.toContain("padvinder.test");
+  const removed = buildMailForJob(
+    {
+      kind: "passkeys-removed",
+      to: "noor@example.test",
+      recipientName: "Noor",
+      byOther: true,
+      byName: "Carla",
+      remaining: 0,
+    },
+    origins,
+  );
+  expect(removed.kind).toBe("passkeys-removed");
+  expect(removed.subject).toBe("Je toegangssleutels zijn verwijderd");
+  expect(removed.text).not.toContain("padvinder.test");
+});
