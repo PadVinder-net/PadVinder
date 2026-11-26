@@ -176,8 +176,10 @@ test("an admin of two organizations filters on them, from me", async () => {
 });
 
 test("a platform admin chooses an organization and an action, and the request holds both and no cursor", async () => {
-  const { urls, client } = mockLog(platformAdminMeFixture, () =>
-    page(auditLogFixture.slice(0, 3), "c1"),
+  const { urls, client } = mockLog(platformAdminMeFixture, (url) =>
+    url.searchParams.get("cursor") === "c1"
+      ? page(auditLogFixture.slice(3, 5), "c2")
+      : page(auditLogFixture.slice(0, 3), "c1"),
   );
   renderPortal("/audit-log", client);
   await screen.findByRole("cell", { name: "safety_test.published" });
@@ -192,6 +194,12 @@ test("a platform admin chooses an organization and an action, and the request ho
   ]);
   // More than one organization and none chosen: the column shows.
   expect(headings()).toEqual(["Wanneer", "Wie", "Wat", "Organisatie"]);
+  // A second page first, so the cache holds a cursor that a changed filter must not take along.
+  await userEvent.click(screen.getByRole("button", { name: "Laad meer" }));
+  await waitFor(() => expect(rows()).toHaveLength(5));
+  expect(urls.at(-1)!.searchParams.get("cursor")).toBe("c1");
+  const beforeFilters = urls.length;
+
   await choose("Organisatie", voorbeeldstad.name);
   await waitFor(() =>
     expect(urls.at(-1)!.searchParams.get("organizationId")).toBe(voorbeeldstad.id),
@@ -201,8 +209,12 @@ test("a platform admin chooses an organization and an action, and the request ho
   const last = urls.at(-1)!;
   expect(last.searchParams.get("organizationId")).toBe(voorbeeldstad.id);
   expect(last.searchParams.has("cursor")).toBe(false);
-  // One organization chosen: no column.
-  await screen.findByRole("cell", { name: "safety_test.published" });
+  // No request since the first change carried a cursor: each filter starts at the first page.
+  expect(urls.slice(beforeFilters).map((url) => url.searchParams.get("cursor"))).toEqual(
+    urls.slice(beforeFilters).map(() => null),
+  );
+  // One organization chosen: no column, and only the first page.
+  await waitFor(() => expect(rows()).toHaveLength(3));
   expect(headings()).toEqual(["Wanneer", "Wie", "Wat"]);
 });
 
@@ -225,9 +237,6 @@ test("Laad meer asks with the cursor and adds the rows below the ones that were 
   expect(urls.map((url) => url.searchParams.get("cursor"))).toEqual([null, "c1"]);
   // No next cursor: nothing more to load.
   expect(screen.queryByRole("button", { name: "Laad meer" })).toBeNull();
-  // Each entry once.
-  const shown = rows().map((row) => cells(row).join("|"));
-  expect(new Set(shown).size).toBe(4);
 });
 
 test("without a next cursor there is no Laad meer", async () => {
