@@ -7,7 +7,7 @@ import {
   listOwnPasskeys,
   organizationAdmins,
   removeOwnPasskey,
-  resetPasskeys,
+  resetAdminPasskeys,
   users,
   type Db,
   type QueueMail,
@@ -24,6 +24,15 @@ const platformAdminParamsSchema = z.object({ userId: z.uuid() });
 
 const ownAccount = () =>
   apiError(409, apiErrorCodes.ownAccount, "Your own passkeys are removed on your own screen");
+
+function throwUnlessReset(result: { outcome: "reset" | "not_found" | "subject_changed" }): void {
+  if (result.outcome === "not_found") {
+    throw apiError(404, apiErrorCodes.notFound, "This person is no such admin");
+  }
+  if (result.outcome === "subject_changed") {
+    throw apiError(409, apiErrorCodes.membershipChanged, "The person's role changed");
+  }
+}
 
 /**
  * Our own passkey endpoints: an admin lists and removes their own passkeys, and an admin resets
@@ -119,12 +128,13 @@ export const passkeyRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: QueueMail
         target: { organizationId },
         subjectIsPlatformAdmin: subject.isPlatformAdmin,
       });
-      await resetPasskeys(
+      const result = await resetAdminPasskeys(
         db,
-        { userId, organizationId },
+        { userId, organizationId, expectedIsPlatformAdmin: subject.isPlatformAdmin },
         { kind: "user", userId: actor.userId },
         { queueMail },
       );
+      throwUnlessReset(result);
       return reply.code(204).send(null);
     },
   );
@@ -146,17 +156,13 @@ export const passkeyRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: QueueMail
       const { userId } = request.params;
       if (userId === actor.userId) throw ownAccount();
       authorize(actor, { action: "platform.resetPlatformAdminPasskeys" });
-      const [subject] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(and(eq(users.id, userId), eq(users.isPlatformAdmin, true), isNull(users.deletedAt)));
-      if (!subject) throw apiError(404, apiErrorCodes.notFound, "This person is no platform admin");
-      await resetPasskeys(
+      const result = await resetAdminPasskeys(
         db,
-        { userId, organizationId: null },
+        { userId, organizationId: null, expectedIsPlatformAdmin: true },
         { kind: "user", userId: actor.userId },
         { queueMail },
       );
+      throwUnlessReset(result);
       return reply.code(204).send(null);
     },
   );

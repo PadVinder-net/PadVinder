@@ -4,6 +4,7 @@ import {
   grantPlatformAdmin,
   passkeys,
   sessions,
+  users,
 } from "@padvinder/db";
 import { and, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
@@ -231,18 +232,49 @@ test("the list is passkey_required at 24 h; a removal and a reset are passkey_re
 
 test("a reset clears the confirmation of all the person's sessions: their next GET /api/passkeys is passkey_required", async () => {
   const target = await newOrganizationAdmin();
+  // A second logged-in session of the same person, also confirmed.
+  const email = (await ctx.t.db.select().from(users).where(eq(users.id, target.userId)))[0]!.email;
+  const second = await loginAs(ctx, email);
+  expect(second.userId).toBe(target.userId);
+  await stampSession(ctx, second.headers.cookie, new Date());
   expect((await list(target)).statusCode).toBe(200);
+  expect((await list(second)).statusCode).toBe(200);
+
   const res = await resetOrganizationAdmin(
     cast.members.platformAdmin,
     cast.organization.id,
     target.userId,
   );
   expect(res.statusCode).toBe(204);
-  const after = await list(target);
-  expect(after.statusCode).toBe(403);
-  expect(after.json().code).toBe("passkey_required");
+  for (const session of [target, second]) {
+    const after = await list(session);
+    expect(after.statusCode).toBe(403);
+    expect(after.json().code).toBe("passkey_required");
+  }
   const rows = await ctx.t.db.select().from(sessions).where(eq(sessions.userId, target.userId));
+  expect(rows.length).toBeGreaterThanOrEqual(2);
   expect(rows.every((row) => row.passkeyVerifiedAt === null)).toBe(true);
+});
+
+test("a volunteer gets 403 not_allowed, not passkey_required, on the list and the removal", async () => {
+  const volunteer = cast.members.volunteer;
+  const id = await insertPasskey(volunteer.userId);
+  const before = (await passkeysOf(volunteer.userId)).length;
+  for (const res of [await list(volunteer), await removeOwn(volunteer, id)]) {
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("not_allowed");
+  }
+  expect(await passkeysOf(volunteer.userId)).toHaveLength(before);
+});
+
+test("the platform reset is passkey_required at 11 minutes since the stamp", async () => {
+  const admin = await newPlatformAdmin();
+  const target = await newPlatformAdmin();
+  await stampSession(ctx, admin.headers.cookie, new Date(Date.now() - 11 * 60_000));
+  const res = await resetPlatformAdmin(admin, target.userId);
+  expect(res.statusCode).toBe(403);
+  expect(res.json().code).toBe("passkey_required");
+  expect(await passkeysOf(target.userId)).toHaveLength(1);
 });
 
 test("removing someone else's passkey by ID is 404 and it stays", async () => {

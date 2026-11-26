@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { createOrganization } from "./admin";
+import { createOrganization, grantPlatformAdmin } from "./admin";
 import type { MailJob, QueueMail } from "./mail-jobs";
 import {
   countPasskeys,
@@ -8,6 +8,7 @@ import {
   MAX_PASSKEYS_PER_ACCOUNT,
   recordPasskeyAdded,
   removeOwnPasskey,
+  resetAdminPasskeys,
   resetPasskeys,
 } from "./passkeys";
 import { auditLogEntries, passkeys, sessions, users } from "./schema";
@@ -249,4 +250,79 @@ test("no entry and no job holds a name, an address or a credential ID", async ()
   expect(raw).not.toContain("@");
   expect(raw).not.toContain("Naam ");
   for (const credential of credentials) expect(raw).not.toContain(credential);
+});
+
+test("resetAdminPasskeys resets an admin of the organization who is still what the route decided on", async () => {
+  const { id: organizationId, adminUserId } = await createOrganization(
+    db(),
+    { name: "Reset Org", adminEmail: "reset-admin@example.test" },
+    { kind: "system" },
+  );
+  await newPasskey(adminUserId);
+  const actor = { kind: "user", userId: await newUser("resetter") } as const;
+  const { jobs, queueMail } = collector();
+  const result = await resetAdminPasskeys(
+    db(),
+    { userId: adminUserId, organizationId, expectedIsPlatformAdmin: false },
+    actor,
+    { queueMail },
+  );
+  expect(result).toEqual({ outcome: "reset", removed: 1 });
+  expect(jobs).toHaveLength(1);
+});
+
+test("resetAdminPasskeys answers subject_changed, and removes nothing, when the person became a platform admin", async () => {
+  const { id: organizationId, adminUserId } = await createOrganization(
+    db(),
+    { name: "Changed Org", adminEmail: "changed-admin@example.test" },
+    { kind: "system" },
+  );
+  await newPasskey(adminUserId);
+  await grantPlatformAdmin(db(), { email: "changed-admin@example.test" }, { kind: "system" });
+  const actor = { kind: "user", userId: await newUser("resetter") } as const;
+  const result = await resetAdminPasskeys(
+    db(),
+    { userId: adminUserId, organizationId, expectedIsPlatformAdmin: false },
+    actor,
+    {},
+  );
+  expect(result).toEqual({ outcome: "subject_changed" });
+  expect(await countPasskeys(db(), adminUserId)).toBe(1);
+});
+
+test("resetAdminPasskeys is not_found for no admin of the organization, no platform admin, or a deleted account", async () => {
+  const { id: organizationId } = await createOrganization(
+    db(),
+    { name: "Nobody Org", adminEmail: "nobody-admin@example.test" },
+    { kind: "system" },
+  );
+  const stranger = await newUser("stranger");
+  const actor = { kind: "user", userId: await newUser("resetter") } as const;
+  await newPasskey(stranger);
+  expect(
+    await resetAdminPasskeys(
+      db(),
+      { userId: stranger, organizationId, expectedIsPlatformAdmin: false },
+      actor,
+      {},
+    ),
+  ).toEqual({ outcome: "not_found" });
+  expect(
+    await resetAdminPasskeys(
+      db(),
+      { userId: stranger, organizationId: null, expectedIsPlatformAdmin: true },
+      actor,
+      {},
+    ),
+  ).toEqual({ outcome: "not_found" });
+  await db().update(users).set({ deletedAt: new Date() }).where(eq(users.id, stranger));
+  expect(
+    await resetAdminPasskeys(
+      db(),
+      { userId: stranger, organizationId: null, expectedIsPlatformAdmin: true },
+      actor,
+      {},
+    ),
+  ).toEqual({ outcome: "not_found" });
+  expect(await countPasskeys(db(), stranger)).toBe(1);
 });

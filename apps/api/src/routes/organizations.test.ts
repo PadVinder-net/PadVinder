@@ -574,3 +574,22 @@ test("each admin shows hasPasskey; mayResetPasskeys is false for yourself and fo
   const seenByThemself = await admins(platform);
   expect(seenByThemself.get(platform.userId)?.mayResetPasskeys).toBe(false);
 });
+
+test("the organization answer never says who is a platform admin", async () => {
+  const res = await send(
+    cast.members.platformAdmin,
+    "GET",
+    `/api/organizations/${cast.organization.id}`,
+  );
+  expect(res.statusCode).toBe(200);
+  expect(res.body).not.toContain("isPlatformAdmin");
+  const admin = res.json().admins[0] as Record<string, unknown>;
+  expect(Object.keys(admin).sort()).toEqual([
+    "email",
+    "hasLoggedIn",
+    "hasPasskey",
+    "mayResetPasskeys",
+    "name",
+    "userId",
+  ]);
+});

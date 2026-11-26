@@ -1,8 +1,8 @@
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { recordAudit } from "./audit-log";
 import type { QueueMail } from "./mail-jobs";
-import { passkeys, sessions, users } from "./schema";
+import { organizationAdmins, passkeys, sessions, users } from "./schema";
 
 /** The most passkeys one account may have. */
 export const MAX_PASSKEYS_PER_ACCOUNT = 10;
@@ -94,7 +94,61 @@ export async function resetPasskeys(
   actor: { kind: "user"; userId: string },
   options: MailOptions,
 ): Promise<{ removed: number }> {
+  return db.transaction((tx) => resetPasskeysIn(tx, input, actor, options));
+}
+
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * An admin's reset, decided on what the route authorized. In one transaction it locks the
+ * person's user row, checks that they are still the kind of admin the route meant (an admin of
+ * `organizationId`, or with a null one a platform admin; not deleted) and that
+ * `isPlatformAdmin` is still `expectedIsPlatformAdmin`, then resets. `not_found` when they are
+ * no such admin; `subject_changed` when they became or stopped being a platform admin since the
+ * route decided (the route answers 409, as `expectedIsCoordinator` does for removing a member).
+ */
+export async function resetAdminPasskeys(
+  db: Db,
+  input: { userId: string; organizationId: string | null; expectedIsPlatformAdmin: boolean },
+  actor: { kind: "user"; userId: string },
+  options: MailOptions,
+): Promise<{ outcome: "reset"; removed: number } | { outcome: "not_found" | "subject_changed" }> {
   return db.transaction(async (tx) => {
+    const [subject] = await tx
+      .select({ isPlatformAdmin: users.isPlatformAdmin })
+      .from(users)
+      .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
+      .for("update");
+    if (!subject) return { outcome: "not_found" as const };
+    if (input.organizationId === null) {
+      if (!subject.isPlatformAdmin) return { outcome: "not_found" as const };
+    } else {
+      const [row] = await tx
+        .select({ userId: organizationAdmins.userId })
+        .from(organizationAdmins)
+        .where(
+          and(
+            eq(organizationAdmins.organizationId, input.organizationId),
+            eq(organizationAdmins.userId, input.userId),
+          ),
+        );
+      if (!row) return { outcome: "not_found" as const };
+    }
+    if (subject.isPlatformAdmin !== input.expectedIsPlatformAdmin) {
+      return { outcome: "subject_changed" as const };
+    }
+    const { removed } = await resetPasskeysIn(tx, input, actor, options);
+    return { outcome: "reset" as const, removed };
+  });
+}
+
+async function resetPasskeysIn(
+  tx: Tx,
+  input: { userId: string; organizationId: string | null },
+  actor: { kind: "user"; userId: string },
+  options: MailOptions,
+): Promise<{ removed: number }> {
+  {
     const deleted = await tx
       .delete(passkeys)
       .where(eq(passkeys.userId, input.userId))
@@ -117,5 +171,5 @@ export async function resetPasskeys(
       });
     }
     return { removed: deleted.length };
-  });
+  }
 }
