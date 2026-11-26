@@ -5,6 +5,8 @@ export type TestWorkingGroup = {
   id: string;
   name: string;
   organizationId: string;
+  /** "Organisatie" and eight random letters ("Organisatie xkqwpzra"). */
+  organizationName: string;
   /** The organization's admin, a fresh address that has never logged in. */
   adminAddress: string;
   /** The group's first coordinator, a fresh address that has never logged in. */
@@ -21,16 +23,17 @@ export type TestWorkingGroup = {
 export function createWorkingGroup(): TestWorkingGroup {
   const word = randomWord();
   const adminAddress = newAddress("beheerder");
+  const organizationName = `Organisatie ${word}`;
   const output = runAdmin(
     "create-organization",
     "--name",
-    `Organisatie ${word}`,
+    organizationName,
     "--admin-email",
     adminAddress,
   );
   // The first line is the ID; a second says the tool made the admin's account.
   const organizationId = output.split("\n")[0]!.trim();
-  return { organizationId, adminAddress, ...addWorkingGroup(organizationId) };
+  return { organizationId, organizationName, adminAddress, ...addWorkingGroup(organizationId) };
 }
 
 /**
