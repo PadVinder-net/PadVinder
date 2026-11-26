@@ -68,6 +68,9 @@ jobs:
       # is a warning, never a failed deploy; uploading the same maps twice is harmless.
       - name: Upload source maps
         continue-on-error: true
+        # A job timeout is not covered by continue-on-error: a stalled pull or upload must
+        # give up long before the job's own limit.
+        timeout-minutes: 5
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
@@ -136,6 +139,9 @@ jobs:
       # is a warning, never a failed deploy; uploading the same maps twice is harmless.
       - name: Upload source maps
         continue-on-error: true
+        # A job timeout is not covered by continue-on-error: a stalled pull or upload must
+        # give up long before the job's own limit.
+        timeout-minutes: 5
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}

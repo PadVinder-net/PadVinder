@@ -40,4 +40,5 @@ fi
 export SENTRY_URL="${SENTRY_URL:-https://de.sentry.io}"
 
 echo "upload-sourcemaps: uploading $dir to the Sentry project padvinder at $SENTRY_URL"
-"$root/scripts/sentry-cli.sh" sourcemaps upload --org "$SENTRY_ORG" --project padvinder "$dir"
+# Read-only: the checkout is used after this step with the deploy credentials.
+SENTRY_CLI_READONLY=1 "$root/scripts/sentry-cli.sh" sourcemaps upload --org "$SENTRY_ORG" --project padvinder "$dir"
