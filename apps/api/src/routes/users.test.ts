@@ -325,6 +325,23 @@ test("with a second coordinator the deletion goes through", async () => {
   expect((await remove(cast.members.platformAdmin, target.userId)).statusCode).toBe(204);
 });
 
+test("a platform admin deletes the account of another platform admin who has logged in", async () => {
+  const other = await someone("andere-hoofdbeheerder");
+  await grantPlatformAdmin(db(), { email: other.email }, system);
+  expect(await userRow(other.userId)).toMatchObject({ isPlatformAdmin: true, emailVerified: true });
+  expect((await remove(cast.members.platformAdmin, other.userId)).statusCode).toBe(204);
+  expect(await userRow(other.userId)).toMatchObject({
+    isPlatformAdmin: false,
+    name: DELETED_ACCOUNT_NAME,
+    email: deletedAccountEmail(other.userId),
+    deletedAt: expect.any(Date),
+  });
+  expect(await sessionsOf(other.userId)).toEqual([]);
+  expect(await deletedEntries(other.userId)).toMatchObject([
+    { actorKind: "user", actorUserId: cast.members.platformAdmin.userId },
+  ]);
+});
+
 test("a platform admin's own id is 409 own_account, and the account stays", async () => {
   const self = cast.members.platformAdmin;
   const res = await remove(self, self.userId);
