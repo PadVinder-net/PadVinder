@@ -340,7 +340,7 @@ The design is `docs/superpowers/specs/2026-11-26-logging-and-monitoring-design.m
 
 - **One logger.** The API and the worker log JSON lines through `createLogger({ service, level })` from `@padvinder/logging`; every line has `service`, `level` and `msg`. The level comes from `LOG_LEVEL` (default `info`). Both services also install the crash handlers (`installCrashHandlers`).
 - **Errors go in as `{ err }`.** The `err` serializer (`serializeError`) keeps an allowlist of fields; never put an error's own properties or a request object in a log line yourself.
-- **Addresses are removed twice.** `scrub` and the pino formatter remove email addresses from every line before it is written, as a net behind the rule below. Do not rely on it.
+- **Addresses are scrubbed as a safety net.** `scrub` runs on every finished JSON line through pino's `streamWrite` hook (`packages/logging/src/logger.ts`) and removes email addresses; `serializeError` also scrubs an error's `message`, `stack` and the text fields it keeps. This is a net, not permission: do not log an address (see the last rule below).
 - **Health checks stay quiet.** `/api/health` logs below `info` (its route has `logLevel: "warn"`), so only a warning shows; other requests get one line at `info`.
 - **Tests read the log** with `createTestLogger` from `@padvinder/logging/testing` (`entries()` for parsed lines, `text()` for the raw output).
 - **`pnpm dev` pretty-prints** the API and worker logs through `pino-pretty`; staging and production write JSON.
