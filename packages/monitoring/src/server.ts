@@ -83,6 +83,8 @@ export function startServerMonitoring(options: {
     tracesSampler,
     beforeSend: scrubEvent,
     beforeSendTransaction: scrubEvent,
+    // Load-bearing: the SDK skips beforeSend for its own internal-exception events, which still
+    // carry the scope's breadcrumbs.
     beforeBreadcrumb: scrubBreadcrumb,
     integrations: (defaults) => [
       ...defaults.filter((integration) => !REPLACED_INTEGRATIONS.has(integration.name)),

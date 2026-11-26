@@ -1,3 +1,5 @@
+import { createServer, request } from "node:http";
+import type { AddressInfo } from "node:net";
 import { createLogger } from "@padvinder/logging";
 import * as Sentry from "@sentry/node";
 import { afterEach, expect, test } from "vitest";
@@ -112,6 +114,34 @@ test("a job runs in its own trace with its name and id; the heartbeat job is not
   expect(job!.contexts!.trace!.trace_id).not.toBe(around!.contexts!.trace!.trace_id);
   expect(t.transactions().find((tx) => tx.transaction === "heartbeat")).toBeUndefined();
   expect(t.events()[0]!.tags).toMatchObject({ "job.name": "mail", "job.id": "j-1" });
+});
+
+test("a request's user agent does not reach Sentry", async () => {
+  const t = createTestTransport();
+  startServerMonitoring({ service: "api", settings, transport: t.transport });
+  const server = createServer((_request, response) => response.end("{}"));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve, reject) => {
+    const outgoing = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/api/me",
+        headers: { "user-agent": "Mozilla/5.0 UA-MARKER" },
+      },
+      (response) => {
+        response.resume();
+        response.on("end", resolve);
+      },
+    );
+    outgoing.on("error", reject);
+    outgoing.end();
+  });
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await flushMonitoring();
+  expect(t.transactions().some((tx) => tx.transaction === "GET /api/me")).toBe(true);
+  expect(JSON.stringify(t.envelopes())).not.toContain("UA-MARKER");
 });
 
 test("withSpan passes on a rejection", async () => {
