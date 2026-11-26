@@ -1,3 +1,4 @@
+export * from "./add-members";
 export * from "./account-deletion";
 export * from "./email";
 export * from "./errors";

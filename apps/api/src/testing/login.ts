@@ -3,31 +3,39 @@ import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
 export type TestApp = {
   app: FastifyInstance;
   mailer: ReturnType<typeof createMemoryMailer>;
+  /** The mail jobs the app queued, in order; the tests read `jobs`. */
+  mailQueue: ReturnType<typeof createMemoryMailQueue>;
   t: TestDatabase;
   close(): Promise<void>;
 };
 
-/** An app on its own cloned test database, with `testEnv` and a mailer that keeps mails in memory. */
+/**
+ * An app on its own cloned test database, with `testEnv`, and a mailer and a mail queue that keep
+ * mails and jobs in memory.
+ */
 export async function createTestApp(overrides: Partial<ApiEnv> = {}): Promise<TestApp> {
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   try {
     const app = await buildApp({
       env: { ...testEnv, ...overrides },
       db: t.db,
       notifications: createNoopNotificationHub(),
       mailer,
+      queueMail: mailQueue.queueMail,
     });
     return {
       app,
       mailer,
+      mailQueue,
       t,
       async close() {
         try {
@@ -43,17 +51,35 @@ export async function createTestApp(overrides: Partial<ApiEnv> = {}): Promise<Te
   }
 }
 
-export function requestCode(
+/** How many login code requests per address were answered 200, so how many mails must arrive. */
+const answeredRequests = new WeakMap<object, Map<string, number>>();
+
+export async function requestCode(
   ctx: TestApp,
   email: string,
   headers: Record<string, string> = {},
 ): Promise<LightMyRequestResponse> {
-  return ctx.app.inject({
+  const res = await ctx.app.inject({
     method: "POST",
     url: "/api/auth/email-otp/send-verification-otp",
     headers,
     payload: { email, type: "sign-in" },
   });
+  if (res.statusCode !== 200) return res;
+  const address = normalizeEmail(email);
+  const counts = answeredRequests.get(ctx) ?? new Map<string, number>();
+  answeredRequests.set(ctx, counts);
+  const expected = (counts.get(address) ?? 0) + 1;
+  counts.set(address, expected);
+  // The API sends the mail without the request waiting for it (it looks up the name first), so
+  // wait here until every mail for the 200 answers so far has arrived: the tests count mails and
+  // read the code right after, also with several requests at once.
+  const arrived = () =>
+    ctx.mailer.sent.filter((sent) => normalizeEmail(sent.to) === address).length;
+  for (let i = 0; arrived() < expected && i < 200; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return res;
 }
 
 /** The code from the subject of the newest mail to that address. */

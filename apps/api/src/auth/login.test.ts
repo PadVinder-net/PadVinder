@@ -12,7 +12,7 @@ import { createTestDatabase } from "@padvinder/db/testing";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import {
@@ -47,6 +47,16 @@ test("a new address gets a code and becomes an account", async () => {
   const rows = await ctx.t.db.select().from(users);
   expect(rows).toMatchObject([{ email: "noor@example.test", name: "" }]);
   expect(rows[0]!.id).toMatch(/^[0-9a-f-]{36}$/);
+});
+
+test("a first login gets a code mail that greets without a name, a later one by name", async () => {
+  await requestCode(ctx, "noor@example.test");
+  expect(ctx.mailer.sent.at(-1)!.text.startsWith("Hallo,\n\n")).toBe(true);
+  await loginAs(ctx, "noor@example.test", { name: "Noor" });
+  await requestCode(ctx, "noor@example.test");
+  const mail = ctx.mailer.sent.at(-1)!;
+  expect(mail.text.startsWith("Hallo Noor,\n\n")).toBe(true);
+  expect(mail.html).toContain("<p>Hallo Noor,</p>");
 });
 
 test("signing in answers the user but not the session token", async () => {
@@ -366,17 +376,20 @@ test("the code never appears in the log, and Better Auth logs only through ours"
   });
   const t = await createTestDatabase();
   const mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   const app = await buildApp({
     env: { ...testEnv, LOG_LEVEL: "debug" },
     db: t.db,
     notifications: createNoopNotificationHub(),
     mailer,
+    queueMail: mailQueue.queueMail,
     logger: true,
     logStream,
   });
   ctx = {
     app,
     mailer,
+    mailQueue,
     t,
     async close() {
       await app.close();

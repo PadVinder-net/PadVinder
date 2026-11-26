@@ -59,6 +59,19 @@ test.each([
     },
   ],
   [
+    "workingGroup.addMembers",
+    {
+      platformAdmin: "allowed",
+      organizationAdmin: "allowed",
+      coordinator: "allowed",
+      volunteer: "forbidden",
+      volunteerOtherGroup: "hidden",
+      coordinatorOtherOrganization: "hidden",
+      adminOtherOrganization: "hidden",
+      applicant: "hidden",
+    },
+  ],
+  [
     "workingGroup.reviewRequests",
     {
       platformAdmin: "allowed",

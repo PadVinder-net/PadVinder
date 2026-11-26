@@ -1,4 +1,4 @@
-import type { AccountDeletionBlocker, LoginError } from "@padvinder/contracts";
+import type { AccountDeletionBlocker, AddMemberOutcome, LoginError } from "@padvinder/contracts";
 
 // Dutch texts that more than one screen shows. Written once, here.
 
@@ -37,6 +37,8 @@ const apiErrorMessages: Record<string, string> = {
   last_coordinator:
     "Een werkgroep heeft altijd een coördinator. Maak eerst iemand anders coördinator.",
   no_coordinator: "Deze werkgroep heeft geen coördinator. Maak eerst iemand coördinator.",
+  too_many_addresses: "Voeg hoogstens tweehonderd adressen per keer toe.",
+  too_many_additions: "Je hebt vandaag te veel mensen toegevoegd. Probeer het morgen opnieuw.",
 };
 
 /**
@@ -83,4 +85,23 @@ export function accountDeletionBlockedMessage(blocker: AccountDeletionBlocker): 
   }
   const ask = blocker.contactEmail ?? "een hoofdbeheerder";
   return `Je bent de enige beheerder van ${blocker.organizationName}. Vraag ${ask} om eerst iemand anders beheerder te maken.`;
+}
+
+/** What adding one address did, in one sentence: `result.email` is the address as the server normalized it. */
+export function addMemberOutcomeMessage(result: {
+  email: string;
+  outcome: AddMemberOutcome;
+}): string {
+  switch (result.outcome) {
+    case "added":
+      return `${result.email} is toegevoegd.`;
+    case "approved":
+      return `${result.email} is toegelaten.`;
+    case "invited":
+      return `${result.email} heeft al een account en krijgt een mail.`;
+    case "already_member":
+      return `${result.email} is al lid.`;
+    case "invalid":
+      return `'${result.email}' is geen geldig e-mailadres.`;
+  }
 }

@@ -21,11 +21,13 @@
     "fastify-type-provider-zod": "7.0.0",
     "nodemailer": "^10.6.1",
     "pg": "^8.23.1",
+    "pg-boss": "^12.38.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@padvinder/contracts": "workspace:*",
     "@padvinder/db": "workspace:*",
+    "@padvinder/mail": "workspace:*",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.15.0",
     "tsdown": "^0.23.7",

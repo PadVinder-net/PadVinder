@@ -381,65 +381,79 @@ export async function listPendingMembershipRequests(
  */
 export async function decideMembershipRequest(
   db: Db,
-  input: { id: string; decision: "approved" | "rejected"; decidedBy: string; now: Date },
+  input: DecideMembershipRequestInput,
 ): Promise<DecideMembershipRequestResult> {
-  return db.transaction(async (tx): Promise<DecideMembershipRequestResult> => {
-    const [stored] = await selectRequestsForReview(tx, eq(membershipRequests.id, input.id), {
-      forUpdate: true,
-    });
-    if (!stored) return { outcome: "not_found" };
-    if (stored.status === input.decision) return { outcome: "unchanged", request: stored };
-    if (stored.status !== "pending") return { outcome: "already_decided" };
+  return db.transaction((tx) => decideMembershipRequestInTransaction(tx, input));
+}
 
-    await tx
-      .update(membershipRequests)
-      .set({ status: input.decision, decidedAt: input.now, decidedByUserId: input.decidedBy })
-      .where(eq(membershipRequests.id, input.id));
-    if (input.decision === "approved") {
-      await tx
-        .insert(workingGroupMemberships)
-        .values({
-          userId: stored.userId,
-          workingGroupId: stored.workingGroup.id,
-          isCoordinator: false,
-        })
-        .onConflictDoNothing({
-          target: [workingGroupMemberships.userId, workingGroupMemberships.workingGroupId],
-        });
-    }
-    await recordAudit(tx, {
-      actor: { kind: "user", userId: input.decidedBy },
-      organizationId: stored.organizationId,
-      action:
-        input.decision === "approved"
-          ? "membership_request.approved"
-          : "membership_request.rejected",
-      subject: { type: "membership_request", id: input.id },
-      details: { workingGroupId: stored.workingGroup.id },
-    });
-    await notifyMembershipRequestsChanged(tx, {
-      workingGroupId: stored.workingGroup.id,
-      organizationId: stored.organizationId,
-    });
-    await notifyAccessChanged(tx, stored.userId);
-    return {
-      outcome: "decided",
-      request: { ...stored, status: input.decision, decidedAt: input.now },
-    };
+type DecideMembershipRequestInput = {
+  id: string;
+  decision: "approved" | "rejected";
+  decidedBy: string;
+  now: Date;
+};
+
+/**
+ * `decideMembershipRequest` inside a transaction the caller owns, for a change that includes the
+ * decision (`addMemberByEmail` approves a request). Same checks, writes, entry and events.
+ */
+export async function decideMembershipRequestInTransaction(
+  tx: DbTransaction,
+  input: DecideMembershipRequestInput,
+): Promise<DecideMembershipRequestResult> {
+  const [stored] = await selectRequestsForReview(tx, eq(membershipRequests.id, input.id), {
+    forUpdate: true,
   });
+  if (!stored) return { outcome: "not_found" };
+  if (stored.status === input.decision) return { outcome: "unchanged", request: stored };
+  if (stored.status !== "pending") return { outcome: "already_decided" };
+
+  await tx
+    .update(membershipRequests)
+    .set({ status: input.decision, decidedAt: input.now, decidedByUserId: input.decidedBy })
+    .where(eq(membershipRequests.id, input.id));
+  if (input.decision === "approved") {
+    await tx
+      .insert(workingGroupMemberships)
+      .values({
+        userId: stored.userId,
+        workingGroupId: stored.workingGroup.id,
+        isCoordinator: false,
+      })
+      .onConflictDoNothing({
+        target: [workingGroupMemberships.userId, workingGroupMemberships.workingGroupId],
+      });
+  }
+  await recordAudit(tx, {
+    actor: { kind: "user", userId: input.decidedBy },
+    organizationId: stored.organizationId,
+    action:
+      input.decision === "approved" ? "membership_request.approved" : "membership_request.rejected",
+    subject: { type: "membership_request", id: input.id },
+    details: { workingGroupId: stored.workingGroup.id },
+  });
+  await notifyMembershipRequestsChanged(tx, {
+    workingGroupId: stored.workingGroup.id,
+    organizationId: stored.organizationId,
+  });
+  await notifyAccessChanged(tx, stored.userId);
+  return {
+    outcome: "decided",
+    request: { ...stored, status: input.decision, decidedAt: input.now },
+  };
 }
 
 /**
- * The email addresses to mail about a new request: the group's coordinators; when it has none, the
+ * The email addresses and names to mail about a new request: the group's coordinators; when it has none, the
  * admins of its organization. Accounts that were deleted (`deleted_at`) never count, so a group
  * whose only coordinator is gone falls back to the admins. An unknown group has no recipients.
  */
 export async function listRequestNotificationRecipients(
   db: Db,
   workingGroupId: string,
-): Promise<string[]> {
+): Promise<{ email: string; name: string }[]> {
   const coordinators = await db
-    .select({ email: users.email })
+    .select({ email: users.email, name: users.name })
     .from(workingGroupMemberships)
     .innerJoin(users, eq(users.id, workingGroupMemberships.userId))
     .where(
@@ -450,9 +464,9 @@ export async function listRequestNotificationRecipients(
       ),
     )
     .orderBy(asc(users.email));
-  if (coordinators.length > 0) return coordinators.map((row) => row.email);
-  const admins = await db
-    .select({ email: users.email })
+  if (coordinators.length > 0) return coordinators;
+  return db
+    .select({ email: users.email, name: users.name })
     .from(workingGroups)
     .innerJoin(
       organizationAdmins,
@@ -461,5 +475,4 @@ export async function listRequestNotificationRecipients(
     .innerJoin(users, eq(users.id, organizationAdmins.userId))
     .where(and(eq(workingGroups.id, workingGroupId), isNull(users.deletedAt)))
     .orderBy(asc(users.email));
-  return admins.map((row) => row.email);
 }

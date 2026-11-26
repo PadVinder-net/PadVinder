@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
+  addMembers,
   addOrganizationAdmin,
   createOrganization,
   createWorkingGroup,
@@ -8,6 +9,7 @@ import {
   updateMembership,
   updateOrganization,
   updateWorkingGroup,
+  type AddMembersRequestInput,
   type AddOrganizationAdminRequestInput,
   type CreateOrganizationRequestInput,
   type CreateWorkingGroupRequestInput,
@@ -234,4 +236,27 @@ export function mayManageWorkingGroup(
   group: { id: string; organization: { id: string } },
 ): boolean {
   return administersOrganization(me, group.organization.id);
+}
+
+/**
+ * Adds people to a working group by email address (one result per address). The mutation waits
+ * for the refetch of the member lists and the managed groups, also after an error (a 429 or a
+ * group switched off meanwhile): the lists on screen are then fresh.
+ */
+export function useAddMembers() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      workingGroupId,
+      emails,
+    }: { workingGroupId: string } & AddMembersRequestInput) => {
+      const { data } = await addMembers({
+        path: { workingGroupId },
+        body: { emails },
+        throwOnError: true,
+      });
+      return data;
+    },
+    onSettled: () => refetchAdministration(queryClient),
+  });
 }

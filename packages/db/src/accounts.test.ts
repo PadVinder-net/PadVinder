@@ -21,6 +21,7 @@ import {
   createMembershipRequest,
   decideMembershipRequest,
   getMembershipRequestForReview,
+  lockMembershipRequestsOfUser,
 } from "./membership-requests";
 import { liveEventsChannel, notify } from "./notifications";
 import {
@@ -1094,3 +1095,87 @@ test.each([
     ).toEqual([]);
   },
 );
+
+/** An account the tool or an adding made: no name, never logged in, no role. */
+async function unusedUser(): Promise<string> {
+  const [row] = await db()
+    .insert(users)
+    .values({ name: "", email: `ongebruikt-${userCount++}@example.test`, emailVerified: false })
+    .returning({ id: users.id });
+  return row!.id;
+}
+
+test("onlyIfUnused deletes an unused account, with the given actor", async () => {
+  const userId = await unusedUser();
+  const remover = await newUser();
+  expect(
+    await deleteAccount(db(), {
+      userId,
+      now,
+      onlyIfUnused: true,
+      deletedBy: { kind: "user", userId: remover.id },
+    }),
+  ).toEqual({ outcome: "deleted" });
+  expect(await userRow(userId)).toMatchObject({ deletedAt: now, name: DELETED_ACCOUNT_NAME });
+  const entries = await db()
+    .select()
+    .from(auditLogEntries)
+    .where(
+      and(eq(auditLogEntries.subjectId, userId), eq(auditLogEntries.action, "account.deleted")),
+    );
+  expect(entries).toMatchObject([{ actorKind: "user", actorUserId: remover.id }]);
+});
+
+test("onlyIfUnused keeps an account that logged in, has a role or a pending request", async () => {
+  const loggedIn = await unusedUser();
+  await db().update(users).set({ lastLoginAt: now }).where(eq(users.id, loggedIn));
+  // In the middle of a first login: the address is verified, `last_login_at` not yet set.
+  const loggingIn = await unusedUser();
+  await db().update(users).set({ emailVerified: true }).where(eq(users.id, loggingIn));
+  const member = await unusedUser();
+  await db().insert(workingGroupMemberships).values({ userId: member, workingGroupId: groups[0]! });
+  const admin = await unusedUser();
+  await db().insert(organizationAdmins).values({ userId: admin, organizationId });
+  const platformAdmin = await unusedUser();
+  await db().update(users).set({ isPlatformAdmin: true }).where(eq(users.id, platformAdmin));
+  const applicant = await unusedUser();
+  await db().insert(membershipRequests).values({
+    id: uuidv7(),
+    userId: applicant,
+    workingGroupId: groups[1]!,
+    requestedAt: now,
+    receivedAt: now,
+  });
+  for (const userId of [loggedIn, loggingIn, member, admin, platformAdmin, applicant]) {
+    expect(await deleteAccount(db(), { userId, now, onlyIfUnused: true })).toEqual({
+      outcome: "kept",
+    });
+    expect(await userRow(userId)).toMatchObject({ deletedAt: null });
+  }
+  const entries = await db()
+    .select()
+    .from(auditLogEntries)
+    .where(inArray(auditLogEntries.subjectId, [loggedIn, member, admin, platformAdmin, applicant]));
+  expect(entries).toEqual([]);
+});
+
+test("onlyIfUnused keeps an account that got a membership in the meantime", async () => {
+  const userId = await unusedUser();
+  // A transaction that adds a membership and holds the user's request lock, which the deletion
+  // takes before it reads the roles: the deletion waits, and reads the roles after the commit.
+  const held = await holdLock(db(), async (tx) => {
+    await lockMembershipRequestsOfUser(tx, userId);
+    await tx.insert(workingGroupMemberships).values({ userId, workingGroupId: groups[2]! });
+  });
+  const deletion = deleteAccount(db(), { userId, now, onlyIfUnused: true });
+  await waitUntilBlocked(db());
+  await held.release();
+  expect(await deletion).toEqual({ outcome: "kept" });
+  expect(await userRow(userId)).toMatchObject({ deletedAt: null });
+  expect(
+    await db()
+      .select()
+      .from(workingGroupMemberships)
+      .where(eq(workingGroupMemberships.userId, userId)),
+  ).toHaveLength(1);
+});

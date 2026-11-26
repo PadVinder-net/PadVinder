@@ -1,5 +1,5 @@
 import swagger from "@fastify/swagger";
-import type { Db } from "@padvinder/db";
+import type { Db, QueueMail } from "@padvinder/db";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
   jsonSchemaTransform,
@@ -12,7 +12,7 @@ import { authRoutes } from "./auth/auth-routes";
 import { addActorLoading } from "./permissions/actor";
 import type { ApiEnv } from "./env";
 import { addErrorHandling } from "./errors";
-import type { Mailer } from "./mail/mailer";
+import type { Mailer } from "@padvinder/mail";
 import { addOriginCheck } from "./plugins/origin-check";
 import { registerStaticApps } from "./plugins/static-apps";
 import type { NotificationHub } from "./realtime/notification-hub";
@@ -32,6 +32,11 @@ export type AppDeps = {
   notifications: NotificationHub;
   /** Sends the login code mails and the mails about requests. Tests pass the memory mailer. */
   mailer: Mailer;
+  /**
+   * Queues the mails the worker sends (appointments), in the transaction of the change. Tests
+   * pass the memory queue.
+   */
+  queueMail: QueueMail;
   /** Turns on Fastify's request logging at `env.LOG_LEVEL`. Off by default (tests). */
   logger?: boolean;
   /** Where the log goes instead of stdout, when `logger` is on (tests that read the log). */
@@ -84,9 +89,14 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(healthRoutes, { env, db: deps.db });
       await api.register(versionRoutes, { env });
       await api.register(meRoutes, { db: deps.db });
-      await api.register(workingGroupRoutes, { db: deps.db });
+      await api.register(workingGroupRoutes, {
+        db: deps.db,
+        mailer: deps.mailer,
+        queueMail: deps.queueMail,
+        publicOrigin: env.PUBLIC_ORIGIN,
+      });
       await api.register(membershipRoutes, { db: deps.db });
-      await api.register(organizationRoutes, { db: deps.db });
+      await api.register(organizationRoutes, { db: deps.db, queueMail: deps.queueMail });
       await api.register(speciesRoutes, { db: deps.db });
       await api.register(membershipRequestRoutes, {
         db: deps.db,

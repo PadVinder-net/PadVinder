@@ -11,7 +11,7 @@ import { Writable } from "node:stream";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { createCast, type Cast } from "../testing/cast";
@@ -26,11 +26,13 @@ const logLines: string[] = [];
 beforeAll(async () => {
   t = await createTestDatabase();
   const mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   app = await buildApp({
     env: testEnv,
     db: t.db,
     notifications: createNoopNotificationHub(),
     mailer,
+    queueMail: mailQueue.queueMail,
     logger: true,
     logStream: new Writable({
       write(chunk, _encoding, callback) {
@@ -39,7 +41,7 @@ beforeAll(async () => {
       },
     }),
   });
-  ctx = { app, mailer, t, close: async () => {} };
+  ctx = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
 });
 afterAll(async () => {
@@ -89,6 +91,9 @@ test("a new request mails every coordinator of the group, once", async () => {
     [cast.members.coordinator.email, second.email].sort(),
   );
   for (const mail of mails) {
+    // Each coordinator is greeted by their own name.
+    const name = mail.to === second.email ? "Tweede Coördinator" : "Cast coordinator";
+    expect(mail.text.startsWith(`Hallo ${name},\n\n`)).toBe(true);
     expect(mail.subject).toBe("Nieuwe aanmelding bij Cast Werkgroep");
     expect(mail.text).toContain("Noor van der Berg wil meedoen met werkgroep Cast Werkgroep.");
     expect(mail.text).toContain(
@@ -202,7 +207,8 @@ test("approval mails the applicant; the same approval again does not", async () 
   expect(mail.to).toBe(applicant.email);
   expect(mail.subject).toBe("Je bent toegelaten tot werkgroep Cast Werkgroep");
   expect(mail.text).toContain(`${testEnv.PUBLIC_ORIGIN}/app/`);
-  expect(mail.text).not.toContain("Noor");
+  // The applicant is greeted by name; the name is the only personal data in the mail.
+  expect(mail.text.startsWith("Hallo Noor van der Berg,\n\n")).toBe(true);
   expect((await decide(cast.members.coordinator, id, "approve")).statusCode).toBe(200);
   // The opposite decision is refused and sends nothing.
   expect((await decide(cast.members.coordinator, id, "reject")).statusCode).toBe(409);

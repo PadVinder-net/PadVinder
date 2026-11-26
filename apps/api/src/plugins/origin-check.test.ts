@@ -2,7 +2,7 @@ import { createDb } from "@padvinder/db";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
@@ -15,6 +15,7 @@ beforeAll(async () => {
     db,
     notifications: createNoopNotificationHub(),
     mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
   });
   // Test-only route: the app has no state-changing route yet.
   app.post("/api/test-echo", async () => ({ ok: true }));

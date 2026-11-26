@@ -24,6 +24,18 @@ export async function getUserProfile(db: Db, userId: string): Promise<UserProfil
 }
 
 /**
+ * The name of the account with this address (trimmed, lowercased first, like every typed address);
+ * `null` when there is none or it was deleted. The name may be empty.
+ */
+export async function findUserNameByEmail(db: Db, email: string): Promise<string | null> {
+  const [row] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(and(eq(users.email, email.trim().toLowerCase()), isNull(users.deletedAt)));
+  return row?.name ?? null;
+}
+
+/**
  * Changes only the keys that are present in the patch. `null` when the user does not exist or
  * deleted their account: a change that arrives after the deletion never writes a name back.
  */

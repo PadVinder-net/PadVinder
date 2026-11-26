@@ -16,6 +16,12 @@ export type ProfileFormProps = {
   deleting: boolean;
   /** A message from the server, in Dutch. */
   error?: string;
+  /** The user's open request for another working group. */
+  pendingRequest?: { workingGroupName: string };
+  onWithdrawRequest?(): void;
+  withdrawing?: boolean;
+  /** Opens the picker for another working group; shown when there is no pending request. */
+  onJoinAnother?(): void;
 };
 
 export function ProfileForm({
@@ -26,6 +32,10 @@ export function ProfileForm({
   saved,
   deleting,
   error,
+  pendingRequest,
+  onWithdrawRequest,
+  withdrawing,
+  onJoinAnother,
 }: ProfileFormProps) {
   const [name, setName] = useState(me.user.name);
   const [phone, setPhone] = useState(me.user.phone ?? "");
@@ -113,6 +123,23 @@ export function ProfileForm({
           )}
         </DetailRow>
       </dl>
+      {pendingRequest ? (
+        <div className="flex flex-col gap-3">
+          <p>Je aanmelding bij {pendingRequest.workingGroupName} wacht op goedkeuring.</p>
+          <WideButton
+            type="button"
+            variant="outline"
+            pending={withdrawing}
+            onClick={() => onWithdrawRequest?.()}
+          >
+            Trek aanmelding in
+          </WideButton>
+        </div>
+      ) : onJoinAnother ? (
+        <WideButton type="button" variant="outline" onClick={onJoinAnother}>
+          Meld je aan bij nog een werkgroep
+        </WideButton>
+      ) : null}
       <WideButton
         type="button"
         variant="outline"

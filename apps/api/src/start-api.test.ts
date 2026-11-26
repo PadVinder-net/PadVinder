@@ -1,5 +1,6 @@
 import { createServer } from "node:net";
 import { createTestDatabase, startStallingProxy, type TestDatabase } from "@padvinder/db/testing";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { testEnv } from "./test-env";
 import { startApi } from "./start-api";
@@ -62,6 +63,28 @@ test("serves requests and stops cleanly", async () => {
   expect(res.status).toBe(200);
   await api.stop();
   await expect(fetch(`http://127.0.0.1:${port}/api/version`)).rejects.toThrow();
+});
+
+test("touches no mail queue at boot: pg-boss connects on the first mail", async () => {
+  const port = await freePort();
+  const api = await startApi({
+    ...testEnv,
+    DATABASE_URL: t!.url,
+    API_HOST: "127.0.0.1",
+    API_PORT: port,
+    LOG_LEVEL: "error",
+  });
+  try {
+    expect((await fetch(`http://127.0.0.1:${port}/api/version`)).status).toBe(200);
+    const {
+      rows: [row],
+    } = await t!.db.execute<{ exists: boolean }>(
+      sql`select exists (select 1 from pg_namespace where nspname = 'pgboss') as "exists"`,
+    );
+    expect(row!.exists).toBe(false);
+  } finally {
+    await api.stop();
+  }
 });
 
 test("starts while the database is down and reports it in /api/health", async () => {

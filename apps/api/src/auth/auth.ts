@@ -1,5 +1,6 @@
 import {
   accounts,
+  findUserNameByEmail,
   normalizeEmail,
   rateLimits,
   sessions,
@@ -14,9 +15,7 @@ import { emailOTP } from "better-auth/plugins/email-otp";
 import { eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
-import { buildLoginCodeMail } from "../mail/login-code-mail";
-import type { Mailer } from "../mail/mailer";
-import { describeMailError } from "../mail/send-in-background";
+import { buildLoginCodeMail, describeMailError, type Mailer } from "@padvinder/mail";
 import {
   checkLoginCodeRequest,
   IP_LIMITS,
@@ -214,12 +213,19 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         // Not awaited: the answer must not wait for (or reveal anything through) the mail server.
         async sendVerificationOTP({ email, otp, type }) {
           if (type !== "sign-in") return; // Refused before it gets here (hooks.before).
-          mailer.send(buildLoginCodeMail({ to: email, code: otp })).catch((error: unknown) => {
-            log.error(
-              { mailError: describeMailError(error) },
-              "Sending the login code mail failed",
-            );
-          });
+          // The name is looked up first, so the mail greets by name; a new address gets "Hallo,".
+          // A failed lookup still sends the mail, with no name.
+          findUserNameByEmail(db, email)
+            .catch(() => null)
+            .then((name) =>
+              mailer.send(buildLoginCodeMail({ to: email, code: otp, recipientName: name ?? "" })),
+            )
+            .catch((error: unknown) => {
+              log.error(
+                { mailError: describeMailError(error) },
+                "Sending the login code mail failed",
+              );
+            });
         },
       }),
     ],

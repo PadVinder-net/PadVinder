@@ -4,6 +4,7 @@ import {
   coordinatorMeFixture,
   managedWorkingGroupsFixture,
   membersWithContactFixture,
+  meFixture,
   platformAdminMeFixture,
 } from "@padvinder/contracts/fixtures";
 import type { MeResponse } from "@padvinder/contracts";
@@ -394,4 +395,109 @@ test("when a refetch of the members fails, the members stay and no error shows",
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(screen.getByRole("cell", { name: /Bram Jansen/ })).toBeVisible();
   expect(screen.queryByText(connection)).toBeNull();
+});
+
+const addPath = `/api/working-groups/${noord.id}/members`;
+const added = {
+  results: [
+    { email: "nieuw@example.test", outcome: "added" },
+    { email: "tweede@example.test", outcome: "added" },
+  ],
+};
+
+test("a coordinator adds two addresses and sees one line for each", async () => {
+  const requests = recordRequests();
+  const routes = routesFor(coordinatorMeFixture, {
+    "GET /api/managed-working-groups": { workingGroups: [noord] },
+    [`POST ${addPath}`]: added,
+  });
+  mockFetch(routes);
+  renderPortal(noordPath);
+  await userEvent.click(await screen.findByRole("button", { name: "Voeg mensen toe" }));
+  const dialog = await screen.findByRole("dialog", { name: "Mensen toevoegen" });
+  await userEvent.type(
+    within(dialog).getByLabelText("E-mailadressen"),
+    "nieuw@example.test\ntweede@example.test",
+  );
+  const membersCalls = () =>
+    requests.filter((r) => r.method === "GET" && r.path === membersPath).length;
+  const before = membersCalls();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Voeg toe" }));
+  expect(await within(dialog).findByText("nieuw@example.test is toegevoegd.")).toBeVisible();
+  expect(within(dialog).getByText("tweede@example.test is toegevoegd.")).toBeVisible();
+  expect(requestsTo(requests, "POST", addPath)).toEqual([
+    {
+      method: "POST",
+      path: addPath,
+      body: { emails: ["nieuw@example.test", "tweede@example.test"] },
+    },
+  ]);
+  await waitFor(() => expect(membersCalls()).toBeGreaterThan(before));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Sluit" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  // Opened again, the form is empty.
+  await userEvent.click(screen.getByRole("button", { name: "Voeg mensen toe" }));
+  const again = await screen.findByRole("dialog", { name: "Mensen toevoegen" });
+  expect(within(again).getByLabelText("E-mailadressen")).toHaveValue("");
+});
+
+test("an admin sees Voeg mensen toe", async () => {
+  mockFetch(routesFor(adminMe));
+  renderPortal(noordPath);
+  expect(await screen.findByRole("button", { name: "Voeg mensen toe" })).toBeVisible();
+});
+
+test("a platform admin sees Voeg mensen toe", async () => {
+  mockFetch(routesFor(platformAdminMeFixture));
+  renderPortal(noordPath);
+  expect(await screen.findByRole("button", { name: "Voeg mensen toe" })).toBeVisible();
+});
+
+test("a wrong line keeps the button disabled and nothing is sent", async () => {
+  const requests = recordRequests();
+  mockFetch(routesFor(adminMe, { [`POST ${addPath}`]: added }));
+  renderPortal(noordPath);
+  await userEvent.click(await screen.findByRole("button", { name: "Voeg mensen toe" }));
+  const dialog = await screen.findByRole("dialog", { name: "Mensen toevoegen" });
+  await userEvent.type(within(dialog).getByLabelText("E-mailadressen"), "jan@");
+  expect(within(dialog).getByRole("button", { name: "Voeg toe" })).toBeDisabled();
+  expect(within(dialog).getByText("Regel 1: 'jan@' is geen geldig e-mailadres.")).toBeVisible();
+  expect(requestsTo(requests, "POST", addPath)).toEqual([]);
+});
+
+test("a 429 shows its text and keeps what was typed", async () => {
+  mockFetch(routesFor(adminMe, { [`POST ${addPath}`]: errorResponse(429, "too_many_additions") }));
+  renderPortal(noordPath);
+  await userEvent.click(await screen.findByRole("button", { name: "Voeg mensen toe" }));
+  const dialog = await screen.findByRole("dialog", { name: "Mensen toevoegen" });
+  await userEvent.type(within(dialog).getByLabelText("E-mailadressen"), "nieuw@example.test");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Voeg toe" }));
+  expect(
+    await within(dialog).findByText(
+      "Je hebt vandaag te veel mensen toegevoegd. Probeer het morgen opnieuw.",
+    ),
+  ).toBeVisible();
+  expect(within(dialog).getByLabelText("E-mailadressen")).toHaveValue("nieuw@example.test");
+  expect(await screen.findByText("Anna de Vries")).toBeVisible();
+});
+
+test("the dialog cannot be closed while the request runs", async () => {
+  const release = holdRequests((request) => request.method === "POST");
+  mockFetch(routesFor(adminMe, { [`POST ${addPath}`]: added }));
+  renderPortal(noordPath);
+  await userEvent.click(await screen.findByRole("button", { name: "Voeg mensen toe" }));
+  const dialog = await screen.findByRole("dialog", { name: "Mensen toevoegen" });
+  await userEvent.type(within(dialog).getByLabelText("E-mailadressen"), "nieuw@example.test");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Voeg toe" }));
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByRole("dialog", { name: "Mensen toevoegen" })).toBeVisible();
+  release();
+  expect(await within(dialog).findByText("nieuw@example.test is toegevoegd.")).toBeVisible();
+});
+
+test("a volunteer of the group who opens its page sees the not-found page", async () => {
+  mockFetch(routesFor(meFixture));
+  renderPortal(noordPath);
+  await expectNotFound();
+  expect(screen.queryByRole("button", { name: "Voeg mensen toe" })).toBeNull();
 });

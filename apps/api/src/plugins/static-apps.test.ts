@@ -6,7 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { buildApp } from "../app";
 import type { ApiEnv } from "../env";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 
@@ -23,6 +23,7 @@ async function makeApp(env: ApiEnv) {
     db,
     notifications: createNoopNotificationHub(),
     mailer: createMemoryMailer(),
+    queueMail: createMemoryMailQueue().queueMail,
   });
   return { app, close: async () => (await app.close(), await pool.end()) };
 }

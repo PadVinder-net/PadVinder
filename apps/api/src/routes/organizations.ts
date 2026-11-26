@@ -21,6 +21,7 @@ import {
   removeOrganizationAdmin,
   updateOrganization,
   type Db,
+  type QueueMail,
 } from "@padvinder/db";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -34,8 +35,12 @@ const adminParamsSchema = z.object({ organizationId: z.uuid(), userId: z.uuid() 
 /**
  * Organizations and their admins. The list is scoped to what the actor administers; one
  * organization is seen by its admins and by platform admins, and everyone else gets 404.
+ * Appointing an admin or a first coordinator queues a mail to them (`queueMail`).
  */
-export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
+export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: QueueMail }> = async (
+  app,
+  { db, queueMail },
+) => {
   const detail = async (organizationId: string): Promise<OrganizationDetail> => {
     const organization = await getOrganization(db, organizationId);
     if (!organization) throw apiError(404, apiErrorCodes.notFound, "Organization not found");
@@ -90,7 +95,13 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app,
       const actor = request.actor!;
       authorize(actor, { action: "platform.manageOrganizations" });
       const created = await mapAdminErrors(
-        () => createOrganization(db, request.body, { kind: "user", userId: actor.userId }),
+        () =>
+          createOrganization(
+            db,
+            request.body,
+            { kind: "user", userId: actor.userId },
+            { queueMail },
+          ),
         { email: "adminEmail" },
       );
       reply.code(201);
@@ -154,6 +165,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app,
           db,
           { email: request.body.email, organizationId },
           { kind: "user", userId: actor.userId },
+          { queueMail },
         ),
       );
       return detail(organizationId);
@@ -210,6 +222,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app,
             db,
             { organizationId, ...request.body },
             { kind: "user", userId: actor.userId },
+            { queueMail },
           ),
         { email: "coordinatorEmail" },
       );

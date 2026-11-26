@@ -18,7 +18,7 @@ import type { FastifyInstance } from "fastify";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { openEvents } from "../test-open-events";
@@ -38,8 +38,15 @@ beforeEach(async () => {
   const logger = (await import("fastify")).default({ logger: false }).log;
   hub = await startNotificationHub({ databaseUrl: t.url, channels: [liveEventsChannel], logger });
   const mailer = createMemoryMailer();
-  app = await buildApp({ env: testEnv, db: t.db, notifications: hub, mailer });
-  ctx = { app, mailer, t, close: async () => {} };
+  const mailQueue = createMemoryMailQueue();
+  app = await buildApp({
+    env: testEnv,
+    db: t.db,
+    notifications: hub,
+    mailer,
+    queueMail: mailQueue.queueMail,
+  });
+  ctx = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
   baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
 });

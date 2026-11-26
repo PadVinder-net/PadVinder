@@ -1,7 +1,6 @@
 import {
   apiErrorCode,
   listWorkingGroupsOptions,
-  useCreateMembershipRequest,
   useLogOut,
   useWithdrawMembershipRequest,
   type GetMeResponse,
@@ -16,13 +15,8 @@ import {
 } from "@padvinder/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { newId } from "../lib/new-id";
+import { useJoinWorkingGroup } from "../lib/use-join-working-group";
 import { ProfileEditor } from "../screens/more/profile-screen";
-
-const goneMessage = "Deze werkgroep bestaat niet meer. Kies een andere werkgroep.";
-
-/** The ID and time of one join attempt, kept until the user picks another group. */
-type JoinAttempt = { id: string; workingGroupId: string; requestedAt: string };
 
 const screen = "flex h-dvh flex-col gap-4 p-6";
 const linkButton = "h-12 flex-1 text-lg";
@@ -113,9 +107,8 @@ function Waiting({
 
 function Choose({ rejectedFrom }: { rejectedFrom?: string }) {
   const groups = useQuery(listWorkingGroupsOptions());
-  const create = useCreateMembershipRequest();
-  // Made when the user taps, kept for a second tap on the same group, replaced by another group.
-  const [attempt, setAttempt] = useState<JoinAttempt | null>(null);
+  // The ID is made at the tap and kept for a second tap on the same group.
+  const { join, pending, error } = useJoinWorkingGroup({ onGone: () => void groups.refetch() });
 
   if (groups.isPending) return <p className="text-lg">Werkgroepen laden…</p>;
   if (groups.isError) {
@@ -129,36 +122,12 @@ function Choose({ rejectedFrom }: { rejectedFrom?: string }) {
     );
   }
 
-  function join(workingGroupId: string) {
-    const current =
-      attempt?.workingGroupId === workingGroupId
-        ? attempt
-        : { id: newId(), workingGroupId, requestedAt: new Date().toISOString() };
-    setAttempt(current);
-    create.mutate(current, {
-      onError: (error) => {
-        if (apiErrorCode(error) === "not_found") {
-          setAttempt(null);
-          void groups.refetch();
-        }
-      },
-    });
-  }
-
-  const code = create.isError ? apiErrorCode(create.error) : null;
-  const error = create.isError
-    ? code === "not_found"
-      ? goneMessage
-      : code === null
-        ? connectionMessage
-        : apiErrorMessage(code)
-    : undefined;
   return (
     <WorkingGroupPicker
       workingGroups={groups.data.workingGroups}
       rejectedFrom={rejectedFrom}
       onJoin={join}
-      pending={create.isPending}
+      pending={pending}
       error={error}
     />
   );

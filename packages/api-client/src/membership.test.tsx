@@ -20,6 +20,7 @@ import {
   mayOpenMembers,
   mayRemoveMember,
   memberListWorkingGroups,
+  otherWorkingGroups,
   relationToWorkingGroup,
   reviewableWorkingGroups,
   useApproveMembershipRequest,
@@ -337,5 +338,27 @@ describe("useDeleteAccount", () => {
     expect(apiErrorCode(error)).toBe("last_platform_admin");
     expect(queryClient.getQueryData(getMeQueryKey())).toEqual(meFixture);
     expect(queryClient.getQueryCache().getAll()).toHaveLength(4);
+  });
+});
+
+describe("otherWorkingGroups", () => {
+  test("leaves out the user's groups and the group they asked for", () => {
+    const waiting = { ...applicantMeFixture, membershipRequest: pendingRequestFixture };
+    const others = otherWorkingGroups(waiting, workingGroupsFixture);
+    expect(others).not.toContainEqual(pendingRequestFixture.workingGroup);
+    expect(others).toEqual(
+      workingGroupsFixture.filter((g) => g.id !== pendingRequestFixture.workingGroup.id),
+    );
+    const member = otherWorkingGroups(meFixture, workingGroupsFixture);
+    expect(member).not.toContainEqual(noord);
+    expect(member).toHaveLength(workingGroupsFixture.length - 1);
+  });
+
+  test("keeps the group of a rejected request", () => {
+    const rejected = {
+      ...applicantMeFixture,
+      membershipRequest: { ...pendingRequestFixture, status: "rejected" as const },
+    };
+    expect(otherWorkingGroups(rejected, workingGroupsFixture)).toEqual(workingGroupsFixture);
   });
 });

@@ -11,7 +11,7 @@ import type { FastifyInstance } from "fastify";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
-import { createMemoryMailer } from "../mail/mailer";
+import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { openEvents } from "../test-open-events";
@@ -30,13 +30,15 @@ beforeAll(async () => {
   const logger = (await import("fastify")).default({ logger: false }).log;
   hub = await startNotificationHub({ databaseUrl: t.url, channels: [liveEventsChannel], logger });
   const mailer = createMemoryMailer();
+  const mailQueue = createMemoryMailQueue();
   app = await buildApp({
     env: testEnv,
     db: t.db,
     notifications: hub,
     mailer,
+    queueMail: mailQueue.queueMail,
   });
-  ctx = { app, mailer, t, close: async () => {} };
+  ctx = { app, mailer, mailQueue, t, close: async () => {} };
   cast = await createCast(ctx);
   baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
 });
@@ -316,4 +318,28 @@ test("an admin still lists the members of a group that is off, and makes one coo
   });
   expect(made.statusCode).toBe(200);
   expect(made.json()).toMatchObject({ userId: session.userId, isCoordinator: true });
+});
+
+test("removing a person who was added by mistake and never logged in frees the address", async () => {
+  const address = `per-ongeluk-${added++}@example.test`;
+  const post = (headers: Record<string, string>) =>
+    ctx.app.inject({
+      method: "POST",
+      url: `/api/working-groups/${cast.workingGroup.workingGroupId}/members`,
+      headers,
+      payload: { emails: [address] },
+    });
+  const first = await post(cast.members.coordinator.headers);
+  expect(first.json().results).toEqual([{ email: address, outcome: "added" }]);
+  const [account] = await ctx.t.db.select().from(users).where(eq(users.email, address));
+  const [membership] = await ctx.t.db
+    .select()
+    .from(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.userId, account!.id));
+  expect((await remove(cast.members.coordinator, membership!.id)).statusCode).toBe(204);
+
+  const again = await post(cast.members.coordinator.headers);
+  expect(again.json().results).toEqual([{ email: address, outcome: "added" }]);
+  const [newAccount] = await ctx.t.db.select().from(users).where(eq(users.email, address));
+  expect(newAccount!.id).not.toBe(account!.id);
 });

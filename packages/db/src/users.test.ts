@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { users } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
-import { getUserProfile, updateUserProfile } from "./users";
+import { findUserNameByEmail, getUserProfile, updateUserProfile } from "./users";
 
 let t: TestDatabase | undefined;
 beforeAll(async () => {
@@ -61,4 +61,18 @@ test("updating an unknown user is null, not an error", async () => {
 test("two users cannot share an email address", async () => {
   await insertUser("same@example.test");
   await expect(insertUser("same@example.test")).rejects.toThrow();
+});
+
+test("findUserNameByEmail gives the name of the account with that address", async () => {
+  await t!.db.insert(users).values({ name: "Noor", email: "find-noor@example.test" });
+  expect(await findUserNameByEmail(t!.db, "find-noor@example.test")).toBe("Noor");
+  expect(await findUserNameByEmail(t!.db, " Find-Noor@Example.test ")).toBe("Noor");
+});
+
+test("findUserNameByEmail is null for an unknown address and for a deleted account", async () => {
+  expect(await findUserNameByEmail(t!.db, "nobody@example.test")).toBeNull();
+  await t!.db
+    .insert(users)
+    .values({ name: "Verwijderd account", email: "find-gone@example.test", deletedAt: new Date() });
+  expect(await findUserNameByEmail(t!.db, "find-gone@example.test")).toBeNull();
 });

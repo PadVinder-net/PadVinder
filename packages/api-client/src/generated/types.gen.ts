@@ -4,6 +4,19 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AddMemberOutcomeInput = 'added' | 'approved' | 'invited' | 'already_member' | 'invalid';
+
+export type AddMembersRequestInput = {
+    emails: Array<string>;
+};
+
+export type AddMembersResponseInput = {
+    results: Array<{
+        email: string;
+        outcome: AddMemberOutcomeInput;
+    }>;
+};
+
 export type ApiErrorInput = {
     statusCode: number;
     error: string;
@@ -240,6 +253,19 @@ export type UpdateSpeciesRequestInput = {
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
+};
+
+export type AddMemberOutcome = 'added' | 'approved' | 'invited' | 'already_member' | 'invalid';
+
+export type AddMembersRequest = {
+    emails: Array<string>;
+};
+
+export type AddMembersResponse = {
+    results: Array<{
+        email: string;
+        outcome: AddMemberOutcome;
+    }>;
 };
 
 export type ApiError = {
@@ -702,6 +728,49 @@ export type ListMembersResponses = {
 };
 
 export type ListMembersResponse = ListMembersResponses[keyof ListMembersResponses];
+
+export type AddMembersData = {
+    body: AddMembersRequestInput;
+    path: {
+        workingGroupId: string;
+    };
+    query?: never;
+    url: '/api/working-groups/{workingGroupId}/members';
+};
+
+export type AddMembersErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    429: ApiError;
+};
+
+export type AddMembersError = AddMembersErrors[keyof AddMembersErrors];
+
+export type AddMembersResponses = {
+    /**
+     * Default Response
+     */
+    200: AddMembersResponse;
+};
+
+export type AddMembersResponse2 = AddMembersResponses[keyof AddMembersResponses];
 
 export type ListManagedWorkingGroupsData = {
     body?: never;

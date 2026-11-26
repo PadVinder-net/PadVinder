@@ -8,7 +8,7 @@ import {
   lockPlatformAdmins,
   lockWorkingGroup,
 } from "./admin";
-import { recordAudit } from "./audit-log";
+import { recordAudit, type AuditActor } from "./audit-log";
 import type { Db, DbTransaction } from "./client";
 import { lockMembershipRequestsOfUser } from "./membership-requests";
 import { notifyAccessChanged, notifyMembershipRequestsChanged } from "./notifications";
@@ -44,7 +44,8 @@ export function deletedAccountEmail(userId: string): string {
 const OTP_TYPES = ["sign-in", "email-verification", "forget-password"] as const;
 
 export type DeleteAccountResult =
-  | { outcome: "deleted" | "not_found" | "last_platform_admin" }
+  /** `kept`: only with `onlyIfUnused`, for an account that is in use. */
+  | { outcome: "deleted" | "not_found" | "last_platform_admin" | "kept" }
   | { outcome: "blocked"; blockers: AccountDeletionBlocker[] };
 
 const dutch = (column: Parameters<typeof asc>[0]) => sql`${column} COLLATE "nl-NL-x-icu"`;
@@ -148,6 +149,37 @@ async function findBlockers(tx: DbTransaction, userId: string): Promise<AccountD
 }
 
 /**
+ * Whether the account has logged in (or is logging in for the first time), or has a membership, an admin row, a pending request or the
+ * platform admin flag. Read under the locks of `deleteAccount`.
+ */
+async function isInUse(
+  tx: DbTransaction,
+  userId: string,
+  user: { isPlatformAdmin: boolean; lastLoginAt: Date | null; emailVerified: boolean },
+): Promise<boolean> {
+  // A first login verifies the address before Better Auth's `session.create.after` hook sets
+  // `last_login_at`: an account caught between the two counts as used, so it is never deleted
+  // under someone who is logging in for the first time.
+  if (user.lastLoginAt !== null || user.emailVerified || user.isPlatformAdmin) return true;
+  const [membership] = await tx
+    .select({ id: workingGroupMemberships.id })
+    .from(workingGroupMemberships)
+    .where(eq(workingGroupMemberships.userId, userId))
+    .limit(1);
+  const [admin] = await tx
+    .select({ organizationId: organizationAdmins.organizationId })
+    .from(organizationAdmins)
+    .where(eq(organizationAdmins.userId, userId))
+    .limit(1);
+  const [request] = await tx
+    .select({ id: membershipRequests.id })
+    .from(membershipRequests)
+    .where(and(eq(membershipRequests.userId, userId), eq(membershipRequests.status, "pending")))
+    .limit(1);
+  return membership !== undefined || admin !== undefined || request !== undefined;
+}
+
+/**
  * The user deletes their own account (the design, "Deleting an account"). A soft delete, in one
  * transaction:
  *
@@ -163,15 +195,20 @@ async function findBlockers(tx: DbTransaction, userId: string): Promise<AccountD
  *    requests of the old address.
  * 4. Their pending membership requests are withdrawn (with `membership-requests-changed` for each
  *    group), and their memberships and organization admin rows are deleted.
- * 5. One audit entry (actor and subject the user, no details) and `access-changed` for the user,
- *    which ends their open event streams.
+ * 5. One audit entry (actor `deletedBy`, by default the user; subject the user; no details) and
+ *    `access-changed` for the user, which ends their open event streams.
  *
  * The `users` row stays, and so does everything that points at it: decided requests now, rounds
  * and drain checks later. It cannot be undone; the same address logs in later as a new account.
+ *
+ * `deletedBy` is the actor of the audit entry when someone else deletes the account (by default
+ * the user). With `onlyIfUnused` (after a removal, `removeMembership`) the account is deleted only
+ * when, read again under all the locks, it never logged in and has no membership, no admin row,
+ * no pending request and no platform admin flag; otherwise nothing changes: `kept`.
  */
 export async function deleteAccount(
   db: Db,
-  input: { userId: string; now: Date },
+  input: { userId: string; now: Date; deletedBy?: AuditActor; onlyIfUnused?: boolean },
 ): Promise<DeleteAccountResult> {
   return db.transaction(async (tx): Promise<DeleteAccountResult> => {
     // Lock order: the platform admin lock, the user's request lock, the user's pending request
@@ -196,7 +233,12 @@ export async function deleteAccount(
     const held: HeldLocks = { organizationIds: new Set(), workingGroupIds: new Set() };
     await lockRolesOfUser(tx, input.userId, held);
     const [user] = await tx
-      .select({ email: users.email, isPlatformAdmin: users.isPlatformAdmin })
+      .select({
+        email: users.email,
+        isPlatformAdmin: users.isPlatformAdmin,
+        lastLoginAt: users.lastLoginAt,
+        emailVerified: users.emailVerified,
+      })
       .from(users)
       .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
       .for("update");
@@ -223,6 +265,7 @@ export async function deleteAccount(
     // from an approved request is covered by the request row locks above.
     await lockRolesOfUser(tx, input.userId, held);
 
+    if (input.onlyIfUnused && (await isInUse(tx, input.userId, user))) return { outcome: "kept" };
     if (user.isPlatformAdmin && !(await hasOtherPlatformAdmin(tx, input.userId)))
       return { outcome: "last_platform_admin" };
     const blockers = await findBlockers(tx, input.userId);
@@ -281,7 +324,7 @@ export async function deleteAccount(
     await tx.delete(organizationAdmins).where(eq(organizationAdmins.userId, input.userId));
 
     await recordAudit(tx, {
-      actor: { kind: "user", userId: input.userId },
+      actor: input.deletedBy ?? { kind: "user", userId: input.userId },
       organizationId: null,
       action: "account.deleted",
       subject: { type: "user", id: input.userId },

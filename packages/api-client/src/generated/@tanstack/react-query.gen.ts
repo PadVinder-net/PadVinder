@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { addOrganizationAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
-import type { AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
+import { addMembers, addOrganizationAdmin, approveMembershipRequest, createMembershipRequest, createOrganization, createSpecies, createWorkingGroup, deleteMe, getHealth, getMe, getMembershipRequest, getOrganization, getVersion, listManagedWorkingGroups, listMembers, listMembershipRequests, listOrganizations, listSpecies, listWorkingGroups, type Options, rejectMembershipRequest, removeMembership, removeOrganizationAdmin, updateMe, updateMembership, updateOrganization, updateSpecies, updateWorkingGroup, withdrawMembershipRequest } from '../sdk.gen';
+import type { AddMembersData, AddMembersError, AddMembersResponse2, AddOrganizationAdminData, AddOrganizationAdminError, AddOrganizationAdminResponse, ApproveMembershipRequestData, ApproveMembershipRequestError, ApproveMembershipRequestResponse, CreateMembershipRequestData, CreateMembershipRequestError, CreateMembershipRequestResponse, CreateOrganizationData, CreateOrganizationError, CreateOrganizationResponse, CreateSpeciesData, CreateSpeciesError, CreateSpeciesResponse, CreateWorkingGroupData, CreateWorkingGroupError, CreateWorkingGroupResponse, DeleteMeData, DeleteMeError, DeleteMeResponse, GetHealthData, GetHealthError, GetHealthResponse, GetMeData, GetMeError, GetMembershipRequestData, GetMembershipRequestError, GetMembershipRequestResponse, GetMeResponse, GetOrganizationData, GetOrganizationError, GetOrganizationResponse, GetVersionData, GetVersionResponse, ListManagedWorkingGroupsData, ListManagedWorkingGroupsError, ListManagedWorkingGroupsResponse, ListMembersData, ListMembersError, ListMembershipRequestsData, ListMembershipRequestsError, ListMembershipRequestsResponse, ListMembersResponse, ListOrganizationsData, ListOrganizationsError, ListOrganizationsResponse, ListSpeciesData, ListSpeciesError, ListSpeciesResponse, ListWorkingGroupsData, ListWorkingGroupsError, ListWorkingGroupsResponse, RejectMembershipRequestData, RejectMembershipRequestError, RejectMembershipRequestResponse, RemoveMembershipData, RemoveMembershipError, RemoveMembershipResponse, RemoveOrganizationAdminData, RemoveOrganizationAdminError, RemoveOrganizationAdminResponse, UpdateMeData, UpdateMeError, UpdateMembershipData, UpdateMembershipError, UpdateMembershipResponse, UpdateMeResponse, UpdateOrganizationData, UpdateOrganizationError, UpdateOrganizationResponse, UpdateSpeciesData, UpdateSpeciesError, UpdateSpeciesResponse, UpdateWorkingGroupData, UpdateWorkingGroupError, UpdateWorkingGroupResponse, WithdrawMembershipRequestData, WithdrawMembershipRequestError, WithdrawMembershipRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -180,6 +180,23 @@ export const listMembersOptions = (options: Options<ListMembersData>) => queryOp
     },
     queryKey: listMembersQueryKey(options)
 });
+
+/**
+ * Add people to a working group by email address (its coordinators, the admins of its organization and platform admins). One outcome per address; the same list again changes nothing
+ */
+export const addMembersMutation = (options?: Partial<Options<AddMembersData>>): UseMutationOptions<AddMembersResponse2, AddMembersError, Options<AddMembersData>> => {
+    const mutationOptions: UseMutationOptions<AddMembersResponse2, AddMembersError, Options<AddMembersData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await addMembers({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const listManagedWorkingGroupsQueryKey = (options?: Options<ListManagedWorkingGroupsData>) => createQueryKey('listManagedWorkingGroups', options);
 

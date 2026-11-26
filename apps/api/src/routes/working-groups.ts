@@ -1,11 +1,15 @@
 import {
+  addMembersRequestSchema,
+  addMembersResponseSchema,
   apiErrorCodes,
+  MAX_ADDRESSES_PER_REQUEST,
   managedWorkingGroupListResponseSchema,
   managedWorkingGroupSchema,
   memberListResponseSchema,
   membershipRequestListResponseSchema,
   workingGroupDirectoryResponseSchema,
   updateWorkingGroupRequestSchema,
+  type AddMembersResponse,
   type ManagedWorkingGroup,
   type ManagedWorkingGroupListResponse,
   type MemberListResponse,
@@ -13,25 +17,40 @@ import {
   type WorkingGroupDirectoryResponse,
 } from "@padvinder/contracts";
 import {
+  addMemberByEmail,
+  countAdditionsInLastDay,
   getManagedWorkingGroup,
   getWorkingGroup,
   listManagedWorkingGroups,
   listMembers,
   listPendingMembershipRequests,
   listWorkingGroupDirectory,
+  normalizeEmailList,
   updateWorkingGroup,
   type Db,
+  type QueueMail,
 } from "@padvinder/db";
+import type { Mailer } from "@padvinder/mail";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { mapAdminErrors } from "../admin-errors";
 import { apiError, errorResponses } from "../errors";
 import { authorize, decide } from "../permissions/rules";
+import { sendRequestDecidedMail } from "../mail/request-decided-mail";
 import { toMembershipRequestForReview } from "../serializers/membership-requests";
 
 const workingGroupParamsSchema = z.object({ workingGroupId: z.uuid() });
 
-export const workingGroupRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
+/** The most people one account adds or invites in 24 hours. */
+const MAX_ADDITIONS_PER_DAY = 500;
+
+export const workingGroupRoutes: FastifyPluginAsyncZod<{
+  db: Db;
+  mailer: Mailer;
+  queueMail: QueueMail;
+  /** The origin of the links in mails (`PUBLIC_ORIGIN`). */
+  publicOrigin: string;
+}> = async (app, { db, mailer, queueMail, publicOrigin }) => {
   // Every logged-in user may list the working groups, so there is no `authorize` call. This is
   // the one list that crosses organizations: a new volunteer picks a group from it.
   app.get(
@@ -97,6 +116,73 @@ export const workingGroupRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app,
       const contact =
         decide(request.actor!, { action: "workingGroup.viewMemberContact", target }) === "allowed";
       return { members: await listMembers(db, group.workingGroupId, { contact }) };
+    },
+  );
+
+  app.post(
+    "/working-groups/:workingGroupId/members",
+    {
+      preHandler: app.requireActor,
+      schema: {
+        operationId: "addMembers",
+        summary:
+          "Add people to a working group by email address (its coordinators, the admins of its organization and platform admins). One outcome per address; the same list again changes nothing",
+        params: workingGroupParamsSchema,
+        body: addMembersRequestSchema,
+        response: {
+          200: addMembersResponseSchema,
+          ...errorResponses(400, 401, 403, 404, 429),
+        },
+      },
+    },
+    async (request): Promise<AddMembersResponse> => {
+      const actor = request.actor!;
+      const group = await getWorkingGroup(db, request.params.workingGroupId);
+      if (!group) throw apiError(404, apiErrorCodes.notFound, "Not found");
+      authorize(actor, {
+        action: "workingGroup.addMembers",
+        target: { workingGroupId: group.workingGroupId, organizationId: group.organizationId },
+      });
+      // Both limits are checked before the first address, so a refused list changes nothing.
+      const addresses = normalizeEmailList(request.body.emails);
+      if (addresses.length > MAX_ADDRESSES_PER_REQUEST) {
+        throw apiError(
+          429,
+          apiErrorCodes.tooManyAddresses,
+          `At most ${MAX_ADDRESSES_PER_REQUEST} addresses per request`,
+        );
+      }
+      const now = new Date();
+      const allowed =
+        MAX_ADDITIONS_PER_DAY - (await countAdditionsInLastDay(db, actor.userId, now));
+      if (addresses.length > allowed) {
+        throw apiError(
+          429,
+          apiErrorCodes.tooManyAdditions,
+          `At most ${MAX_ADDITIONS_PER_DAY} people may be added in 24 hours`,
+        );
+      }
+      // Each address commits on its own: an error partway leaves the earlier ones added, and sending
+      // the same list again is safe (they answer `already_member` or `invited` without a second mail).
+      const results: AddMembersResponse["results"] = [];
+      for (const email of addresses) {
+        const result = await mapAdminErrors(() =>
+          addMemberByEmail(
+            db,
+            { workingGroupId: group.workingGroupId, email, addedBy: actor.userId, now },
+            { queueMail },
+          ),
+        );
+        if (result.approvedRequest) {
+          sendRequestDecidedMail(
+            { mailer, log: request.log, publicOrigin },
+            result.approvedRequest,
+          );
+        }
+        // Never `approvedRequest`: it holds the applicant's name and contact details.
+        results.push({ email: result.email, outcome: result.outcome });
+      }
+      return { results };
     },
   );
 

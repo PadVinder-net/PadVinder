@@ -1,6 +1,13 @@
 import nodemailer from "nodemailer";
+import { z } from "zod";
 import { describe, expect, test, vi } from "vitest";
-import { createMemoryMailer, createSmtpMailer, smtpTransportOptions, type Mail } from "./mailer";
+import {
+  createMemoryMailer,
+  createSmtpMailer,
+  smtpSettingsShape,
+  smtpTransportOptions,
+  type Mail,
+} from "./mailer";
 
 const mail: Mail = {
   to: "noor@example.test",
@@ -71,4 +78,29 @@ describe("createSmtpMailer subject prefix", () => {
     expect(await sentSubject("[STAGING]")).toBe("[STAGING] 123456 is je inlogcode voor PadVinder"));
   test("without it the subject is unchanged", async () =>
     expect(await sentSubject(undefined)).toBe(subject));
+});
+
+describe("smtpSettingsShape", () => {
+  const base = {
+    SMTP_HOST: "smtp.example.test",
+    SMTP_PORT: "587",
+    MAIL_FROM: "PadVinder <a@example.test>",
+  };
+  const schema = z.object(smtpSettingsShape);
+
+  test("reads the six settings, the port as a number", () => {
+    expect(schema.parse({ ...base, SMTP_USER: "u", SMTP_PASSWORD: "p" })).toMatchObject({
+      SMTP_PORT: 587,
+      SMTP_USER: "u",
+    });
+  });
+  test("an empty MAIL_SUBJECT_PREFIX counts as absent", () =>
+    expect(schema.parse({ ...base, MAIL_SUBJECT_PREFIX: "" }).MAIL_SUBJECT_PREFIX).toBeUndefined());
+  test("a prefix is at most 30 characters and holds no line break", () => {
+    expect(schema.parse({ ...base, MAIL_SUBJECT_PREFIX: "[STAGING]" }).MAIL_SUBJECT_PREFIX).toBe(
+      "[STAGING]",
+    );
+    expect(schema.safeParse({ ...base, MAIL_SUBJECT_PREFIX: "x".repeat(31) }).success).toBe(false);
+    expect(schema.safeParse({ ...base, MAIL_SUBJECT_PREFIX: "a\nBcc: x" }).success).toBe(false);
+  });
 });

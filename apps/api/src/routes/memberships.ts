@@ -13,6 +13,20 @@ import { authorize } from "../permissions/rules";
 
 const paramsSchema = z.object({ membershipId: z.uuid() });
 
+/**
+ * An error described without personal data: its class and, for a PostgreSQL error (also when
+ * Drizzle wrapped it in a cause), the SQLSTATE code. Never the message, which can hold values
+ * such as an address.
+ */
+export function describeDatabaseError(error: unknown): { type: string; code?: string } {
+  if (!(error instanceof Error)) return { type: typeof error };
+  for (let e: unknown = error, depth = 0; e instanceof Error && depth < 5; e = e.cause, depth++) {
+    const { code } = e as { code?: unknown };
+    if (typeof code === "string") return { type: error.name, code };
+  }
+  return { type: error.name };
+}
+
 export const membershipRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { db }) => {
   app.delete(
     "/memberships/:membershipId",
@@ -45,6 +59,13 @@ export const membershipRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, {
       });
       switch (result.outcome) {
         case "removed":
+          // The removal stands; only deleting the removed person's unused account failed.
+          if ("cleanupError" in result) {
+            request.log.warn(
+              { cleanupError: describeDatabaseError(result.cleanupError) },
+              "Deleting an unused account after a removal failed",
+            );
+          }
           return reply.code(204).send(null);
         case "not_found":
           throw apiError(404, apiErrorCodes.notFound, "Not found");
@@ -57,7 +78,7 @@ export const membershipRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, {
             "The member is the last coordinator of an active working group",
           );
         default: {
-          const unreachable: never = result.outcome;
+          const unreachable: never = result;
           throw new Error(`Unknown outcome ${JSON.stringify(unreachable)}`);
         }
       }

@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import type { AccountDeletionBlocker } from "@padvinder/contracts";
 import {
   accountDeletionBlockedMessage,
+  addMemberOutcomeMessage,
   apiErrorMessage,
   connectionMessage,
   loginErrorMessage,
@@ -47,6 +48,8 @@ test.each([
     "Een werkgroep heeft altijd een coördinator. Maak eerst iemand anders coördinator.",
   ],
   ["no_coordinator", "Deze werkgroep heeft geen coördinator. Maak eerst iemand coördinator."],
+  ["too_many_addresses", "Voeg hoogstens tweehonderd adressen per keer toe."],
+  ["too_many_additions", "Je hebt vandaag te veel mensen toegevoegd. Probeer het morgen opnieuw."],
   ["internal_error", connectionMessage],
   ["something_new", connectionMessage],
   ["toString", connectionMessage],
@@ -114,4 +117,17 @@ test("the administration texts", () => {
   );
   expect(organizationNameTakenMessage).toBe("Er is al een organisatie met deze naam.");
   expect(workingGroupNameTakenMessage).toBe("Er is al een werkgroep met deze naam.");
+});
+
+test.each([
+  [{ email: "a@example.test", outcome: "added" }, "a@example.test is toegevoegd."],
+  [{ email: "a@example.test", outcome: "approved" }, "a@example.test is toegelaten."],
+  [
+    { email: "a@example.test", outcome: "invited" },
+    "a@example.test heeft al een account en krijgt een mail.",
+  ],
+  [{ email: "a@example.test", outcome: "already_member" }, "a@example.test is al lid."],
+  [{ email: "jan@", outcome: "invalid" }, "'jan@' is geen geldig e-mailadres."],
+] as const)("%j gives %j", (result, text) => {
+  expect(addMemberOutcomeMessage(result)).toBe(text);
 });

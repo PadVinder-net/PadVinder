@@ -32,6 +32,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams } from "react-router";
+import { AddMembers, mayAddMembers } from "./add-members";
 import { RequireManagesSomething } from "../layout/require-manages-something";
 import { NotFoundPage } from "./not-found-page";
 import { LoadError } from "./load-error";
@@ -236,7 +237,10 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
           </div>
         ) : null}
       </div>
-      <h2 className="mb-4 text-xl font-bold">Leden</h2>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-xl font-bold">Leden</h2>
+        {mayAddMembers(me, group) ? <AddMembers group={group} /> : null}
+      </div>
       {/* A failed refetch keeps the members it had; only a list that never loaded is an error. */}
       {members.data ? (
         <MembersTable

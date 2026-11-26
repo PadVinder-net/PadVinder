@@ -14,6 +14,7 @@ export {
 export { cn } from "./lib/utils";
 export { formatDate, formatDateTime } from "./lib/format";
 export { displayName, nameInSentence } from "./lib/display-name";
+export { parseEmailLines, type EmailLines } from "./lib/email-lines";
 export { normalizeCode } from "./lib/code";
 export { capitalizeFirst } from "./lib/text";
 export { CodeForm, type CodeFormProps } from "./components/login/code-form";
@@ -23,6 +24,7 @@ export { LoginFlow, type LoginFlowProps, type LoginResult } from "./components/l
 export { AuthGateView, type AuthGateViewProps } from "./components/login/auth-gate-view";
 export {
   accountDeletionBlockedMessage,
+  addMemberOutcomeMessage,
   apiErrorMessage,
   connectionMessage,
   loginErrorMessage,
@@ -81,6 +83,14 @@ export {
   WorkingGroupTable,
   type WorkingGroupTableProps,
 } from "./components/administration/working-group-table";
+export {
+  AddMembersForm,
+  type AddMembersFormProps,
+} from "./components/administration/add-members-form";
+export {
+  AddMembersResults,
+  type AddMembersResultsProps,
+} from "./components/administration/add-members-results";
 export { MembersTable, type MembersTableProps } from "./components/administration/members-table";
 export {
   OrganizationTable,
