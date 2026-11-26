@@ -4,6 +4,31 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AccountSummaryInput = {
+    id: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+    isPlatformAdmin: boolean;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
+    workingGroups: Array<{
+        id: string;
+        name: string;
+        organization: {
+            id: string;
+            name: string;
+        };
+        isCoordinator: boolean;
+    }>;
+};
+
+export type FindAccountRequestInput = {
+    email: string;
+};
+
 export type AddMemberOutcomeInput = 'added' | 'approved' | 'invited' | 'already_member' | 'invalid';
 
 export type AddMembersRequestInput = {
@@ -45,6 +70,42 @@ export type AccountDeletionBlockedInput = {
         message: string;
     }>;
     blockers?: Array<AccountDeletionBlockerInput>;
+};
+
+export type AuditActionGroupInput = 'organization' | 'workingGroup' | 'role' | 'membership' | 'account' | 'species';
+
+export type AuditLogPersonInput = {
+    kind: 'named' | 'former_member' | 'deleted_account' | 'platform_admin' | 'system';
+    name?: string;
+    hasLoggedIn?: boolean;
+};
+
+export type AuditLogEntryInput = {
+    id: string;
+    occurredAt: string;
+    action: string;
+    actor: AuditLogPersonInput;
+    person: AuditLogPersonInput | null;
+    organization: {
+        id: string;
+        name: string;
+    } | null;
+    workingGroup: {
+        id: string;
+        name: string;
+    } | null;
+    species: {
+        id: string;
+        dutchName: string;
+    } | null;
+    details: {
+        [key: string]: string | number | boolean | null;
+    };
+};
+
+export type AuditLogPageInput = {
+    entries: Array<AuditLogEntryInput>;
+    nextCursor: string | null;
 };
 
 export type HealthResponseInput = {
@@ -225,6 +286,21 @@ export type AddOrganizationAdminRequestInput = {
     email: string;
 };
 
+export type PlatformAdminInput = {
+    userId: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+};
+
+export type PlatformAdminListResponseInput = {
+    platformAdmins: Array<PlatformAdminInput>;
+};
+
+export type AddPlatformAdminRequestInput = {
+    email: string;
+};
+
 export type SpeciesInput = {
     id: string;
     dutchName: string;
@@ -253,6 +329,31 @@ export type UpdateSpeciesRequestInput = {
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
+};
+
+export type AccountSummary = {
+    id: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+    isPlatformAdmin: boolean;
+    organizationAdminOf: Array<{
+        id: string;
+        name: string;
+    }>;
+    workingGroups: Array<{
+        id: string;
+        name: string;
+        organization: {
+            id: string;
+            name: string;
+        };
+        isCoordinator: boolean;
+    }>;
+};
+
+export type FindAccountRequest = {
+    email: string;
 };
 
 export type AddMemberOutcome = 'added' | 'approved' | 'invited' | 'already_member' | 'invalid';
@@ -296,6 +397,42 @@ export type AccountDeletionBlocked = {
         message: string;
     }>;
     blockers?: Array<AccountDeletionBlocker>;
+};
+
+export type AuditActionGroup = 'organization' | 'workingGroup' | 'role' | 'membership' | 'account' | 'species';
+
+export type AuditLogPerson = {
+    kind: 'named' | 'former_member' | 'deleted_account' | 'platform_admin' | 'system';
+    name?: string;
+    hasLoggedIn?: boolean;
+};
+
+export type AuditLogEntry = {
+    id: string;
+    occurredAt: string;
+    action: string;
+    actor: AuditLogPerson;
+    person: AuditLogPerson | null;
+    organization: {
+        id: string;
+        name: string;
+    } | null;
+    workingGroup: {
+        id: string;
+        name: string;
+    } | null;
+    species: {
+        id: string;
+        dutchName: string;
+    } | null;
+    details: {
+        [key: string]: string | number | boolean | null;
+    };
+};
+
+export type AuditLogPage = {
+    entries: Array<AuditLogEntry>;
+    nextCursor: string | null;
 };
 
 export type HealthResponse = {
@@ -473,6 +610,21 @@ export type UpdateOrganizationRequest = {
 };
 
 export type AddOrganizationAdminRequest = {
+    email: string;
+};
+
+export type PlatformAdmin = {
+    userId: string;
+    name: string;
+    email: string;
+    hasLoggedIn: boolean;
+};
+
+export type PlatformAdminListResponse = {
+    platformAdmins: Array<PlatformAdmin>;
+};
+
+export type AddPlatformAdminRequest = {
     email: string;
 };
 
@@ -1188,6 +1340,191 @@ export type CreateWorkingGroupResponses = {
 
 export type CreateWorkingGroupResponse = CreateWorkingGroupResponses[keyof CreateWorkingGroupResponses];
 
+export type ListPlatformAdminsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/platform-admins';
+};
+
+export type ListPlatformAdminsErrors = {
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+};
+
+export type ListPlatformAdminsError = ListPlatformAdminsErrors[keyof ListPlatformAdminsErrors];
+
+export type ListPlatformAdminsResponses = {
+    /**
+     * Default Response
+     */
+    200: PlatformAdminListResponse;
+};
+
+export type ListPlatformAdminsResponse = ListPlatformAdminsResponses[keyof ListPlatformAdminsResponses];
+
+export type AddPlatformAdminData = {
+    body: AddPlatformAdminRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/platform-admins';
+};
+
+export type AddPlatformAdminErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+};
+
+export type AddPlatformAdminError = AddPlatformAdminErrors[keyof AddPlatformAdminErrors];
+
+export type AddPlatformAdminResponses = {
+    /**
+     * Default Response
+     */
+    200: PlatformAdminListResponse;
+};
+
+export type AddPlatformAdminResponse = AddPlatformAdminResponses[keyof AddPlatformAdminResponses];
+
+export type RemovePlatformAdminData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/api/platform-admins/{userId}';
+};
+
+export type RemovePlatformAdminErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: ApiError;
+};
+
+export type RemovePlatformAdminError = RemovePlatformAdminErrors[keyof RemovePlatformAdminErrors];
+
+export type RemovePlatformAdminResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type RemovePlatformAdminResponse = RemovePlatformAdminResponses[keyof RemovePlatformAdminResponses];
+
+export type FindAccountData = {
+    body: FindAccountRequestInput;
+    path?: never;
+    query?: never;
+    url: '/api/users/lookup';
+};
+
+export type FindAccountErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type FindAccountError = FindAccountErrors[keyof FindAccountErrors];
+
+export type FindAccountResponses = {
+    /**
+     * Default Response
+     */
+    200: AccountSummary;
+};
+
+export type FindAccountResponse = FindAccountResponses[keyof FindAccountResponses];
+
+export type DeleteUserData = {
+    body?: never;
+    path: {
+        userId: string;
+    };
+    query?: never;
+    url: '/api/users/{userId}';
+};
+
+export type DeleteUserErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    403: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+    /**
+     * Default Response
+     */
+    409: AccountDeletionBlocked;
+};
+
+export type DeleteUserError = DeleteUserErrors[keyof DeleteUserErrors];
+
+export type DeleteUserResponses = {
+    /**
+     * Default Response
+     */
+    204: null;
+};
+
+export type DeleteUserResponse = DeleteUserResponses[keyof DeleteUserResponses];
+
 export type ListSpeciesData = {
     body?: never;
     path?: never;
@@ -1292,6 +1629,43 @@ export type UpdateSpeciesResponses = {
 };
 
 export type UpdateSpeciesResponse = UpdateSpeciesResponses[keyof UpdateSpeciesResponses];
+
+export type ListAuditLogEntriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        organizationId?: string;
+        actionGroup?: AuditActionGroupInput;
+        cursor?: string;
+    };
+    url: '/api/audit-log-entries';
+};
+
+export type ListAuditLogEntriesErrors = {
+    /**
+     * Default Response
+     */
+    400: ApiError;
+    /**
+     * Default Response
+     */
+    401: ApiError;
+    /**
+     * Default Response
+     */
+    404: ApiError;
+};
+
+export type ListAuditLogEntriesError = ListAuditLogEntriesErrors[keyof ListAuditLogEntriesErrors];
+
+export type ListAuditLogEntriesResponses = {
+    /**
+     * Default Response
+     */
+    200: AuditLogPage;
+};
+
+export type ListAuditLogEntriesResponse = ListAuditLogEntriesResponses[keyof ListAuditLogEntriesResponses];
 
 export type ListReviewableMembershipRequestsData = {
     body?: never;

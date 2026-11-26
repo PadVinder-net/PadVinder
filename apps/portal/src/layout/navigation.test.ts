@@ -7,7 +7,7 @@ import {
 } from "@padvinder/contracts/fixtures";
 import type { MeResponse } from "@padvinder/contracts";
 import { expect, test } from "vitest";
-import { managesSomething, navigationFor } from "./navigation";
+import { managesSomething, navigationFor, readsAuditLog } from "./navigation";
 
 /** An organization admin without any membership. */
 const organizationAdminMe: MeResponse = {
@@ -37,22 +37,28 @@ test("navigationFor", () => {
     ["Werkgroepen", "/working-groups"],
     ["Aanmeldingen", "/membership-requests"],
     ["Organisatie", "/organizations/0192f3c0-0000-7000-8000-0000000000a2"],
+    ["Logboek", "/audit-log"],
   ]);
   expect(navigationFor(organizationAdminMe)).toEqual([
     { label: "Werkgroepen", to: "/working-groups" },
     { label: "Aanmeldingen", to: "/membership-requests" },
     { label: "Organisatie", to: "/organizations/0192f3c0-0000-7000-8000-0000000000a2" },
+    { label: "Logboek", to: "/audit-log" },
   ]);
   expect(navigationFor(twoOrganizationAdminMe).map((item) => [item.label, item.to])).toEqual([
     ["Werkgroepen", "/working-groups"],
     ["Aanmeldingen", "/membership-requests"],
     ["Organisaties", "/organizations"],
+    ["Logboek", "/audit-log"],
   ]);
   expect(navigationFor(platformAdminMeFixture).map((item) => item.to)).toEqual([
     "/working-groups",
     "/membership-requests",
     "/organizations",
     "/species",
+    "/audit-log",
+    "/platform-admins",
+    "/delete-account",
     "/system",
   ]);
   expect(navigationFor(platformAdminMeFixture).map((item) => item.label)).toEqual([
@@ -60,6 +66,9 @@ test("navigationFor", () => {
     "Aanmeldingen",
     "Organisaties",
     "Soorten",
+    "Logboek",
+    "Hoofdbeheerders",
+    "Account verwijderen",
     "Systeemstatus",
   ]);
   // A platform admin who also administers one organization sees all of them.
@@ -68,9 +77,34 @@ test("navigationFor", () => {
       ...platformAdminMeFixture,
       organizationAdminOf: twoOrganizationsMeFixture.organizationAdminOf,
     }).map((item) => item.to),
-  ).toEqual(["/working-groups", "/membership-requests", "/organizations", "/species", "/system"]);
+  ).toEqual([
+    "/working-groups",
+    "/membership-requests",
+    "/organizations",
+    "/species",
+    "/audit-log",
+    "/platform-admins",
+    "/delete-account",
+    "/system",
+  ]);
   expect(navigationFor(meFixture)).toEqual([]);
   expect(navigationFor(applicantMeFixture)).toEqual([]);
+});
+
+test("navigationFor puts Hoofdbeheerders and Account verwijderen between Logboek and Systeemstatus, for a platform admin only", () => {
+  const items = navigationFor(platformAdminMeFixture);
+  const logboek = items.findIndex((item) => item.label === "Logboek");
+  expect(items.slice(logboek, logboek + 4)).toEqual([
+    { label: "Logboek", to: "/audit-log" },
+    { label: "Hoofdbeheerders", to: "/platform-admins" },
+    { label: "Account verwijderen", to: "/delete-account" },
+    { label: "Systeemstatus", to: "/system" },
+  ]);
+  for (const me of [organizationAdminMe, twoOrganizationAdminMe, coordinatorMeFixture, meFixture]) {
+    const paths = navigationFor(me).map((item) => item.to);
+    expect(paths).not.toContain("/platform-admins");
+    expect(paths).not.toContain("/delete-account");
+  }
 });
 
 test("managesSomething", () => {
@@ -79,4 +113,13 @@ test("managesSomething", () => {
   expect(managesSomething(coordinatorMeFixture)).toBe(true);
   expect(managesSomething(meFixture)).toBe(false);
   expect(managesSomething(applicantMeFixture)).toBe(false);
+});
+
+test("readsAuditLog: a platform admin or an admin of at least one organization", () => {
+  expect(readsAuditLog(platformAdminMeFixture)).toBe(true);
+  expect(readsAuditLog(organizationAdminMe)).toBe(true);
+  expect(readsAuditLog(twoOrganizationAdminMe)).toBe(true);
+  expect(readsAuditLog(coordinatorMeFixture)).toBe(false);
+  expect(readsAuditLog(meFixture)).toBe(false);
+  expect(readsAuditLog(applicantMeFixture)).toBe(false);
 });

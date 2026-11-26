@@ -1,0 +1,64 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "20aa90ab-2307-40fe-91ce-db4810959270",
+  "prevIds": [
+    "1398ee2d-ee36-46dd-8046-52425387b97e"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "audit_log_entries",
+        "audit_log_entries_occurred_at_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.audit_log_entries_occurred_at_id_idx",
+        "n|idx|public.audit_log_entries_occurred_at_id_idx",
+        "e|idx|public.audit_log_entries_occurred_at_id_idx",
+        "n|rel|public.audit_log_entries_occurred_at_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.audit_log_entries",
+        "n|sch|public",
+        "n|col|public.audit_log_entries.occurred_at",
+        "n|col|public.audit_log_entries.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "audit_log_entries",
+        "name": "audit_log_entries_occurred_at_id_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "occurred_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

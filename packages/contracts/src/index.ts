@@ -1,5 +1,7 @@
+export * from "./accounts";
 export * from "./add-members";
 export * from "./account-deletion";
+export * from "./audit-log";
 export * from "./email";
 export * from "./errors";
 export * from "./events";
@@ -10,6 +12,7 @@ export * from "./me";
 export * from "./members";
 export * from "./membership-requests";
 export * from "./organizations";
+export * from "./platform-admins";
 export * from "./species";
 export * from "./version";
 export * from "./working-groups";

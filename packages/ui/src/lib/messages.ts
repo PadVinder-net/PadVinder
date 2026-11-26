@@ -28,6 +28,7 @@ const apiErrorMessages: Record<string, string> = {
   too_many_requests: "Je hebt vandaag te vaak een aanmelding gestuurd. Probeer het morgen opnieuw.",
   already_decided: "Deze aanmelding is al behandeld.",
   last_platform_admin: "Je bent de enige hoofdbeheerder. Maak eerst iemand anders hoofdbeheerder.",
+  own_account: "Dit is je eigen account. Dat verwijder je in de app, onder Meer > Profiel.",
   not_allowed: "Dit mag je niet doen.",
   not_found: "Dit bestaat niet meer.",
   membership_changed: "Deze persoon heeft intussen een andere rol. Kijk opnieuw.",
@@ -86,6 +87,24 @@ export function accountDeletionBlockedMessage(blocker: AccountDeletionBlocker): 
   const ask = blocker.contactEmail ?? "een hoofdbeheerder";
   return `Je bent de enige beheerder van ${blocker.organizationName}. Vraag ${ask} om eerst iemand anders beheerder te maken.`;
 }
+
+/** The same refusal for someone else's account, named by `name`: what to do first. */
+export function accountDeletionBlockedForOtherMessage(
+  name: string,
+  blocker: AccountDeletionBlocker,
+): string {
+  if (blocker.role === "coordinator") {
+    return `${name} is de enige coördinator van ${blocker.workingGroupName ?? "een werkgroep"}. Maak eerst iemand anders coördinator.`;
+  }
+  return `${name} is de enige beheerder van ${blocker.organizationName}. Maak eerst iemand anders beheerder.`;
+}
+
+/** `last_platform_admin` on the page "Hoofdbeheerders". */
+export const lastLoggedInPlatformAdminMessage =
+  "Er moet een hoofdbeheerder blijven die al eens is ingelogd.";
+
+/** A lookup by address found no account. */
+export const noAccountMessage = "Geen account met dit adres.";
 
 /** What adding one address did, in one sentence: `result.email` is the address as the server normalized it. */
 export function addMemberOutcomeMessage(result: {

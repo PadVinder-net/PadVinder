@@ -1,31 +1,11 @@
+import type { AuditAction } from "@padvinder/contracts";
 import type { DbTransaction } from "./client";
 import { auditLogEntries } from "./schema";
 
 export type AuditActor = { kind: "user"; userId: string } | { kind: "system" };
 
-export type AuditAction =
-  | "organization.created"
-  | "organization.updated"
-  | "working_group.created"
-  | "working_group.updated"
-  | "working_group.deactivated"
-  | "working_group.activated"
-  | "role.platform_admin_granted"
-  | "role.platform_admin_revoked"
-  | "role.organization_admin_granted"
-  | "role.organization_admin_revoked"
-  | "role.coordinator_granted"
-  | "role.coordinator_revoked"
-  | "membership_request.approved"
-  | "membership_request.rejected"
-  | "membership.removed"
-  | "membership.added"
-  | "membership.invited"
-  | "account.deleted"
-  | "species.created"
-  | "species.updated"
-  | "species.deactivated"
-  | "species.activated";
+/** Every action, from `auditActions` in `@padvinder/contracts`. */
+export type { AuditAction };
 
 export type AuditSubject = {
   type: "user" | "organization" | "working_group" | "membership" | "membership_request" | "species";

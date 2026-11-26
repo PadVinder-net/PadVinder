@@ -794,6 +794,29 @@ export async function grantPlatformAdmin(
   });
 }
 
+/**
+ * Takes the flag away from the user, under `lockPlatformAdmins` (the caller takes it). False
+ * when they are no platform admin (also an unknown ID). Throws `last_platform_admin` when no
+ * other platform admin who has logged in would remain (`hasOtherPlatformAdmin`). The body of
+ * `revokePlatformAdmin` and `removePlatformAdmin`.
+ */
+async function clearPlatformAdmin(
+  tx: DbTransaction,
+  userId: string,
+  actor: AuditActor,
+): Promise<boolean> {
+  const [target] = await tx
+    .select({ isPlatformAdmin: users.isPlatformAdmin })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!target?.isPlatformAdmin) return false;
+  if (!(await hasOtherPlatformAdmin(tx, userId))) throw new AdminError("last_platform_admin");
+  await tx.update(users).set({ isPlatformAdmin: false }).where(eq(users.id, userId));
+  await recordRoleChange(tx, actor, null, "role.platform_admin_revoked", userId);
+  return true;
+}
+
+/** Takes the platform admin role away, by address (the tool). */
 export async function revokePlatformAdmin(
   db: Db,
   input: { email: string },
@@ -803,15 +826,24 @@ export async function revokePlatformAdmin(
     // A second revoke waits for the lock, then counts again.
     await lockPlatformAdmins(tx);
     const userId = await requireUser(tx, input.email);
-    const [target] = await tx
-      .select({ isPlatformAdmin: users.isPlatformAdmin })
-      .from(users)
-      .where(eq(users.id, userId));
-    if (!target?.isPlatformAdmin) return { userId, changed: false };
-    if (!(await hasOtherPlatformAdmin(tx, userId))) throw new AdminError("last_platform_admin");
-    await tx.update(users).set({ isPlatformAdmin: false }).where(eq(users.id, userId));
-    await recordRoleChange(tx, actor, null, "role.platform_admin_revoked", userId);
-    return { userId, changed: true };
+    return { userId, changed: await clearPlatformAdmin(tx, userId, actor) };
+  });
+}
+
+/**
+ * Takes the platform admin role away, by user ID (the portal). `changed: false` when that user is
+ * no platform admin. Someone may remove themself, as long as another platform admin who has logged
+ * in remains; otherwise `last_platform_admin`.
+ */
+export async function removePlatformAdmin(
+  db: Db,
+  input: { userId: string },
+  actor: AuditActor,
+): Promise<{ changed: boolean }> {
+  return db.transaction(async (tx) => {
+    // A second removal waits for the lock, then counts again.
+    await lockPlatformAdmins(tx);
+    return { changed: await clearPlatformAdmin(tx, input.userId, actor) };
   });
 }
 

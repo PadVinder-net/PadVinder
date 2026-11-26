@@ -16,13 +16,16 @@ import type { Mailer } from "@padvinder/mail";
 import { addOriginCheck } from "./plugins/origin-check";
 import { registerStaticApps } from "./plugins/static-apps";
 import type { NotificationHub } from "./realtime/notification-hub";
+import { auditLogRoutes } from "./routes/audit-log";
 import { eventsRoutes, SESSION_RECHECK_MS } from "./routes/events";
 import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { membershipRequestRoutes } from "./routes/membership-requests";
 import { membershipRoutes } from "./routes/memberships";
 import { organizationRoutes } from "./routes/organizations";
+import { platformAdminRoutes } from "./routes/platform-admins";
 import { speciesRoutes } from "./routes/species";
+import { userRoutes } from "./routes/users";
 import { workingGroupRoutes } from "./routes/working-groups";
 import { versionRoutes } from "./routes/version";
 
@@ -97,7 +100,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       });
       await api.register(membershipRoutes, { db: deps.db });
       await api.register(organizationRoutes, { db: deps.db, queueMail: deps.queueMail });
+      await api.register(platformAdminRoutes, { db: deps.db });
+      await api.register(userRoutes, { db: deps.db });
       await api.register(speciesRoutes, { db: deps.db });
+      await api.register(auditLogRoutes, { db: deps.db });
       await api.register(membershipRequestRoutes, {
         db: deps.db,
         mailer: deps.mailer,
