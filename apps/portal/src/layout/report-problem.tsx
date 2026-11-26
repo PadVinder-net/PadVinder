@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useLocation } from "react-router";
 
 /**
- * "Meld een probleem" in the navigation, for everyone who sees the portal: the form in a modal.
+ * "Meld een probleem" in the header bar, next to the name, for everyone who sees the portal: the form in a modal.
  * The modal's content is new on every opening, so the box starts unticked and the text empty.
  */
 export function ReportProblemButton({ me }: { me: NonNullable<GetMeResponse> }) {
