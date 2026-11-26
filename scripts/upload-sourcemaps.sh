@@ -4,11 +4,11 @@
 #
 #   scripts/upload-sourcemaps.sh <dir>
 #
-# Reads SENTRY_AUTH_TOKEN (an organization auth token), SENTRY_ORG (the organization's slug)
-# and SENTRY_URL (default https://de.sentry.io, the EU region). Without SENTRY_AUTH_TOKEN, as in
-# a local deploy, it uploads nothing and exits 0 with a warning. Uploading the same maps twice
-# is harmless. The Deploy workflow runs it with continue-on-error: a failed upload never fails
-# a deploy.
+# Reads SENTRY_AUTH_TOKEN (an organization auth token), SENTRY_ORG (the organization's slug, a
+# secret like the token) and SENTRY_URL (default https://de.sentry.io, the EU region). Without
+# SENTRY_AUTH_TOKEN, as in a local deploy, it uploads nothing and exits 0 with a warning.
+# Uploading the same maps twice is harmless. The Deploy workflow runs it with continue-on-error:
+# a failed upload never fails a deploy.
 set -euo pipefail
 
 warn() {
@@ -41,4 +41,6 @@ export SENTRY_URL="${SENTRY_URL:-https://de.sentry.io}"
 
 echo "upload-sourcemaps: uploading $dir to the Sentry project padvinder at $SENTRY_URL"
 # Read-only: the checkout is used after this step with the deploy credentials.
-SENTRY_CLI_READONLY=1 "$root/scripts/sentry-cli.sh" sourcemaps upload --org "$SENTRY_ORG" --project padvinder "$dir"
+# The organization reaches sentry-cli through SENTRY_ORG only, never on its command line: it is a
+# secret, and the logs of the Deploy workflow are public.
+SENTRY_CLI_READONLY=1 "$root/scripts/sentry-cli.sh" sourcemaps upload --project padvinder "$dir"

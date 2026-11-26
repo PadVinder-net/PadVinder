@@ -41,3 +41,12 @@ test("errors name the variable, never the value", () => {
     /PADVINDER_ENVIRONMENT/,
   );
 });
+
+test("a URL that is not a DSN is refused, without its value", () => {
+  for (const value of ["https://example.com", "https://key@example.com", "https://key@x.test/a"]) {
+    expect(() => readMonitoringSettings({ SENTRY_DSN: value })).toThrow(
+      /^Invalid monitoring settings: SENTRY_DSN: /,
+    );
+    expect(() => readMonitoringSettings({ SENTRY_DSN: value })).not.toThrow(value);
+  }
+});

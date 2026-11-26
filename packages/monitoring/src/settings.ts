@@ -1,3 +1,5 @@
+import { DsnError, parseDsn } from "./dsn";
+
 export const DEPLOYMENT_ENVIRONMENTS = ["production", "staging", "development"] as const;
 export type DeploymentEnvironment = (typeof DEPLOYMENT_ENVIRONMENTS)[number];
 
@@ -16,14 +18,10 @@ function invalid(variable: string, problem: string): Error {
 
 function readDsn(value: string | undefined): string | undefined {
   if (value === undefined || value === "") return undefined;
-  let url: URL;
   try {
-    url = new URL(value);
-  } catch {
-    throw invalid("SENTRY_DSN", "not a URL");
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw invalid("SENTRY_DSN", "must use https or http");
+    parseDsn(value);
+  } catch (error) {
+    throw invalid("SENTRY_DSN", error instanceof DsnError ? error.message : "not a DSN");
   }
   return value;
 }

@@ -77,7 +77,7 @@ test("a value seen twice (not a cycle) is kept twice", () => {
   });
 });
 
-test("scrubBreadcrumb scrubs the message and data", () => {
+test("scrubBreadcrumb scrubs the message and data, and cuts the query from a URL", () => {
   const result = scrubBreadcrumb({
     category: "http",
     message: "GET /api/x?email=e@f.test",
@@ -86,6 +86,75 @@ test("scrubBreadcrumb scrubs the message and data", () => {
   expect(result).toEqual({
     category: "http",
     message: "GET /api/x?email=[email]",
-    data: { url: "/api/x?email=[email]", status_code: 200 },
+    data: { url: "/api/x", status_code: 200 },
   });
+});
+
+const QUERY = "?email=noor%40example.test&phone=0612345678#frag";
+
+test.each(["url.path", "url.full", "http.target", "http.url", "url"])(
+  "cuts the query and fragment from %s in span data, trace data and breadcrumb data",
+  (key) => {
+    const result = scrubEvent({
+      contexts: { trace: { data: { [key]: `/api/version${QUERY}` } } },
+      spans: [{ data: { [key]: `http://127.0.0.1:4100/api/version${QUERY}` } }],
+      breadcrumbs: [{ data: { [key]: `/api/version${QUERY}` } }],
+    });
+    expect(result).toEqual({
+      contexts: { trace: { data: { [key]: "/api/version" } } },
+      spans: [{ data: { [key]: "http://127.0.0.1:4100/api/version" } }],
+      breadcrumbs: [{ data: { [key]: "/api/version" } }],
+    });
+  },
+);
+
+test("cuts the query from request.url and from the url in the pino context", () => {
+  const result = scrubEvent({
+    request: { url: `https://padvinder.test/api/version${QUERY}`, method: "GET" },
+    contexts: {
+      pino: { req: { method: "GET", url: `/api/version${QUERY}` }, url: `/api/x${QUERY}` },
+    },
+  });
+  expect(result).toEqual({
+    request: { url: "https://padvinder.test/api/version", method: "GET" },
+    contexts: { pino: { req: { method: "GET", url: "/api/version" }, url: "/api/x" } },
+  });
+});
+
+test("drops the query and fragment span attributes", () => {
+  const result = scrubEvent({
+    contexts: { trace: { data: { "url.query": "?email=a", "http.query": "email=a", ok: 1 } } },
+    spans: [{ data: { "url.query": "?email=a", "url.fragment": "x", ok: 2 } }],
+  });
+  expect(result).toEqual({
+    contexts: { trace: { data: { ok: 1 } } },
+    spans: [{ data: { ok: 2 } }],
+  });
+});
+
+test("scrubs a percent-encoded address, in any string, in upper and lower case", () => {
+  const result = scrubEvent({
+    contexts: { trace: { data: { "url.path": "/api/users/noor%40example.test" } } },
+    transaction: "GET /api/users/noor%40Example.test",
+    message: "lookup of noor%40example.test and sam%40example.test failed",
+    request: { url: "https://padvinder.test/api/users/sam%40example.test" },
+  });
+  const text = JSON.stringify(result);
+  expect(text).not.toContain("example.test");
+  expect(text).not.toContain("Example.test");
+  expect(result.contexts.trace.data["url.path"]).toBe("/api/users/[email]");
+  expect(result.message).toBe("lookup of [email] and [email] failed");
+});
+
+test("scrubBreadcrumb scrubs a percent-encoded address", () => {
+  expect(scrubBreadcrumb({ message: "GET /api/users/noor%40example.test" })).toEqual({
+    message: "GET /api/users/[email]",
+  });
+});
+
+test("passes sdkProcessingMetadata through by reference, unscrubbed", () => {
+  const metadata = { normalizedRequest: { url: "/api/x?email=a@b.test" }, big: [1, 2, 3] };
+  const result = scrubEvent({ message: "m", sdkProcessingMetadata: metadata });
+  expect(result.sdkProcessingMetadata).toBe(metadata);
+  expect(result.message).toBe("m");
 });

@@ -138,7 +138,8 @@ test("the API accepts the env file as Node reads it, in every environment", () =
       smtpUser: "noreply+login@padvinder.net",
       smtpPassword: "p=ss$w0rd!%&()*+,-./:;<=>?@[]^_{|}~",
     };
-    const dsn = "https://Ab1-_~!$&()*+,;=@o1.ingest.de.sentry.io/2";
+    // A DSN's key is letters, digits and _ (parseDsn); the other secrets carry the awkward ones.
+    const dsn = "https://0123456789abcdef_AB@o1.ingest.de.sentry.io:443/2";
     const content = renderEnvFile({
       account: "acme",
       env,

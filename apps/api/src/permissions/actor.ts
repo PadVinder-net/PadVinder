@@ -49,9 +49,9 @@ async function readSession(
 }
 
 /**
- * Makes the actor's account ID (only that) the Sentry user of the current request. Call it only
- * on a request's own path: elsewhere (a notification callback) the current isolation scope is
- * the process's, and every later request would inherit the user.
+ * Makes the actor's account ID (only that) the Sentry user of the current request. Called only by
+ * `requireActor`, on a request's own path: elsewhere (a notification callback, a timer) the
+ * current isolation scope is the process's, and every later request would inherit the user.
  */
 function identify(actor: Actor | null): void {
   setMonitoringUser(actor?.userId ?? null);
@@ -60,18 +60,16 @@ function identify(actor: Actor | null): void {
 /**
  * The actor of the session cookie, or `null` when there is no valid session, for a request that
  * cannot pass on a cookie (an open event stream) or does not need a login (health). It never
- * renews the session: that is left to `requireActor`, which sets the refreshed cookie. It makes
- * the actor the Sentry user of the request, unless `identify` is false: the event stream's
- * reloads run outside the request (see `identify`).
+ * renews the session: that is left to `requireActor`, which sets the refreshed cookie. It never
+ * makes the actor the Sentry user either: the event stream's reloads run outside the request
+ * (see `identify`).
  */
 export async function loadActor(
   app: FastifyInstance,
   db: Db,
   request: FastifyRequest,
-  options: { identify?: boolean } = {},
 ): Promise<Actor | null> {
   const { actor } = await readSession(app, db, request, { renew: false });
-  if (options.identify ?? true) identify(actor);
   return actor;
 }
 

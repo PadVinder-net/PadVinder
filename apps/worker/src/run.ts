@@ -55,7 +55,9 @@ export async function run(): Promise<void> {
       "Worker started",
     );
   } catch {
-    // startWorker has logged and cleaned up. Exit deliberately so the supervisor restarts us.
+    // startWorker has logged and cleaned up. Send its error line to Sentry, then exit
+    // deliberately so the supervisor restarts us. (The API's stop() closes monitoring itself.)
+    await closeMonitoring();
     process.exit(1);
   }
 }

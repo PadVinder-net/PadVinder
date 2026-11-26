@@ -73,7 +73,7 @@ jobs:
         timeout-minutes: 5
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
         run: |
           tar -xzf padvinder-release.tar.gz release/sourcemaps
           scripts/upload-sourcemaps.sh release/sourcemaps
@@ -144,7 +144,7 @@ jobs:
         timeout-minutes: 5
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
         run: |
           tar -xzf padvinder-release.tar.gz release/sourcemaps
           scripts/upload-sourcemaps.sh release/sourcemaps
