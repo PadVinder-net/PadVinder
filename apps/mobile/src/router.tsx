@@ -1,5 +1,6 @@
 import type { RouteObject } from "react-router";
 import { AppLayout } from "./app";
+import { RouteCrash } from "./components/crash";
 import { JoinAnotherScreen } from "./screens/more/join-another-screen";
 import { MapScreen } from "./screens/map-screen";
 import { MoreScreen } from "./screens/more-screen";
@@ -8,6 +9,7 @@ import { MembersScreen } from "./screens/more/members-screen";
 import { MembershipRequestScreen } from "./screens/more/membership-request-screen";
 import { MembershipRequestsScreen } from "./screens/more/membership-requests-screen";
 import { ProfileScreen } from "./screens/more/profile-screen";
+import { ReportProblemScreen } from "./screens/more/report-problem-screen";
 import { SystemScreen } from "./screens/more/system-screen";
 import { ResultsScreen } from "./screens/results-screen";
 import { TonightScreen } from "./screens/tonight-screen";
@@ -18,28 +20,56 @@ import { TonightScreen } from "./screens/tonight-screen";
  */
 export const appBasename = "/app/";
 
-export const routes: RouteObject[] = [
+/** Throws while rendering: the crash for the end-to-end tests of the crash screen. */
+function DevCrash(): never {
+  throw new Error("A crash on purpose, for the end-to-end test of the crash screen");
+}
+
+/** Under the dev server only, the path that crashes outside the router (see `main.tsx`). */
+const devCrashOutsideRouterPath = `${appBasename}dev/crash-outside-router`;
+
+/**
+ * Whether this address should crash outside the router, around the login gate: the crash before
+ * login of the end-to-end tests. Never in a build.
+ */
+export function isDevCrashOutsideRouter(pathname: string, dev: boolean = import.meta.env.DEV) {
+  return dev && pathname === devCrashOutsideRouterPath;
+}
+
+/**
+ * The route table. A crash in a screen shows the crash screen in place of the whole app. With
+ * `dev` (the dev server), `/app/dev/crash` crashes while rendering, for the end-to-end tests.
+ */
+export function buildRoutes({ dev }: { dev: boolean }): RouteObject[] {
+  return [
+    {
+      element: <AppLayout />,
+      errorElement: <RouteCrash />,
+      children: [...(dev ? [{ path: "dev/crash", element: <DevCrash /> }] : []), ...screens],
+    },
+  ];
+}
+
+const screens: RouteObject[] = [
+  { index: true, element: <TonightScreen /> },
+  { path: "map", element: <MapScreen /> },
+  { path: "results", element: <ResultsScreen /> },
   {
-    element: <AppLayout />,
+    // English paths, also for the screens a user sees in the address bar.
+    path: "more",
     children: [
-      { index: true, element: <TonightScreen /> },
-      { path: "map", element: <MapScreen /> },
-      { path: "results", element: <ResultsScreen /> },
-      {
-        // English paths, also for the screens a user sees in the address bar.
-        path: "more",
-        children: [
-          { index: true, element: <MoreScreen /> },
-          { path: "profile", element: <ProfileScreen /> },
-          { path: "profile/join", element: <JoinAnotherScreen /> },
-          // The link in the coordinator's mail points to one request.
-          { path: "membership-requests", element: <MembershipRequestsScreen /> },
-          { path: "membership-requests/:requestId", element: <MembershipRequestScreen /> },
-          { path: "members", element: <MembersScreen /> },
-          { path: "members/:membershipId", element: <MemberScreen /> },
-          { path: "system", element: <SystemScreen /> },
-        ],
-      },
+      { index: true, element: <MoreScreen /> },
+      { path: "profile", element: <ProfileScreen /> },
+      { path: "profile/join", element: <JoinAnotherScreen /> },
+      // The link in the coordinator's mail points to one request.
+      { path: "membership-requests", element: <MembershipRequestsScreen /> },
+      { path: "membership-requests/:requestId", element: <MembershipRequestScreen /> },
+      { path: "members", element: <MembersScreen /> },
+      { path: "members/:membershipId", element: <MemberScreen /> },
+      { path: "system", element: <SystemScreen /> },
+      { path: "report-problem", element: <ReportProblemScreen /> },
     ],
   },
 ];
+
+export const routes = buildRoutes({ dev: import.meta.env.DEV });

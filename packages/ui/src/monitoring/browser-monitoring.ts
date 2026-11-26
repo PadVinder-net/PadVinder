@@ -73,7 +73,13 @@ export function startBrowserMonitoring(options: BrowserMonitoringOptions): boole
     tracesSampleRate: 1,
     // Trace headers only to our own API, so a tap and the request it causes are one trace.
     tracePropagationTargets: [/^\/api\//],
-    integrations: [tracing],
+    // Without the default Console integration (since 11 the source of console breadcrumbs):
+    // console output can hold names, and the app's own logging is not needed to understand an
+    // issue.
+    integrations: (defaults) => [
+      ...defaults.filter((integration) => integration.name !== "Console"),
+      tracing,
+    ],
     // A call that failed because there was no connection (Chrome, Safari, Firefox), as the whole
     // message; the API reports its own 5xx.
     ignoreErrors: [
@@ -107,6 +113,33 @@ export function setBrowserMonitoringUser(id: string | null): void {
  */
 export function lastErrorEventId(): string | undefined {
   return enabled ? lastSentErrorId : undefined;
+}
+
+/**
+ * `eventId` when that error event was sent, else undefined: for the ID that Sentry's ErrorBoundary
+ * hands its fallback, which it also gives for an event the cap dropped or with Sentry off.
+ */
+export function sentErrorEventId(eventId: string | undefined): string | undefined {
+  return eventId !== undefined && eventId === lastErrorEventId() ? eventId : undefined;
+}
+
+// The crashes already reported, with the ID of their event if it was sent. React renders an error
+// element twice in strict mode, and again on every render, so each error is reported once.
+const reportedCrashes = new WeakMap<object, string | undefined>();
+
+/**
+ * Reports a crash that React Router's error element caught (it never reaches the window's error
+ * handler or Sentry's ErrorBoundary), once per error, and answers the ID of its event when it was
+ * sent: a problem report about the crash links to it.
+ */
+export function captureCrash(error: unknown): string | undefined {
+  const reported = typeof error === "object" && error !== null;
+  if (reported && reportedCrashes.has(error)) return reportedCrashes.get(error);
+  const eventId = sentErrorEventId(
+    Sentry.captureException(error, { mechanism: { handled: false, type: "auto.react_router" } }),
+  );
+  if (reported) reportedCrashes.set(error, eventId);
+  return eventId;
 }
 
 /** Stops Sentry and forgets this page load's user and breadcrumbs. For tests. */

@@ -53,6 +53,11 @@ export function MoreMenu({ me }: { me: MeResponse }) {
             </Link>
           </li>
         ) : null}
+        <li>
+          <Link to="/more/report-problem" className={itemClass}>
+            Meld een probleem
+          </Link>
+        </li>
       </ul>
     </nav>
   );

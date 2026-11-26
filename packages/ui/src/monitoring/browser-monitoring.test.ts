@@ -8,7 +8,9 @@ import {
 import * as Sentry from "@sentry/react";
 import { afterEach, expect, test } from "vitest";
 import {
+  captureCrash,
   lastErrorEventId,
+  sentErrorEventId,
   setBrowserMonitoringUser,
   startBrowserMonitoring,
   stopBrowserMonitoring,
@@ -55,6 +57,9 @@ test("does nothing outside a production build", () => {
   expect(Sentry.getClient()).toBeUndefined();
   setBrowserMonitoringUser("u1");
   expect(lastErrorEventId()).toBeUndefined();
+  // A crash under the dev server has no event to link a report to.
+  expect(captureCrash(new Error("crash"))).toBeUndefined();
+  expect(sentErrorEventId(Sentry.captureException(new Error("crash")))).toBeUndefined();
 });
 
 test("sends through the tunnel with the placeholder DSN, no replay and no feedback", () => {
@@ -226,4 +231,55 @@ test("a console breadcrumb keeps its scrubbed message, not its raw arguments", a
   const crumb = t.events()[0]!.breadcrumbs!.find((c) => c.category === "console")!;
   expect(crumb.data).toEqual({ logger: "console" });
   expect(crumb.message).toBe("member Anne de Vries [email]");
+});
+
+test("console output leaves no breadcrumb: it can hold names", async () => {
+  const t = testTransport();
+  start(t);
+  // Sentry wraps console.log when it starts; replacing it here would hide the call from Sentry.
+  console.log("member Anne de Vries");
+  const names = Sentry.getClient()!
+    .getOptions()
+    .integrations.map((integration) => integration.name);
+  expect(names).not.toContain("Console");
+  // Taps, navigations and calls still leave breadcrumbs.
+  expect(names).toContain("Breadcrumbs");
+  Sentry.captureException(new Error("after logging"));
+  await Sentry.flush(2000);
+  expect(t.events()[0]!.breadcrumbs?.filter((c) => c.category === "console") ?? []).toEqual([]);
+  expect(JSON.stringify(t.envelopes())).not.toMatch(/anne/i);
+});
+
+test("a crash is reported once per error, as unhandled, and answers its event's ID", async () => {
+  const t = testTransport();
+  start(t);
+  const crash = new Error("render failed");
+  const id = captureCrash(crash);
+  // React renders an error element twice in strict mode.
+  expect(captureCrash(crash)).toBe(id);
+  await Sentry.flush(2000);
+  expect(t.events()).toHaveLength(1);
+  expect(t.events()[0]).toMatchObject({ event_id: id });
+  expect(t.events()[0]!.exception!.values![0]!.mechanism).toMatchObject({ handled: false });
+  // Another error is another crash.
+  expect(captureCrash(new Error("render failed"))).not.toBe(id);
+});
+
+test("a crash dropped by the cap gives no event ID to link a report to", async () => {
+  const t = testTransport();
+  start(t);
+  for (let i = 1; i <= 10; i++) Sentry.captureException(new Error(`error ${i}`));
+  expect(captureCrash(new Error("the eleventh"))).toBeUndefined();
+  expect(captureCrash("a thrown string")).toBeUndefined();
+  // Sentry's ErrorBoundary hands its fallback the ID of an event that was never sent.
+  expect(sentErrorEventId(Sentry.captureException(new Error("twelfth")))).toBeUndefined();
+  expect(sentErrorEventId(undefined)).toBeUndefined();
+});
+
+test("sentErrorEventId passes the ID of an event that was sent", () => {
+  const t = testTransport();
+  start(t);
+  const id = Sentry.captureException(new Error("caught by the boundary"));
+  expect(sentErrorEventId(id)).toBe(id);
+  expect(id).toMatch(/^[0-9a-f]{32}$/);
 });

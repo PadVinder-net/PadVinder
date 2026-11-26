@@ -36,12 +36,18 @@ const menuLinks = async () =>
 test("a volunteer's menu has Profiel, Leden and Log uit", async () => {
   const { calls } = mockFetch({ "/api/me": meFixture, "/api/working-groups": directory });
   renderApp("/app/more");
-  await waitFor(async () => expect(await menuLinks()).toEqual(["Profiel", "Leden"]));
+  await waitFor(async () =>
+    expect(await menuLinks()).toEqual(["Profiel", "Leden", "Meld een probleem"]),
+  );
   expect(screen.getByRole("link", { name: "Profiel" })).toHaveAttribute(
     "href",
     "/app/more/profile",
   );
   expect(screen.getByRole("link", { name: "Leden" })).toHaveAttribute("href", "/app/more/members");
+  expect(screen.getByRole("link", { name: "Meld een probleem" })).toHaveAttribute(
+    "href",
+    "/app/more/report-problem",
+  );
   expect(screen.getByRole("button", { name: "Log uit" })).toBeVisible();
   expect(calls.some((path) => path.endsWith("/membership-requests"))).toBe(false);
   expect(calls).not.toContain("/api/health");
@@ -58,7 +64,7 @@ test("a coordinator's menu shows Aanmeldingen with the count", async () => {
   expect(link).toHaveAttribute("href", "/app/more/membership-requests");
   expect(await within(link).findByText("2")).toBeVisible();
   expect(link).toHaveAccessibleName("Aanmeldingen, 2 open");
-  expect(await menuLinks()).toEqual(["Profiel", "Aanmeldingen2", "Leden"]);
+  expect(await menuLinks()).toEqual(["Profiel", "Aanmeldingen2", "Leden", "Meld een probleem"]);
 });
 
 test("the count is left out when there are no open requests", async () => {
@@ -90,7 +96,7 @@ test("an organization admin without a membership sees Aanmeldingen and Leden for
   renderApp("/app/more");
   const link = await screen.findByRole("link", { name: /Aanmeldingen/ });
   expect(await within(link).findByText("3")).toBeVisible();
-  expect(await menuLinks()).toEqual(["Profiel", "Aanmeldingen3", "Leden"]);
+  expect(await menuLinks()).toEqual(["Profiel", "Aanmeldingen3", "Leden", "Meld een probleem"]);
   // Groups of another organization are not asked for.
   expect(calls).not.toContain(requestsOf(group("Dorp").id));
 });
@@ -98,7 +104,9 @@ test("an organization admin without a membership sees Aanmeldingen and Leden for
 test("a platform admin's menu shows Systeemstatus", async () => {
   mockFetch({ "/api/me": platformAdminMeFixture, "/api/working-groups": directory });
   renderApp("/app/more");
-  await waitFor(async () => expect(await menuLinks()).toEqual(["Profiel", "Systeemstatus"]));
+  await waitFor(async () =>
+    expect(await menuLinks()).toEqual(["Profiel", "Systeemstatus", "Meld een probleem"]),
+  );
   expect(screen.getByRole("link", { name: "Systeemstatus" })).toHaveAttribute(
     "href",
     "/app/more/system",

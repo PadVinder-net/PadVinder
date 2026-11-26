@@ -17,3 +17,10 @@ if (typeof globalThis.EventSource === "undefined") {
     close() {}
   } as unknown as typeof EventSource;
 }
+
+// jsdom has no ResizeObserver; Radix's checkbox (in Meld een probleem) needs one.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

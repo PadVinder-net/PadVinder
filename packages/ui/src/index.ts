@@ -125,7 +125,18 @@ export {
   type AuditLogFilterValue,
 } from "./components/audit-log/audit-log-filters";
 export {
+  ProblemReportForm,
+  problemReportSentMessage,
+  problemReportTitle,
+  type ProblemReportFormProps,
+  type ProblemReportInput,
+} from "./components/problem-report/problem-report-form";
+export { CrashScreen, type CrashScreenProps } from "./components/problem-report/crash-screen";
+export { CrashFlow, type CrashFlowProps } from "./components/problem-report/crash-flow";
+export {
+  captureCrash,
   lastErrorEventId,
+  sentErrorEventId,
   setBrowserMonitoringUser,
   startBrowserMonitoring,
   type BrowserMonitoringOptions,

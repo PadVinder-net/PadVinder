@@ -13,7 +13,8 @@ import {
   useNavigationType,
 } from "react-router";
 import { AuthGate } from "./auth/auth-gate";
-import { routes } from "./router";
+import { RootCrashBoundary } from "./layout/crash";
+import { isDevCrashOutsideRouter, routes } from "./router";
 import { appUrlForThisBrowser } from "./send-to-app";
 import "./index.css";
 
@@ -40,10 +41,22 @@ if (forwardTo) {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <AuthGate onLoggedOut={() => void router.navigate("/", { replace: true })}>
-          <RouterProvider router={router} />
-        </AuthGate>
+        {/* A crash in a page is the router's; this one catches the rest, such as the login. */}
+        <RootCrashBoundary>
+          {isDevCrashOutsideRouter(window.location.pathname) ? (
+            <DevCrashOutsideRouter />
+          ) : (
+            <AuthGate onLoggedOut={() => void router.navigate("/", { replace: true })}>
+              <RouterProvider router={router} />
+            </AuthGate>
+          )}
+        </RootCrashBoundary>
       </QueryClientProvider>
     </StrictMode>,
   );
+}
+
+/** Dev server only: a crash outside the router, as on the login screen, for the end-to-end test. */
+function DevCrashOutsideRouter(): never {
+  throw new Error("A crash on purpose, outside the router, for the end-to-end test");
 }

@@ -7,6 +7,7 @@ import {
 import { Button, logOutFailedMessage, Toaster } from "@padvinder/ui";
 import { NavLink, Outlet } from "react-router";
 import { navigationFor, type NavItem } from "./navigation";
+import { ReportProblemButton } from "./report-problem";
 
 /**
  * The frame around every portal page, inside the auth gate: a header with the navigation for this
@@ -40,6 +41,7 @@ export function PortalLayout() {
             </nav>
           ) : null}
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+            <ReportProblemButton me={me} />
             <span>{me.user.name}</span>
             <Button variant="outline" onClick={() => void logOut()}>
               Log uit

@@ -79,6 +79,7 @@ Feature freeze around 1 February each year; during the migration season only fix
 | organisatiebeheerder   | `organizationAdmin`                        |                                                                                                                                                                  |
 | hoofdbeheerder         | `platformAdmin`                            | PadVinder staff; manages all organizations                                                                                                                       |
 | tik                    | `tap`                                      | One press on a count button                                                                                                                                      |
+| Meld een probleem      | `problemReport`                            | A message a logged-in user sends to the makers of PadVinder, optionally with their name and address                                                              |
 
 Keep these names as they are, untranslated: PadVinder, Paddentrek Enschede, Pad uit de put, RAVON.
 
