@@ -77,6 +77,7 @@ export function PasskeysPanel({
                   variant="outline"
                   size="lg"
                   className="h-14 text-lg"
+                  aria-label={`Verwijder toegangssleutel van ${formatDate(passkey.createdAt)}`}
                   onClick={() => setAsking(passkey)}
                 >
                   Verwijder

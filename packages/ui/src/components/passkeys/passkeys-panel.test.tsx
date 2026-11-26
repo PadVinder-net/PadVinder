@@ -30,11 +30,23 @@ test("the panel lists the date added, and Synchroniseert met je andere apparaten
   expect(rows[1]).not.toHaveTextContent("Synchroniseert");
 });
 
+test("each row's button names the passkey by its date", () => {
+  render(<PasskeysPanel {...props()} />);
+  const [first, second] = screen.getAllByRole("listitem");
+  expect(within(first!).getByRole("button")).toHaveAccessibleName(
+    "Verwijder toegangssleutel van 20 november 2026",
+  );
+  expect(within(first!).getByRole("button")).toHaveTextContent("Verwijder");
+  expect(within(second!).getByRole("button")).toHaveAccessibleName(
+    "Verwijder toegangssleutel van 24 november 2026",
+  );
+});
+
 test("removing one of several asks with the usual text and removes that passkey", async () => {
   const p = props();
   render(<PasskeysPanel {...p} />);
   await userEvent.click(
-    within(screen.getAllByRole("listitem")[1]!).getByRole("button", { name: "Verwijder" }),
+    screen.getByRole("button", { name: "Verwijder toegangssleutel van 24 november 2026" }),
   );
   const dialog = screen.getByRole("alertdialog", { name: "Toegangssleutel verwijderen?" });
   expect(dialog).toHaveTextContent("Je kunt hem daarna niet meer gebruiken.");
@@ -44,7 +56,9 @@ test("removing one of several asks with the usual text and removes that passkey"
 
 test("removing the only passkey asks with the text for the last one", async () => {
   render(<PasskeysPanel {...props({ passkeys: [passkeysFixture.passkeys[0]!] })} />);
-  await userEvent.click(screen.getByRole("button", { name: "Verwijder" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Verwijder toegangssleutel van 20 november 2026" }),
+  );
   expect(screen.getByRole("alertdialog")).toHaveTextContent(
     "Dit is je laatste toegangssleutel. Daarna maak je een nieuwe de volgende keer dat je iets beheert.",
   );
@@ -52,7 +66,9 @@ test("removing the only passkey asks with the text for the last one", async () =
 
 test("the dialog closes when removing ends without an error, and stays with one", async () => {
   const { rerender } = render(<PasskeysPanel {...props()} />);
-  await userEvent.click(screen.getAllByRole("button", { name: "Verwijder" })[0]!);
+  await userEvent.click(
+    screen.getAllByRole("button", { name: /^Verwijder toegangssleutel van / })[0]!,
+  );
   rerender(<PasskeysPanel {...props({ removing: true })} />);
   rerender(<PasskeysPanel {...props({ removing: false, removeError: "Dit mag je niet doen." })} />);
   expect(screen.getByRole("alertdialog")).toHaveTextContent("Dit mag je niet doen.");

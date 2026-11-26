@@ -53,10 +53,14 @@ test("the passkeys page lists, adds and removes, with the phone hint", async () 
   const requests = recordRequests();
   renderPortal("/profile/passkeys");
   expect(await screen.findByRole("heading", { level: 1, name: "Toegangssleutels" })).toBeVisible();
-  expect(await screen.findAllByRole("button", { name: "Verwijder" })).toHaveLength(2);
+  expect(
+    await screen.findAllByRole("button", { name: /^Verwijder toegangssleutel van / }),
+  ).toHaveLength(2);
   expect(screen.getByText(/Kies dan in het venster voor je telefoon/)).toBeVisible();
 
-  await userEvent.click(screen.getAllByRole("button", { name: "Verwijder" })[0]!);
+  await userEvent.click(
+    screen.getAllByRole("button", { name: /^Verwijder toegangssleutel van / })[0]!,
+  );
   const dialog = await screen.findByRole("alertdialog");
   list.passkeys = [second];
   // The answer comes a moment later, as over a network: the dialog sees the removal running.
@@ -79,7 +83,7 @@ test("adding a passkey shows its toast once when it succeeds, and none when it f
     "POST /api/auth/passkey/verify-registration": { ok: true },
   });
   renderPortal("/profile/passkeys");
-  await screen.findByRole("button", { name: "Verwijder" });
+  await screen.findByRole("button", { name: /^Verwijder toegangssleutel van / });
   vi.mocked(startRegistration).mockRejectedValueOnce(
     Object.assign(new Error("x"), { name: "NotAllowedError" }),
   );
@@ -153,7 +157,9 @@ test("a passkey_required on the list opens the modal; after confirming, the list
   renderPortal("/profile/passkeys", createQueryClient());
   const modal = await screen.findByRole("dialog", { name: "Bevestig dat jij het bent" });
   await userEvent.click(within(modal).getByRole("button", { name: "Gebruik je toegangssleutel" }));
-  expect(await screen.findAllByRole("button", { name: "Verwijder" })).toHaveLength(2);
+  expect(
+    await screen.findAllByRole("button", { name: /^Verwijder toegangssleutel van / }),
+  ).toHaveLength(2);
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 

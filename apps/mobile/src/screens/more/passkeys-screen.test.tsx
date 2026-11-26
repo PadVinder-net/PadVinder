@@ -82,7 +82,9 @@ test("the passkeys screen lists and adds, without the phone hint", async () => {
   });
   renderApp("/app/more/profile/passkeys");
   expect(await screen.findByRole("heading", { name: "Toegangssleutels" })).toBeVisible();
-  expect(await screen.findAllByRole("button", { name: "Verwijder" })).toHaveLength(2);
+  expect(
+    await screen.findAllByRole("button", { name: /^Verwijder toegangssleutel van / }),
+  ).toHaveLength(2);
   expect(screen.queryByText(/Kies dan in het venster voor je telefoon/)).toBeNull();
   expect(screen.getByRole("link", { name: "Terug" })).toHaveAttribute("href", "/app/more/profile");
   await userEvent.click(screen.getByRole("button", { name: "Voeg een toegangssleutel toe" }));
@@ -114,6 +116,8 @@ test("a passkey_required on the passkeys screen opens the modal; after confirmin
   renderApp("/app/more/profile/passkeys", createQueryClient());
   const modal = await screen.findByRole("dialog", { name: "Bevestig dat jij het bent" });
   await userEvent.click(within(modal).getByRole("button", { name: "Gebruik je toegangssleutel" }));
-  expect(await screen.findAllByRole("button", { name: "Verwijder" })).toHaveLength(2);
+  expect(
+    await screen.findAllByRole("button", { name: /^Verwijder toegangssleutel van / }),
+  ).toHaveLength(2);
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
