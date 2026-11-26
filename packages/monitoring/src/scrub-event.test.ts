@@ -51,6 +51,25 @@ test("survives cycles and depth", () => {
   expect(text).not.toMatch(/@(b|d)\.test/);
 });
 
+test("drops the user agent from the trace context and from every span", () => {
+  const result = scrubEvent({
+    contexts: { trace: { data: { "user_agent.original": "UA-MARKER", "url.path": "/api/me" } } },
+    spans: [{ data: { "user_agent.original": "UA-MARKER", "sentry.op": "db" } }, { op: "x" }],
+  });
+  expect(result).toEqual({
+    contexts: { trace: { data: { "url.path": "/api/me" } } },
+    spans: [{ data: { "sentry.op": "db" } }, { op: "x" }],
+  });
+});
+
+test("depth: 12 levels below the event are kept, the 13th becomes a marker", () => {
+  const nest = (levels: number): Record<string, unknown> =>
+    levels === 0 ? { leaf: "x" } : { child: nest(levels - 1) };
+  expect(JSON.stringify(scrubEvent(nest(12)))).not.toContain("[depth]");
+  expect(JSON.stringify(scrubEvent(nest(12)))).toContain('"leaf":"x"');
+  expect(JSON.stringify(scrubEvent(nest(13)))).toContain('"child":"[depth]"');
+});
+
 test("a value seen twice (not a cycle) is kept twice", () => {
   const shared = { v: "e@f.test" };
   expect(scrubEvent({ extra: { a: shared, b: shared } })).toEqual({
