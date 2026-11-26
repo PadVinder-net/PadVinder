@@ -22,7 +22,10 @@ export type Permission =
   | { action: "system.viewDatabaseDetails" }
   | { action: "platform.manageSpecies" }
   | { action: "platform.manageOrganizations" }
+  | { action: "platform.managePlatformAdmins" }
+  | { action: "platform.deleteAccounts" }
   | { action: "organization.view"; target: OrganizationTarget }
+  | { action: "organization.readAuditLog"; target: OrganizationTarget }
   | { action: "organization.changeContact"; target: OrganizationTarget }
   | { action: "organization.rename"; target: OrganizationTarget }
   | { action: "organization.manageAdmins"; target: OrganizationTarget }
@@ -70,12 +73,15 @@ export function decide(actor: Actor, permission: Permission): Decision {
   if (
     permission.action === "system.viewDatabaseDetails" ||
     permission.action === "platform.manageSpecies" ||
-    permission.action === "platform.manageOrganizations"
+    permission.action === "platform.manageOrganizations" ||
+    permission.action === "platform.managePlatformAdmins" ||
+    permission.action === "platform.deleteAccounts"
   ) {
     return actor.isPlatformAdmin ? "allowed" : "forbidden";
   }
   switch (permission.action) {
     case "organization.view":
+    case "organization.readAuditLog":
     case "organization.changeContact":
     case "organization.createWorkingGroup":
     case "organization.rename":
@@ -85,6 +91,7 @@ export function decide(actor: Actor, permission: Permission): Decision {
       if (relation === "platformAdmin") return "allowed";
       switch (permission.action) {
         case "organization.view":
+        case "organization.readAuditLog":
         case "organization.changeContact":
         case "organization.createWorkingGroup":
           return "allowed";

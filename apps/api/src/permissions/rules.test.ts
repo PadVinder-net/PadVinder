@@ -182,6 +182,28 @@ test.each([
   }
 });
 
+test("organization.readAuditLog: admins of the organization and platform admins; others hidden", () => {
+  const expected = { platformAdmin: "allowed", organizationAdmin: "allowed", ...hiddenForOthers };
+  for (const [who, decision] of Object.entries(expected)) {
+    expect(
+      decide(actors[who as Who], {
+        action: "organization.readAuditLog",
+        target: organizationTarget,
+      }),
+      who,
+    ).toBe(decision);
+  }
+});
+
+test.each(["platform.managePlatformAdmins", "platform.deleteAccounts"] as const)(
+  "only a platform admin: %s; for others it is forbidden, not hidden",
+  (action) => {
+    for (const [who, a] of Object.entries(actors)) {
+      expect(decide(a, { action }), who).toBe(who === "platformAdmin" ? "allowed" : "forbidden");
+    }
+  },
+);
+
 test("only a platform admin manages organizations", () => {
   for (const [who, a] of Object.entries(actors)) {
     expect(decide(a, { action: "platform.manageOrganizations" }), who).toBe(
