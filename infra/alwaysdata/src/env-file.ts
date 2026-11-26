@@ -16,20 +16,27 @@ export type LoginSecrets = {
   smtpPassword: string;
 };
 
+/** The secret error tracking needs on the server: the Sentry project's DSN. */
+export type MonitoringSecrets = {
+  sentryDsn: string;
+};
+
 /**
  * The server's env file `padvinder/<env>/.env`, read by the API and the worker after the
- * release's own `release.env`. Holds the database password and the login secrets: write it
- * with mode 600. The secrets are written unquoted, so loadInfraConfig() only lets through
- * values that Node's --env-file reads back unchanged. `LOGIN_RATE_LIMITS` stays unset: the
- * API's default (on) is the only setting allowed on a public origin.
+ * release's own `release.env`. Holds the database password, the login secrets and the Sentry
+ * DSN: write it with mode 600. `PADVINDER_ENVIRONMENT` names the environment in Sentry. The
+ * secrets are written unquoted, so loadInfraConfig() only lets through values that Node's
+ * --env-file reads back unchanged. `LOGIN_RATE_LIMITS` stays unset: the API's default (on) is
+ * the only setting allowed on a public origin.
  */
 export function renderEnvFile(input: {
   account: string;
   env: EnvironmentName;
   databasePassword: string;
   login: LoginSecrets;
+  monitoring: MonitoringSecrets;
 }): string {
-  const { account, env, databasePassword, login } = input;
+  const { account, env, databasePassword, login, monitoring } = input;
   const environment = environments[env];
   const name = databaseName(account, env);
   const databaseUrl = `postgres://${name}:${encodeURIComponent(databasePassword)}@${databaseHost(account)}:${databasePort}/${name}`;
@@ -41,6 +48,8 @@ export function renderEnvFile(input: {
     `API_PORT=${environment.apiPort}`,
     `ALLOWED_ORIGINS=${environment.allowedOrigins.join(",")}`,
     "LOG_LEVEL=info",
+    `PADVINDER_ENVIRONMENT=${env}`,
+    `SENTRY_DSN=${monitoring.sentryDsn}`,
     `PUBLIC_ORIGIN=${environment.publicOrigin}`,
     `AUTH_SECRET=${login.authSecret}`,
     `SMTP_HOST=${smtpHost(account)}`,

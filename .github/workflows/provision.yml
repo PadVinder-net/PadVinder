@@ -57,10 +57,12 @@ jobs:
           ALWAYSDATA_API_KEY: ${{ secrets.ALWAYSDATA_API_KEY }}
           DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
           # Written to the env file with the database password; the API does not start
-          # without them, so the CLI refuses to plan or apply when one is missing.
+          # without the login secrets, and runs without error tracking without the DSN, so
+          # the CLI refuses to plan or apply when one is missing.
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           ENVIRONMENT: ${{ inputs.environment }}
           APPLY: ${{ inputs.apply }}
           ROTATE_PASSWORD: ${{ inputs.rotate-password }}

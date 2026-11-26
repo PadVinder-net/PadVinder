@@ -66,6 +66,7 @@ export const JOB_RULES: Record<CiJob, JobRule> = {
       ".github/workflows/build-release.yml",
       "infra/container/",
       "scripts/build-release.sh",
+      "scripts/sentry-cli.sh",
       "scripts/smoke-test-image.sh",
       "scripts/load-env.ts",
     ],
@@ -77,6 +78,8 @@ export const JOB_RULES: Record<CiJob, JobRule> = {
     only: [
       "infra/",
       "scripts/build-release.sh",
+      "scripts/sentry-cli.sh",
+      "scripts/upload-sourcemaps.sh",
       "scripts/deploy-current.ts",
       "scripts/lib/deploy-current.ts",
       "apps/api/src/migrate.ts",

@@ -111,6 +111,8 @@ describe("jobsFor", () => {
       "infra/alwaysdata/src/deploy.ts",
       "infra/container/Dockerfile",
       "scripts/build-release.sh",
+      "scripts/sentry-cli.sh",
+      "scripts/upload-sourcemaps.sh",
       ".github/workflows/deploy.yml",
       ".github/workflows/build-release.yml",
       ".github/actions/alwaysdata-credentials/action.yml",
