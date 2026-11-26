@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router";
 import { RouteCrash } from "./layout/crash";
 import { PortalLayout } from "./layout/portal-layout";
+import { RequireAdminRole } from "./layout/require-admin-role";
 import { RequirePlatformAdmin } from "./layout/require-platform-admin";
 import { AuditLogPage } from "./pages/audit-log-page";
 import { DeleteAccountPage } from "./pages/delete-account-page";
@@ -9,7 +10,9 @@ import { MembershipRequestsPage } from "./pages/membership-requests-page";
 import { NotFoundPage } from "./pages/not-found-page";
 import { OrganizationPage } from "./pages/organization-page";
 import { OrganizationsPage } from "./pages/organizations-page";
+import { PasskeysPage } from "./pages/passkeys-page";
 import { PlatformAdminsPage } from "./pages/platform-admins-page";
+import { ProfilePage } from "./pages/profile-page";
 import { SpeciesPage } from "./pages/species-page";
 import { SystemPage } from "./pages/system-page";
 import { WorkingGroupPage } from "./pages/working-group-page";
@@ -83,6 +86,15 @@ const pages: RouteObject[] = [
       <RequirePlatformAdmin>
         <SystemPage />
       </RequirePlatformAdmin>
+    ),
+  },
+  { path: "profile", element: <ProfilePage /> },
+  {
+    path: "profile/passkeys",
+    element: (
+      <RequireAdminRole>
+        <PasskeysPage />
+      </RequireAdminRole>
     ),
   },
   { path: "*", element: <NotFoundPage /> },

@@ -5,7 +5,8 @@ import {
   useMe,
 } from "@padvinder/api-client";
 import { Button, logOutFailedMessage, Toaster } from "@padvinder/ui";
-import { NavLink, Outlet } from "react-router";
+import { Link, NavLink, Outlet } from "react-router";
+import { PasskeyConfirmationHost } from "../auth/passkey-confirmation-host";
 import { navigationFor, type NavItem } from "./navigation";
 import { ReportProblemButton } from "./report-problem";
 
@@ -42,7 +43,9 @@ export function PortalLayout() {
           ) : null}
           <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
             <ReportProblemButton me={me} />
-            <span>{me.user.name}</span>
+            <Link to="/profile" aria-label="Profiel" className="underline-offset-4 hover:underline">
+              {me.user.name}
+            </Link>
             <Button variant="outline" onClick={() => void logOut()}>
               Log uit
             </Button>
@@ -56,6 +59,7 @@ export function PortalLayout() {
       </header>
       <Outlet />
       <Toaster />
+      <PasskeyConfirmationHost />
     </>
   );
 }

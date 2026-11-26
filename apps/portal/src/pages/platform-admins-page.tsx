@@ -5,6 +5,7 @@ import {
   useMe,
   usePlatformAdmins,
   useRemovePlatformAdmin,
+  useResetPlatformAdminPasskeys,
 } from "@padvinder/api-client";
 import type { PlatformAdmin } from "@padvinder/contracts";
 import {
@@ -20,6 +21,7 @@ import {
 } from "@padvinder/ui";
 import { useState } from "react";
 import { LoadError } from "./load-error";
+import { useOnSuccess } from "./use-on-success";
 
 type AddState = {
   open: boolean;
@@ -57,8 +59,10 @@ export function PlatformAdminsPage() {
   const admins = usePlatformAdmins();
   const add = useAddPlatformAdmin();
   const remove = useRemovePlatformAdmin();
+  const resetPasskeys = useResetPlatformAdminPasskeys();
   const [adding, setAdding] = useState<AddState>({ open: false, key: 0, step: "email", email: "" });
   const [removing, setRemoving] = useState<RemoveState>({ open: false, admin: null });
+  const [resetting, setResetting] = useState<RemoveState>({ open: false, admin: null });
 
   function openAdd() {
     add.reset();
@@ -118,6 +122,22 @@ export function PlatformAdminsPage() {
     if (!remove.isPending) setRemoving((current) => ({ ...current, open: false }));
   };
 
+  function askReset(admin: PlatformAdmin) {
+    resetPasskeys.reset();
+    setResetting({ open: true, admin });
+  }
+
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(resetPasskeys.status, () => {
+    setResetting((current) => ({ ...current, open: false }));
+    if (resetting.admin)
+      showToast(`De toegangssleutels van ${nameOrAddress(resetting.admin)} zijn verwijderd.`);
+  });
+  const cancelReset = () => {
+    if (!resetPasskeys.isPending) setResetting((current) => ({ ...current, open: false }));
+  };
+  const resetName = resetting.admin ? nameOrAddress(resetting.admin) : "";
+
   const emailRejected = add.error ? rejectsEmail(add.error) : false;
   const step = adding.step === "confirm" && !emailRejected ? "confirm" : "email";
   const ownRemoval = removing.admin !== null && removing.admin.userId === me?.user.id;
@@ -141,7 +161,12 @@ export function PlatformAdminsPage() {
       ) : admins.data === undefined ? (
         <LoadError onRetry={() => void admins.refetch()} />
       ) : (
-        <PlatformAdminsTable admins={admins.data.platformAdmins} onRemove={askRemove} />
+        <PlatformAdminsTable
+          admins={admins.data.platformAdmins}
+          onRemove={askRemove}
+          onResetPasskeys={askReset}
+          canResetPasskeys={(admin) => admin.userId !== me?.user.id}
+        />
       )}
       <Modal open={adding.open} title="Hoofdbeheerder toevoegen" onClose={closeAddUnlessSaving}>
         {/* Kept mounted in the second step, so Terug finds the address still in the field. */}
@@ -204,6 +229,23 @@ export function PlatformAdminsPage() {
         error={remove.error ? removeErrorText(remove.error) : undefined}
         onConfirm={confirmRemove}
         onCancel={cancelRemove}
+      />
+      <ConfirmDialog
+        open={resetting.open}
+        title={resetting.admin ? `Toegangssleutels van ${resetName} verwijderen?` : ""}
+        text={
+          resetting.admin
+            ? `Doe dit als ${resetName} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${resetName} een nieuwe bij de volgende keer beheren.`
+            : ""
+        }
+        confirmLabel="Verwijder"
+        destructive
+        pending={resetPasskeys.isPending}
+        error={resetPasskeys.error ? apiErrorMessage(apiErrorCode(resetPasskeys.error)) : undefined}
+        onConfirm={() => {
+          if (resetting.admin) resetPasskeys.mutate(resetting.admin.userId);
+        }}
+        onCancel={cancelReset}
       />
     </main>
   );

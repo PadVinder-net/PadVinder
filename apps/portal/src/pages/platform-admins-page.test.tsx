@@ -288,3 +288,64 @@ test("the question cannot be closed while the removal runs", async () => {
   release();
   expect(await screen.findByText(`${pieter.name} is geen hoofdbeheerder meer.`)).toBeVisible();
 });
+
+async function askReset(label: string) {
+  await userEvent.click(await screen.findByRole("button", { name: `Acties voor ${label}` }));
+  await userEvent.click(
+    await screen.findByRole("menuitem", { name: "Verwijder toegangssleutels" }),
+  );
+  return screen.findByRole("alertdialog");
+}
+
+test("resetting a platform admin asks first, names them, and calls the route; not offered for your own row", async () => {
+  const requests = recordRequests();
+  mockFetch(
+    routesFor({
+      [`DELETE ${listPath}/${pieter.userId}/passkeys`]: new Response(null, { status: 204 }),
+    }),
+  );
+  renderPortal("/platform-admins");
+  await userEvent.click(await screen.findByRole("button", { name: `Acties voor ${ownRow.name}` }));
+  expect(screen.queryByRole("menuitem", { name: "Verwijder toegangssleutels" })).toBeNull();
+  await userEvent.keyboard("{Escape}");
+
+  const dialog = await askReset(pieter.name);
+  expect(
+    within(dialog).getByText(`Toegangssleutels van ${pieter.name} verwijderen?`),
+  ).toBeVisible();
+  expect(
+    within(dialog).getByText(
+      `Doe dit als ${pieter.name} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${pieter.name} een nieuwe bij de volgende keer beheren.`,
+    ),
+  ).toBeVisible();
+  expect(requestsTo(requests, "DELETE", listPath)).toEqual([]);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder" }));
+  expect(
+    await screen.findByText(`De toegangssleutels van ${pieter.name} zijn verwijderd.`),
+  ).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(requestsTo(requests, "DELETE", listPath)).toHaveLength(1);
+});
+
+test("a failed reset shows its text in the dialog", async () => {
+  mockFetch(
+    routesFor({
+      [`DELETE ${listPath}/${pieter.userId}/passkeys`]: errorResponse(404, "not_found"),
+    }),
+  );
+  renderPortal("/platform-admins");
+  const dialog = await askReset(pieter.name);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder" }));
+  expect(await within(dialog).findByRole("alert")).toBeVisible();
+  expect(screen.getByRole("alertdialog")).toBeVisible();
+});
+
+test("an admin without a passkey shows Nog geen toegangssleutel, and the reset names them by address", async () => {
+  mockFetch(routesFor());
+  renderPortal("/platform-admins");
+  expect(await screen.findByText("Nog geen toegangssleutel")).toBeVisible();
+  const dialog = await askReset(newAdmin.email);
+  expect(
+    within(dialog).getByText(`Toegangssleutels van ${newAdmin.email} verwijderen?`),
+  ).toBeVisible();
+});
