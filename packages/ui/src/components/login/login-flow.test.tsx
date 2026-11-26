@@ -162,6 +162,43 @@ test("the login step shows the passkey button only with logInWithPasskey, and ca
   expect(logInWithPasskey).toHaveBeenCalledOnce();
 });
 
+test("while the passkey login pends, only its button reads Even geduld…", async () => {
+  let finish: (result: PasskeyResult) => void = () => {};
+  render(
+    <LoginFlow
+      requestLoginCode={vi.fn()}
+      logInWithCode={vi.fn()}
+      logInWithPasskey={() => new Promise<PasskeyResult>((resolve) => (finish = resolve))}
+      onLoggedIn={vi.fn()}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Log in met je toegangssleutel" }));
+  expect(screen.getAllByRole("button", { name: "Even geduld…" })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Stuur code" })).toBeDisabled();
+  finish({ ok: false, error: "cancelled" });
+  expect(
+    await screen.findByRole("button", { name: "Log in met je toegangssleutel" }),
+  ).toBeEnabled();
+});
+
+test("while a code is asked for, the passkey button keeps its label", async () => {
+  let finish: (result: LoginResult) => void = () => {};
+  render(
+    <LoginFlow
+      requestLoginCode={() => new Promise<LoginResult>((resolve) => (finish = resolve))}
+      logInWithCode={vi.fn()}
+      logInWithPasskey={vi.fn()}
+      onLoggedIn={vi.fn()}
+    />,
+  );
+  await userEvent.type(screen.getByLabelText("E-mailadres"), "noor@example.test");
+  await userEvent.click(screen.getByRole("button", { name: "Stuur code" }));
+  expect(screen.getAllByRole("button", { name: "Even geduld…" })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Log in met je toegangssleutel" })).toBeDisabled();
+  finish({ ok: true });
+  expect(await screen.findByLabelText("Code")).toBeVisible();
+});
+
 test("a cancelled passkey login shows Dat lukte niet. Probeer het nog eens.", async () => {
   const onLoggedIn = vi.fn();
   render(

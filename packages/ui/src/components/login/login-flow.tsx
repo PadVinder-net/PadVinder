@@ -38,6 +38,7 @@ export function LoginFlow({
 }: LoginFlowProps) {
   const [email, setEmail] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [passkeyPending, setPasskeyPending] = useState(false);
   const [error, setError] = useState<string>();
   const [resent, setResent] = useState(false);
   // State updates are asynchronous, so a double tap needs a ref to be seen.
@@ -46,10 +47,12 @@ export function LoginFlow({
   async function run(
     action: () => Promise<{ ok: true } | { ok: false; message: string }>,
     onOk: () => void,
+    { passkey = false }: { passkey?: boolean } = {},
   ) {
     if (busy.current) return;
     busy.current = true;
     setPending(true);
+    setPasskeyPending(passkey);
     setError(undefined);
     try {
       const result = await action();
@@ -60,6 +63,7 @@ export function LoginFlow({
     } finally {
       busy.current = false;
       setPending(false);
+      setPasskeyPending(false);
     }
   }
 
@@ -67,11 +71,15 @@ export function LoginFlow({
     return (
       <EmailForm
         pending={pending}
+        passkeyPending={passkeyPending}
         error={error}
         notice={notice}
         onPasskey={
           logInWithPasskey
-            ? () => void run(async () => asPasskeyMessage(await logInWithPasskey()), onLoggedIn)
+            ? () =>
+                void run(async () => asPasskeyMessage(await logInWithPasskey()), onLoggedIn, {
+                  passkey: true,
+                })
             : undefined
         }
         onSubmit={(address) =>
