@@ -67,3 +67,13 @@ test("effectiveActor drops the admin roles only of an unconfirmed admin", () => 
   expect(effectiveActor(volunteer)).toBe(volunteer);
   expect(withoutAdminRoles(admin).memberships).toBe(admin.memberships);
 });
+
+test("effectiveActor keeps the admin roles of a session confirmed an hour ago", () => {
+  const admin: Actor = {
+    ...base,
+    isPlatformAdmin: true,
+    adminOfOrganizationIds: ["o-a"],
+    passkeyVerifiedAt: agoMs(60 * 60 * 1000),
+  };
+  expect(effectiveActor(admin)).toBe(admin);
+});

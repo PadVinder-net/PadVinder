@@ -229,7 +229,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
           "Add a working group with its first coordinator (admins of the organization and platform admins)",
         params: organizationParamsSchema,
         body: createWorkingGroupRequestSchema,
-        response: { 201: managedWorkingGroupSchema, ...errorResponses(400, 401, 404, 409) },
+        response: { 201: managedWorkingGroupSchema, ...errorResponses(400, 401, 403, 404, 409) },
       },
     },
     async (request, reply): Promise<ManagedWorkingGroup> => {

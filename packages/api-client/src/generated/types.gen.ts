@@ -1390,6 +1390,10 @@ export type CreateWorkingGroupErrors = {
     /**
      * Default Response
      */
+    403: ApiError;
+    /**
+     * Default Response
+     */
     404: ApiError;
     /**
      * Default Response

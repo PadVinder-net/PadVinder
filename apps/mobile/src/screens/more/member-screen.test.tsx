@@ -152,3 +152,15 @@ describe("a coordinator of one group who is a volunteer of another", () => {
     expect(screen.queryByRole("button", { name: "Verwijder uit werkgroep" })).toBeNull();
   });
 });
+
+test("a member of a group that is hidden until the confirmation shows the bar, not the not-found text", async () => {
+  const unconfirmedAdmin: MeResponse = {
+    ...applicantMeFixture,
+    organizationAdminOf: [noord.organization],
+    adminConfirmedUntil: null,
+  };
+  mockFetch({ "/api/me": unconfirmedAdmin, "/api/working-groups": directory });
+  renderApp(`/app/more/members/${bram!.membershipId}`);
+  expect(await screen.findByRole("button", { name: "Toon met je toegangssleutel" })).toBeVisible();
+  expect(screen.queryByText("Dit bestaat niet meer.")).toBeNull();
+});

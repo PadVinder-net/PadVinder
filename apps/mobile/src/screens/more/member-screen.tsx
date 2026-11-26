@@ -6,7 +6,7 @@ import {
   useRemoveMembership,
   type MeResponse,
 } from "@padvinder/api-client";
-import { apiErrorMessage, MemberDetail, nameInSentence } from "@padvinder/ui";
+import { apiErrorMessage, MemberDetail, nameInSentence, PasskeyHidden } from "@padvinder/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { LoadError, Loading, SubScreen, type FlashState } from "./sub-screen";
@@ -42,6 +42,15 @@ function MemberOfGroup({ me, membershipId }: { me: MeResponse; membershipId: str
   if (!found) {
     if (lists.error) return <LoadError error={lists.error} onRetry={lists.refetch} />;
     if (lists.isPending) return <Loading>Lid laden…</Loading>;
+    // The member may belong to a group that is only named until the confirmation: ask for it
+    // instead of claiming the member is gone.
+    if (lists.hiddenGroups.length > 0)
+      return (
+        <div className="flex flex-col gap-3">
+          <p className="text-lg">Je ziet dit lid pas na bevestiging met je toegangssleutel.</p>
+          <PasskeyHidden onReveal={() => requestPasskeyConfirmation(queryClient)} />
+        </div>
+      );
     return <p className="text-lg">{apiErrorMessage("not_found")}</p>;
   }
 
