@@ -13,7 +13,7 @@ import {
   workingGroupMemberships,
 } from "@padvinder/db";
 import { createTestDatabase, type TestDatabase } from "@padvinder/db/testing";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 import { buildApp } from "../app";
@@ -22,6 +22,7 @@ import { startNotificationHub, type NotificationHub } from "../realtime/notifica
 import { testEnv } from "../test-env";
 import { createCast, type Cast } from "../testing/cast";
 import { loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 import { openEvents, type EventsClient } from "../test-open-events";
 
 // Counts every load of the actor by the stream (a check or a reload), lets a test make it fail as
@@ -128,6 +129,8 @@ async function openSubscribed(
 async function newPlatformAdmin(email: string) {
   const login = await loginAs(ctx, email);
   await grantPlatformAdmin(t!.db, { email }, { kind: "system" });
+  // Admin power needs a passkey in this session; the stream delivers admin events only then.
+  await stampSession(ctx, login.headers.cookie!, new Date());
   return login;
 }
 
@@ -556,6 +559,8 @@ test("a check that started before access-changed does not overwrite the newer ac
   try {
     await parked.promise;
     await grantPlatformAdmin(t!.db, { email }, { kind: "system" });
+    // Admin events need a passkey in this session.
+    await stampSession(ctx, login.headers.cookie!, new Date());
     await expect(stream.nextEvent()).resolves.toMatchObject({ event: "access-changed" });
     expect(call).toBe(2);
     release.resolve();
@@ -573,3 +578,100 @@ test("a check that started before access-changed does not overwrite the newer ac
     stream.close();
   }
 }, 20_000);
+
+// Admin power needs a passkey: the stream delivers by the roles a session has now.
+
+test("an unconfirmed organization admin does not receive membership-requests-changed for a group they do not coordinate", async () => {
+  const streams = await openForCast(["organizationAdminUnconfirmed", "platformAdmin"] as const);
+  await sendRequestsChanged(cast.otherGroup);
+  await expect(streams.platformAdmin.nextEvent()).resolves.toEqual(
+    requestsChanged(cast.otherGroup),
+  );
+  await expectNothing([streams.organizationAdminUnconfirmed]);
+  closeAll(streams);
+});
+
+test("the same admin receives it for the group they coordinate", async () => {
+  const admin = cast.members.organizationAdminUnconfirmed;
+  await grantCoordinator(
+    t!.db,
+    { email: admin.email, workingGroupId: cast.otherGroup.workingGroupId },
+    { kind: "system" },
+  );
+  const streams = await openForCast(["organizationAdminUnconfirmed"] as const);
+  try {
+    await sendRequestsChanged(cast.workingGroup);
+    await sendRequestsChanged(cast.otherGroup);
+    await expect(streams.organizationAdminUnconfirmed.nextEvent()).resolves.toEqual(
+      requestsChanged(cast.otherGroup),
+    );
+    await expectNothing([streams.organizationAdminUnconfirmed]);
+  } finally {
+    closeAll(streams);
+    await t!.db
+      .delete(workingGroupMemberships)
+      .where(
+        and(
+          eq(workingGroupMemberships.userId, admin.userId),
+          eq(workingGroupMemberships.workingGroupId, cast.otherGroup.workingGroupId),
+        ),
+      );
+  }
+});
+
+test("a confirmed organization admin receives it for every group of the organization", async () => {
+  const streams = await openForCast(["organizationAdmin"] as const);
+  await sendRequestsChanged(cast.workingGroup);
+  await sendRequestsChanged(cast.otherGroup);
+  for (const group of [cast.workingGroup, cast.otherGroup]) {
+    await expect(streams.organizationAdmin.nextEvent()).resolves.toEqual(requestsChanged(group));
+  }
+  closeAll(streams);
+});
+
+test("an unconfirmed platform admin receives no worker-heartbeat and no event of another organization", async () => {
+  const streams = await openForCast(["platformAdminUnconfirmed", "platformAdmin"] as const);
+  await t!.db.transaction((tx) =>
+    notify(tx, liveEventsChannel, { type: "worker-heartbeat", beatAt: "2027-03-01T19:30:00.000Z" }),
+  );
+  await sendRequestsChanged(cast.foreignGroup);
+  await expect(streams.platformAdmin.nextEvent()).resolves.toMatchObject({
+    event: "worker-heartbeat",
+  });
+  await expect(streams.platformAdmin.nextEvent()).resolves.toEqual(
+    requestsChanged(cast.foreignGroup),
+  );
+  await expectNothing([streams.platformAdminUnconfirmed]);
+  closeAll(streams);
+});
+
+test("a confirmation that runs out while the stream is open stops the admin events without a reconnect", async () => {
+  const admin = cast.members.organizationAdminUnconfirmed;
+  // Confirmed for one more second and a half; the stream's own check is an hour away.
+  const window = 24 * 60 * 60 * 1000;
+  await stampSession(ctx, admin.headers.cookie!, new Date(Date.now() - window + 1_500));
+  const streams = await openForCast(["organizationAdminUnconfirmed"] as const);
+  try {
+    await sendRequestsChanged(cast.otherGroup);
+    await expect(streams.organizationAdminUnconfirmed.nextEvent()).resolves.toEqual(
+      requestsChanged(cast.otherGroup),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1_700));
+    await sendRequestsChanged(cast.otherGroup);
+    await expectNothing([streams.organizationAdminUnconfirmed]);
+  } finally {
+    closeAll(streams);
+    await stampSession(ctx, admin.headers.cookie!, null);
+  }
+});
+
+test("events for the user (access-changed) still reach an unconfirmed admin", async () => {
+  const streams = await openForCast(["organizationAdminUnconfirmed"] as const);
+  const userId = cast.members.organizationAdminUnconfirmed.userId;
+  await t!.db.transaction((tx) => notifyAccessChanged(tx, userId));
+  await expect(streams.organizationAdminUnconfirmed.nextEvent()).resolves.toEqual({
+    event: "access-changed",
+    data: { type: "access-changed", userId },
+  });
+  closeAll(streams);
+});
