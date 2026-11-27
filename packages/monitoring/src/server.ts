@@ -2,6 +2,7 @@ import type { BaseTransportOptions, Transport } from "@sentry/core";
 import * as Sentry from "@sentry/node";
 import { relative } from "node:path";
 import { scrubBreadcrumb, scrubEvent } from "./scrub-event";
+import { sentryHttpModule } from "./sentry-request";
 import type { MonitoringSettings } from "./settings";
 
 export type TransportFactory = (options: BaseTransportOptions) => Transport;
@@ -90,7 +91,8 @@ export function startServerMonitoring(options: {
   if (dsn === undefined) return false;
   Sentry.init({
     dsn,
-    ...(transport ? { transport } : {}),
+    // Sentry over IPv4 only: see SENTRY_ADDRESS_FAMILY. A test transport sends nothing.
+    ...(transport ? { transport } : { transportOptions: { httpModule: sentryHttpModule } }),
     environment: settings.environment,
     release: settings.release,
     serverName: service,

@@ -2,7 +2,12 @@ import { createTransport, parseEnvelope, type Envelope, type Event } from "@sent
 import { itemsOfType } from "./fake-sentry";
 import type { TransportFactory } from "./server";
 
-export { startFakeSentry } from "./fake-sentry";
+export {
+  startFakeSentry,
+  startIpv6OnlyFakeSentry,
+  type FakeSentry,
+  type FakeSentryOptions,
+} from "./fake-sentry";
 
 /** A transport that keeps every envelope in memory instead of sending it. */
 export function createTestTransport(): {

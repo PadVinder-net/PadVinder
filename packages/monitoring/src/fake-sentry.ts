@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gunzipSync } from "node:zlib";
@@ -13,12 +14,22 @@ export function itemsOfType(envelopes: readonly Envelope[], type: string): Event
 /** One request the fake server received, whatever its answer. */
 export type FakeSentryRequest = { method: string; url: string; headers: IncomingHttpHeaders };
 
+export type FakeSentryOptions = {
+  /** The loopback address it listens on: IPv4 (default) or IPv6 only. Rejects without that loopback. */
+  host?: "127.0.0.1" | "::1";
+  /**
+   * The host name in its DSN instead of the address, so a client looks it up and the address
+   * family it asks for decides whether it arrives.
+   */
+  dsnHost?: "localhost";
+};
+
 /**
- * A Sentry ingest server on 127.0.0.1 that answers 200 to every envelope (or what `answerWith`
- * set) and keeps its decoded body and every request's headers. Point a process at it with
- * `SENTRY_DSN` set to `dsn`.
+ * A Sentry ingest server on 127.0.0.1 (or `host`) that answers 200 to every envelope (or what
+ * `answerWith` set) and keeps its decoded body and every request's headers. Point a process at it
+ * with `SENTRY_DSN` set to `dsn`.
  */
-export async function startFakeSentry(): Promise<{
+export async function startFakeSentry(options: FakeSentryOptions = {}): Promise<{
   dsn: string;
   bodies(): string[];
   /** Every request, also the ones answered with an error, in order. */
@@ -61,11 +72,19 @@ export async function startFakeSentry(): Promise<{
       response.end(isEnvelope ? answer.body : "{}");
     });
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const host = options.host ?? "127.0.0.1";
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
   const { port } = server.address() as AddressInfo;
+  const dsnHost = options.dsnHost ?? (host === "::1" ? "[::1]" : host);
   const envelopes = () => bodies.map((body) => parseEnvelope(body));
   return {
-    dsn: `http://public@127.0.0.1:${port}/1`,
+    dsn: `http://public@${dsnHost}:${port}/1`,
     bodies: () => [...bodies],
     requests: () => [...requests],
     envelopes,
@@ -80,4 +99,22 @@ export async function startFakeSentry(): Promise<{
         server.close((error) => (error ? reject(error) : resolve()));
       }),
   };
+}
+
+export type FakeSentry = Awaited<ReturnType<typeof startFakeSentry>>;
+
+/**
+ * A fake that listens on the IPv6 loopback only, with `localhost` in its DSN: a client reaches it
+ * only over IPv6. Null, so the test can skip, on a machine without an IPv6 loopback or where
+ * `localhost` does not resolve to `::1`: there a test that expects nothing to arrive would pass
+ * whatever family the client asked for.
+ */
+export async function startIpv6OnlyFakeSentry(): Promise<FakeSentry | null> {
+  try {
+    const addresses = await lookup("localhost", { all: true });
+    if (!addresses.some(({ address }) => address === "::1")) return null;
+    return await startFakeSentry({ host: "::1", dsnHost: "localhost" });
+  } catch {
+    return null;
+  }
 }

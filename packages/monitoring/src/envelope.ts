@@ -2,6 +2,7 @@ import { scrub } from "@padvinder/logging";
 import { parseEnvelope, serializeEnvelope, type Envelope } from "@sentry/core";
 import { parseDsn } from "./dsn";
 import { scrubEvent, scrubStrings } from "./scrub-event";
+import { postToSentry, SENTRY_ADDRESS_FAMILY } from "./sentry-request";
 import type { DeploymentEnvironment } from "./settings";
 
 /** The item types the browser SDK sends that we use. Replays, attachments and the rest are dropped. */
@@ -155,7 +156,7 @@ export type ForwardResult =
       /** Sentry's `Retry-After` and `X-Sentry-Rate-Limits`, for the browser SDK to back off. */
       retryAfter?: string;
       rateLimits?: string;
-      /** Sentry's answer when it refused (not 2xx), scrubbed and cut to 300 characters: for the log. */
+      /** Sentry's answer when it refused (not 2xx), scrubbed, without the key and cut to 300 characters: for the log. */
       detail?: string;
     }
   | {
@@ -168,10 +169,11 @@ export type ForwardResult =
 const DETAIL_LENGTH = 300;
 
 /**
- * Posts an envelope to the DSN's ingest address with only `Content-Type` of our own: no header of
- * the request it came from. The key in the query is what Sentry's own transport sends; it also
- * makes the server SDK's fetch instrumentation see a request to Sentry, so it adds no trace
- * headers, span or breadcrumb. `unreachable` when no answer came within the timeout.
+ * Posts an envelope to the DSN's ingest address over IPv4 (`SENTRY_ADDRESS_FAMILY`), with only
+ * `Content-Type` of our own: no header of the request it came from. The key in the query is what
+ * Sentry's own transport sends; it also makes the server SDK's http instrumentation see a request
+ * to Sentry, so it adds no trace headers, span or breadcrumb. `unreachable` when no answer came
+ * within the timeout.
  */
 export async function forwardEnvelope(
   envelope: Uint8Array,
@@ -179,35 +181,32 @@ export async function forwardEnvelope(
   options: { timeoutMs?: number } = {},
 ): Promise<ForwardResult> {
   const { ingestUrl, publicKey } = parseDsn(dsn);
-  try {
-    const response = await fetch(`${ingestUrl}?sentry_version=7&sentry_key=${publicKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-sentry-envelope" },
-      // A copy backed by a plain ArrayBuffer, which is what the DOM typings of `fetch` accept.
-      body: new Uint8Array(envelope),
-      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_FORWARD_TIMEOUT_MS),
-    });
-    const refused = response.status < 200 || response.status > 299;
-    // Sentry says why it refused in the body; anything else is not needed.
-    const detail = refused ? scrub((await response.text()).slice(0, DETAIL_LENGTH)) : undefined;
-    if (!refused) await response.body?.cancel();
-    const retryAfter = response.headers.get("retry-after");
-    const rateLimits = response.headers.get("x-sentry-rate-limits");
-    return {
-      status: response.status,
-      ...(retryAfter !== null && { retryAfter }),
-      ...(rateLimits !== null && { rateLimits }),
-      ...(detail !== undefined && { detail }),
-    };
-  } catch (error) {
-    return { status: "unreachable", reason: unreachableReason(error) };
-  }
+  const result = await postToSentry(
+    new URL(`${ingestUrl}?sentry_version=7&sentry_key=${publicKey}`),
+    envelope,
+    {
+      family: SENTRY_ADDRESS_FAMILY,
+      timeoutMs: options.timeoutMs ?? DEFAULT_FORWARD_TIMEOUT_MS,
+    },
+  );
+  if ("error" in result) return { status: "unreachable", reason: result.error };
+  const refused = result.status < 200 || result.status > 299;
+  // Sentry says why it refused in the body; anything else is not needed.
+  // Google's front end can echo the request's URL, key and all. The whole body is cleaned before
+  // it is cut, so nothing that crosses the cut survives in part.
+  const detail = refused
+    ? scrub(result.body).replaceAll(publicKey, "[key]").slice(0, DETAIL_LENGTH)
+    : undefined;
+  const retryAfter = singleHeader(result.headers["retry-after"]);
+  const rateLimits = singleHeader(result.headers["x-sentry-rate-limits"]);
+  return {
+    status: result.status,
+    ...(retryAfter !== undefined && { retryAfter }),
+    ...(rateLimits !== undefined && { rateLimits }),
+    ...(detail !== undefined && { detail }),
+  };
 }
 
-/** A short, non-personal name for why a request got no answer. */
-function unreachableReason(error: unknown): string {
-  const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
-  if (typeof cause?.code === "string") return cause.code;
-  if (error instanceof Error) return error.name;
-  return "unknown";
+function singleHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value.join(", ") : value;
 }

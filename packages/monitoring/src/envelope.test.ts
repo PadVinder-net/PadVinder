@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { forwardEnvelope, prepareBrowserEnvelope } from "./envelope";
-import { startFakeSentry } from "./testing";
+import { startFakeSentry, startIpv6OnlyFakeSentry } from "./testing";
 
 const SERVER_DSN = "https://serverkey@o1.ingest.sentry.test/42";
 const options = { dsn: SERVER_DSN, environment: "staging", release: "abc123" } as const;
@@ -284,6 +284,21 @@ test("forwardEnvelope keeps Sentry's reason when it refuses, scrubbed and cut to
   expect(detail.length).toBeLessThanOrEqual(300);
 });
 
+test("forwardEnvelope's reason never holds the DSN's key, also where it crosses the cut", async () => {
+  // A made-up key of one repeated letter: low entropy, so it never looks like a secret to gitleaks.
+  const key = "k".repeat(16);
+  const dsn = fake!.dsn.replace("public@", `${key}@`);
+  fake!.answerWith(403, {}, `Your client may not get /api/1/envelope/?sentry_key=${key} here`);
+  const echoed = await forwardEnvelope(new Uint8Array([123, 125]), dsn);
+  expect((echoed as { detail?: string }).detail).toContain("sentry_key=[key]");
+  expect(JSON.stringify(echoed)).not.toContain("kkkk");
+  // The key starts at character 292, so a cut before cleaning would leave "kkkkkkkk".
+  fake!.answerWith(403, {}, `${"x".repeat(280)}?sentry_key=${key}&more`);
+  const cut = await forwardEnvelope(new Uint8Array([123, 125]), dsn);
+  expect((cut as { detail?: string }).detail).not.toContain("kkkk");
+  expect((cut as { detail?: string }).detail!.length).toBeLessThanOrEqual(300);
+});
+
 test("forwardEnvelope keeps no body for an accepted envelope", async () => {
   fake!.answerWith(200, {}, '{"id":"abc"}');
   expect(await forwardEnvelope(new Uint8Array([123, 125]), fake!.dsn)).toEqual({ status: 200 });
@@ -309,6 +324,31 @@ test("forwardEnvelope answers unreachable for a closed port and after its timeou
   } finally {
     silent.closeAllConnections();
     await new Promise((resolve) => silent.close(resolve));
+  }
+});
+
+test("forwardEnvelope goes over IPv4: a Sentry that only listens on IPv6 is unreachable", async (context) => {
+  const ipv6 = await startIpv6OnlyFakeSentry();
+  if (ipv6 === null) return context.skip("this machine has no IPv6 loopback");
+  try {
+    // Without a family Node would try both addresses of localhost and reach ::1.
+    expect(await forwardEnvelope(new Uint8Array([123, 125]), ipv6.dsn)).toEqual({
+      status: "unreachable",
+      reason: expect.stringMatching(/^E[A-Z]+$/),
+    });
+    expect(ipv6.requests()).toEqual([]);
+  } finally {
+    await ipv6.close();
+  }
+});
+
+test("forwardEnvelope reaches a Sentry on IPv4 by host name", async () => {
+  const ipv4 = await startFakeSentry({ dsnHost: "localhost" });
+  try {
+    expect(await forwardEnvelope(new Uint8Array([123, 125]), ipv4.dsn)).toEqual({ status: 200 });
+    expect(ipv4.bodies()).toEqual(["{}"]);
+  } finally {
+    await ipv4.close();
   }
 });
 
