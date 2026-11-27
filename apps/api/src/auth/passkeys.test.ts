@@ -232,17 +232,48 @@ test("a code session older than a day gets SESSION_NOT_FRESH on a first passkey"
   expect(await passkeyRows(admin.userId)).toHaveLength(0);
 });
 
-test("logging in with a passkey without a cookie makes a stamped session for the passkey's account", async () => {
+test("both authentication routes answer 401 not_logged_in without a cookie and make no session", async () => {
   const admin = await adminWithPasskey();
   const before = await allSessions();
-  const { cookie, response } = await usePasskey(ctx, null, admin.authenticator);
-  expect(response.statusCode).toBe(200);
-  expect(response.json()).toEqual({ ok: true });
-  expect((await me(cookie)).json()).toMatchObject({ user: { id: admin.userId } });
-  expect((await sessionRow(cookie))!.passkeyVerifiedAt).toBeInstanceOf(Date);
-  expect(await allSessions()).toHaveLength(before.length + 1);
-  // The other session of the account (the registration's) is not touched by a login.
-  expect((await me(admin.cookie)).statusCode).toBe(200);
+  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", null);
+  expect(options.statusCode).toBe(401);
+  expect(options.json()).toMatchObject({ code: "not_logged_in" });
+  const verified = await postAuth(ctx, "/passkey/verify-authentication", null, {
+    response: admin.authenticator.authenticate({
+      challenge: isoBase64URL.fromUTF8String("not-the-challenge-1234567890"),
+      rpId: "localhost",
+      userVerification: "required",
+    }),
+  });
+  expect(verified.statusCode).toBe(401);
+  expect(verified.json()).toMatchObject({ code: "not_logged_in" });
+  const used = await usePasskey(ctx, null, admin.authenticator);
+  expect(used.response.statusCode).toBe(401);
+  expect(used.cookie).toBeNull();
+  expect(await allSessions()).toEqual(before);
+});
+
+test("when the session ends after the route's read but before the check, the passkey is refused with 401 SESSION_REQUIRED and no session is made", async () => {
+  const admin = await adminWithPasskey();
+  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", admin.cookie);
+  const jar = withCookies(admin.cookie, options);
+  const { internalAdapter } = await ctx.app.auth.$context;
+  const findSession = internalAdapter.findSession.bind(internalAdapter);
+  let reads = 0;
+  // The route's own read works; the check inside Better Auth finds the session gone.
+  const spy = vi.spyOn(internalAdapter, "findSession").mockImplementation(async (token) => {
+    reads += 1;
+    return reads === 1 ? findSession(token) : null;
+  });
+  const before = await allSessions();
+  const res = await postAuth(ctx, "/passkey/verify-authentication", jar, {
+    response: admin.authenticator.authenticate(options.json()),
+  });
+  spy.mockRestore();
+  expect(reads).toBeGreaterThan(1);
+  expect(res.statusCode).toBe(401);
+  expect(res.json()).toMatchObject({ code: "SESSION_REQUIRED" });
+  expect(await allSessions()).toEqual(before);
 });
 
 test("a confirmation replaces the session and stamps the new one; the old cookie is 401", async () => {
@@ -267,10 +298,6 @@ test("another account's passkey in a confirmation is 403 PASSKEY_OF_OTHER_ACCOUN
   expect(sessionTokenOf(cookie)).toBe(sessionTokenOf(first.cookie));
   expect(await allSessions()).toEqual(before);
   expect((await me(first.cookie)).json()).toMatchObject({ user: { id: first.userId } });
-  // On the login screen, without a session, the same passkey logs its own account in.
-  const login = await usePasskey(ctx, null, second.authenticator);
-  expect(login.response.statusCode).toBe(200);
-  expect((await me(login.cookie)).json()).toMatchObject({ user: { id: second.userId } });
 });
 
 test("when the session cannot be read during a confirmation, another account's passkey is refused, not logged in", async () => {
@@ -304,7 +331,7 @@ test("a passkey that was removed answers PASSKEY_NOT_FOUND and makes no session"
   const admin = await adminWithPasskey();
   await ctx.t.db.delete(passkeys).where(eq(passkeys.userId, admin.userId));
   const before = await allSessions();
-  const { response } = await usePasskey(ctx, null, admin.authenticator);
+  const { response } = await usePasskey(ctx, admin.cookie, admin.authenticator);
   expect(response.statusCode).toBe(401);
   expect(response.json()).toMatchObject({ code: "PASSKEY_NOT_FOUND" });
   expect(await allSessions()).toEqual(before);
@@ -314,7 +341,7 @@ test("an assertion without user verification is refused", async () => {
   const admin = await adminWithPasskey();
   admin.authenticator.userVerified = false;
   const before = await allSessions();
-  const { response } = await usePasskey(ctx, null, admin.authenticator);
+  const { response } = await usePasskey(ctx, admin.cookie, admin.authenticator);
   expect(response.statusCode).toBe(400);
   expect(response.json()).toMatchObject({ code: "AUTHENTICATION_FAILED" });
   expect(await allSessions()).toEqual(before);
@@ -359,11 +386,13 @@ test("a client cannot set passkeyVerifiedAt", async () => {
   const authenticator = newAuthenticator();
   const added = await addPasskey(ctx, admin.cookie, authenticator, { passkeyVerifiedAt: at });
   expect(added.response.statusCode).toBe(200);
-  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", null);
-  const used = await postAuth(ctx, "/passkey/verify-authentication", withCookies(null, options), {
-    response: authenticator.authenticate(options.json()),
-    passkeyVerifiedAt: at,
-  });
+  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", added.cookie);
+  const used = await postAuth(
+    ctx,
+    "/passkey/verify-authentication",
+    withCookies(added.cookie, options),
+    { response: authenticator.authenticate(options.json()), passkeyVerifiedAt: at },
+  );
   expect(used.statusCode).toBe(200);
   for (const session of await allSessions()) {
     expect(session.passkeyVerifiedAt?.toISOString()).not.toBe(at);
@@ -374,10 +403,11 @@ test("the verify answers are { ok: true }: no token, no publicKey, no credential
   const admin = await platformAdmin();
   const authenticator = newAuthenticator();
   const added = await addPasskey(ctx, admin.cookie, authenticator);
-  const used = await usePasskey(ctx, null, authenticator);
+  const used = await usePasskey(ctx, added.cookie, authenticator);
   const [row] = await passkeyRows(admin.userId);
-  const tokens = (await allSessions()).map((session) => session.token);
-  expect(tokens).toHaveLength(2);
+  // The registration's session was replaced by the confirmation's: both tokens must stay out.
+  const tokens = [sessionTokenOf(added.cookie)!, sessionTokenOf(used.cookie)!];
+  expect(await allSessions()).toHaveLength(1);
   for (const { response } of [added, used]) {
     expect(response.statusCode).toBe(200);
     expect(response.body).toBe('{"ok":true}');
@@ -400,8 +430,7 @@ test("the options hold no other account's credential ID and no public key", asyn
     "/passkey/generate-authenticate-options",
     first.cookie,
   );
-  const anonymousOptions = await postAuth(ctx, "/passkey/generate-authenticate-options", null);
-  for (const res of [registerOptions, authenticateOptions, anonymousOptions]) {
+  for (const res of [registerOptions, authenticateOptions]) {
     expect(res.statusCode).toBe(200);
     for (const secret of [other!.credentialID, own!.publicKey, other!.publicKey, ...tokens]) {
       expect(res.body).not.toContain(secret);
@@ -414,13 +443,12 @@ test("the options hold no other account's credential ID and no public key", asyn
   expect(authenticateOptions.json().allowCredentials).toEqual([
     expect.objectContaining({ id: own!.credentialID }),
   ]);
-  expect(anonymousOptions.body).not.toContain(own!.credentialID);
   expect(registerOptions.json()).toMatchObject({
     rp: { id: "localhost", name: "PadVinder" },
     authenticatorSelection: { residentKey: "required", userVerification: "required" },
     attestation: "none",
   });
-  expect(anonymousOptions.json()).toMatchObject({
+  expect(authenticateOptions.json()).toMatchObject({
     rpId: "localhost",
     userVerification: "required",
   });
@@ -490,11 +518,10 @@ test("adding writes passkey.added and queues passkey-added", async () => {
   ]);
 });
 
-test("a confirmation or a login writes no audit entry and queues no mail", async () => {
+test("a confirmation writes no audit entry and queues no mail", async () => {
   const admin = await adminWithPasskey();
   const entries = (await ctx.t.db.select().from(auditLogEntries)).length;
   await usePasskey(ctx, admin.cookie, admin.authenticator);
-  await usePasskey(ctx, null, admin.authenticator);
   expect(await ctx.t.db.select().from(auditLogEntries)).toHaveLength(entries);
   expect(ctx.mailQueue.jobs).toHaveLength(1);
 });
@@ -506,11 +533,16 @@ test("with LOGIN_RATE_LIMITS on, the 61st options request in 5 minutes from one 
     passkeyOptions: { window: 300, max: 60 },
     passkeyVerify: { window: 300, max: 60 },
   });
+  const admin = await platformAdmin();
   const options = (address: string) =>
     ctx.app.inject({
       method: "POST",
       url: "/api/auth/passkey/generate-authenticate-options",
-      headers: { origin: testEnv.PUBLIC_ORIGIN, "x-forwarded-for": address },
+      headers: {
+        origin: testEnv.PUBLIC_ORIGIN,
+        "x-forwarded-for": address,
+        cookie: admin.cookie,
+      },
       payload: {},
     });
   for (let i = 0; i < 60; i++) expect((await options("10.0.0.9")).statusCode).toBe(200);
@@ -522,11 +554,16 @@ test("with LOGIN_RATE_LIMITS on, the 61st options request in 5 minutes from one 
 test("with LOGIN_RATE_LIMITS on, the 61st verify request in 5 minutes from one address is 429", async () => {
   await ctx.close();
   ctx = await createTestApp({ LOGIN_RATE_LIMITS: "on" });
+  const admin = await platformAdmin();
   const verify = (address: string) =>
     ctx.app.inject({
       method: "POST",
       url: "/api/auth/passkey/verify-authentication",
-      headers: { origin: testEnv.PUBLIC_ORIGIN, "x-forwarded-for": address },
+      headers: {
+        origin: testEnv.PUBLIC_ORIGIN,
+        "x-forwarded-for": address,
+        cookie: admin.cookie,
+      },
       payload: { response: {} },
     });
   // Without a challenge each is refused by Better Auth, and counted all the same.
@@ -560,11 +597,15 @@ test("no log line of a failed verification holds the challenge or the credential
   // An assertion with the wrong challenge, after a good registration.
   const added = await addPasskey(ctx, admin.cookie, authenticator);
   expect(added.response.statusCode).toBe(200);
-  const authenticateOptions = await postAuth(ctx, "/passkey/generate-authenticate-options", null);
+  const authenticateOptions = await postAuth(
+    ctx,
+    "/passkey/generate-authenticate-options",
+    added.cookie,
+  );
   const refused = await postAuth(
     ctx,
     "/passkey/verify-authentication",
-    withCookies(null, authenticateOptions),
+    withCookies(added.cookie, authenticateOptions),
     {
       response: authenticator.authenticate({
         ...authenticateOptions.json(),
@@ -590,15 +631,15 @@ test("no log line of a failed verification holds the challenge or the credential
   }
 });
 
-test("a database failure during a passkey login logs no credential ID, query or parameter", async () => {
+test("a database failure during a passkey confirmation logs no credential ID, query or parameter", async () => {
   await ctx.close();
   const logs = createTestLogger("debug");
   ctx = await createTestApp({ LOG_LEVEL: "debug" }, { logger: logs.logger });
-  const { authenticator } = await adminWithPasskey();
-  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", null);
+  const { authenticator, cookie } = await adminWithPasskey();
+  const options = await postAuth(ctx, "/passkey/generate-authenticate-options", cookie);
   // Better Auth's look-up of the passkey by its credential ID now fails in the database.
   await ctx.t.pool.query("alter table passkeys rename to passkeys_gone");
-  const res = await postAuth(ctx, "/passkey/verify-authentication", withCookies(null, options), {
+  const res = await postAuth(ctx, "/passkey/verify-authentication", withCookies(cookie, options), {
     response: authenticator.authenticate(options.json()),
   });
   expect(res.statusCode).toBeGreaterThanOrEqual(500);

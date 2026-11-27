@@ -77,5 +77,4 @@ test("the app's login screen offers no passkey", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stuur code" })).toBeVisible();
   await expect(page.getByText("toegangssleutel")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Log in met je toegangssleutel" })).toHaveCount(0);
 });

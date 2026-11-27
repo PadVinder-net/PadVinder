@@ -260,13 +260,15 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         rpID: new URL(env.PUBLIC_ORIGIN).hostname,
         rpName: "PadVinder",
         origin: env.ALLOWED_ORIGINS,
-        // Always a fingerprint, face or PIN; discoverable, so login needs no address.
+        // Always a fingerprint, face or PIN; discoverable (the design's settings).
         authenticatorSelection: { residentKey: "required", userVerification: "required" },
         authentication: {
           // After the signature check, before the session is made. Better Auth never compares the
           // passkey's account with the session's; a confirmation with someone else's passkey (two
-          // admins on one laptop) is refused, and the old session stays. Without a session (the
-          // login screen) any account's passkey logs in.
+          // admins on one laptop) is refused, and the old session stays. A passkey only confirms
+          // a session: nobody logs in with one (the maintainer, 27 November 2026), so without a
+          // session it is refused too. Our route already refuses a request without one; this also
+          // covers a session that ends between the route's read and this check.
           //
           // The session is read here directly, not with `getSessionFromCtx`, which answers "no
           // session" when the read fails: then someone else's passkey would switch the laptop to
@@ -279,9 +281,13 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
               ctx.context.authCookies.sessionToken.name,
               ctx.context.secret,
             );
-            if (!token) return;
-            const session = await ctx.context.internalAdapter.findSession(token);
-            if (!session || session.session.expiresAt < new Date()) return;
+            const session = token ? await ctx.context.internalAdapter.findSession(token) : null;
+            if (!session || session.session.expiresAt < new Date()) {
+              throw APIError.from("UNAUTHORIZED", {
+                code: "SESSION_REQUIRED",
+                message: "A passkey confirms a session; log in first",
+              });
+            }
             const [row] = await db
               .select({ userId: passkeys.userId })
               .from(passkeys)

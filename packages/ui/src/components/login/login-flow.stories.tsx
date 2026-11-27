@@ -19,16 +19,6 @@ type Story = StoryObj<typeof meta>;
 
 const later = () => new Promise<void>((resolve) => setTimeout(resolve, 400));
 
-/** With the portal's extra button, under the email form. */
-export const WithPasskey: Story = {
-  args: {
-    requestLoginCode: async () => ({ ok: true }),
-    logInWithCode: async () => ({ ok: true }),
-    logInWithPasskey: async () => ({ ok: true }),
-    onLoggedIn: () => {},
-  },
-};
-
 /** Fake functions: any six digits log in, except 000000. */
 export const Default: Story = {
   args: {

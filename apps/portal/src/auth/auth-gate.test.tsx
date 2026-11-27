@@ -125,10 +125,9 @@ test("a failed background refetch keeps the app", async () => {
   expect(screen.queryByRole("button", { name: "Probeer opnieuw" })).toBeNull();
 });
 
-test("the login screen of the portal has the passkey button", async () => {
+test("the login screen of the portal has no passkey button and no word toegangssleutel", async () => {
   mockFetch({ "/api/me": unauthorized() });
   renderGate();
-  expect(
-    await screen.findByRole("button", { name: "Log in met je toegangssleutel" }),
-  ).toBeVisible();
+  expect(await screen.findByRole("button", { name: "Stuur code" })).toBeVisible();
+  expect(document.body.textContent?.toLowerCase()).not.toContain("toegangssleutel");
 });

@@ -50,7 +50,7 @@ async function logOut(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
 }
 
-test("an organization admin makes a first passkey, logs out and logs in with it", async ({
+test("an organization admin makes a first passkey; the portal's login screen offers none", async ({
   page,
 }) => {
   const group = createWorkingGroup();
@@ -61,14 +61,10 @@ test("an organization admin makes a first passkey, logs out and logs in with it"
     await expect(page.getByText("De toegangssleutel is toegevoegd.")).toBeVisible();
     await readMail(group.adminAddress, "Er is een toegangssleutel toegevoegd aan je account");
 
+    // Admins log in with a code like everyone else and confirm in the portal when needed.
     await logOut(page);
-    await page.getByRole("button", { name: "Log in met je toegangssleutel" }).click();
-    // No code: the passkey alone logs in, and home goes to Werkgroepen.
-    await expect(page).toHaveURL(/\/working-groups$/);
-    await expect(
-      page.getByRole("navigation", { name: "Beheer" }).getByRole("link", { name: "Werkgroepen" }),
-    ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Vul je code in" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Stuur code" })).toBeVisible();
+    await expect(page.getByText("toegangssleutel")).toHaveCount(0);
   } finally {
     await authenticator.remove();
   }

@@ -156,7 +156,11 @@ export const passkeyRoutes: FastifyPluginAsync<Options> = async (
     return replaceSession(request, reply, response, previousToken);
   });
 
+  // A passkey confirms a session; nobody logs in with one (the maintainer, 27 November 2026).
   route("/auth/passkey/generate-authenticate-options", async (request, reply) => {
+    if (!(await loadActor(api, db, request))) {
+      throw apiError(401, apiErrorCodes.notLoggedIn, "Log in first");
+    }
     const response = await passOn(request, "/auth/passkey/generate-authenticate-options", {
       method: "GET",
     });
@@ -165,6 +169,7 @@ export const passkeyRoutes: FastifyPluginAsync<Options> = async (
 
   route("/auth/passkey/verify-authentication", async (request, reply) => {
     const previousToken = await previousSessionToken(request);
+    if (!previousToken) throw apiError(401, apiErrorCodes.notLoggedIn, "Log in first");
     const response = await passOn(request, "/auth/passkey/verify-authentication", {
       method: "POST",
       body: { response: credentialOf(request) },

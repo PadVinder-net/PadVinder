@@ -1,10 +1,4 @@
-import {
-  authenticateWithPasskey,
-  logInWithCode,
-  requestLoginCode,
-  useAuthGate,
-  useMe,
-} from "@padvinder/api-client";
+import { logInWithCode, requestLoginCode, useAuthGate, useMe } from "@padvinder/api-client";
 import { AuthGateView, useBrowserMonitoringUser } from "@padvinder/ui";
 import { useEffect, useRef, type ReactNode } from "react";
 
@@ -40,12 +34,7 @@ export function AuthGate({
     <AuthGateView
       state={gate.state}
       onRetry={gate.retry}
-      login={{
-        requestLoginCode,
-        logInWithCode,
-        logInWithPasskey: authenticateWithPasskey,
-        onLoggedIn: gate.onLoggedIn,
-      }}
+      login={{ requestLoginCode, logInWithCode, onLoggedIn: gate.onLoggedIn }}
       saveName={gate.saveName}
       logOut={gate.logOut}
     >

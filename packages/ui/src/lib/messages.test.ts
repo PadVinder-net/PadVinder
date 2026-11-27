@@ -194,7 +194,7 @@ test.each([
     "Deze browser kan geen toegangssleutel gebruiken. Gebruik een recente versie van Chrome, Safari, Edge of Firefox.",
   ],
   ["already_registered", "Deze toegangssleutel staat al op je account."],
-  ["unknown_passkey", "Deze toegangssleutel werkt niet meer. Log in met een code uit je mail."],
+  ["unknown_passkey", "Deze toegangssleutel werkt niet meer. Probeer het nog eens."],
   ["not_allowed", "Alleen beheerders maken een toegangssleutel."],
   ["confirmation_required", "Bevestig eerst met je toegangssleutel."],
   ["too_many_passkeys", "Je hebt al tien toegangssleutels. Verwijder er eerst een."],

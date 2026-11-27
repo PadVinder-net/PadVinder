@@ -5,26 +5,14 @@ import { FieldError, Step, WideButton, inputClass, labelClass } from "./form-par
 
 export type EmailFormProps = {
   onSubmit(email: string): void;
-  /** Something pends: both buttons are disabled. */
   pending: boolean;
-  /** What pends is the passkey login: its button reads "Even geduld…", not "Stuur code". */
-  passkeyPending?: boolean;
   /** A message from the server, in Dutch. */
   error?: string;
   /** A message above the form, for example after the account was deleted. */
   notice?: string;
-  /** When given, the button "Log in met je toegangssleutel" shows under the form. */
-  onPasskey?: () => void;
 };
 
-export function EmailForm({
-  onSubmit,
-  pending,
-  passkeyPending = false,
-  error,
-  notice,
-  onPasskey,
-}: EmailFormProps) {
+export function EmailForm({ onSubmit, pending, error, notice }: EmailFormProps) {
   const [email, setEmail] = useState("");
   const [invalid, setInvalid] = useState(false);
 
@@ -63,21 +51,10 @@ export function EmailForm({
           />
           <FieldError id="login-email-error" message={message} />
         </div>
-        <WideButton type="submit" pending={pending && !passkeyPending} disabled={pending}>
+        <WideButton type="submit" pending={pending}>
           Stuur code
         </WideButton>
       </form>
-      {onPasskey ? (
-        <WideButton
-          type="button"
-          variant="outline"
-          pending={pending && passkeyPending}
-          disabled={pending}
-          onClick={onPasskey}
-        >
-          Log in met je toegangssleutel
-        </WideButton>
-      ) : null}
     </Step>
   );
 }

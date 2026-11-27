@@ -80,7 +80,10 @@ export async function addPasskey(
   return { cookie: withCookies(jar, response) ?? jar, response };
 }
 
-/** Uses a passkey with the two authentication calls: a login without `cookie`, a confirmation with one. */
+/**
+ * Uses a passkey with the two authentication calls: a confirmation of the session in `cookie`.
+ * Without a cookie both are refused (401): nobody logs in with a passkey.
+ */
 export async function usePasskey(
   ctx: TestApp,
   cookie: string | null,

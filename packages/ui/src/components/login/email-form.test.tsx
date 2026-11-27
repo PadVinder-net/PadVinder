@@ -35,18 +35,6 @@ test("the button is disabled while pending", () => {
   render(<EmailForm onSubmit={vi.fn()} pending />);
   expect(screen.getByRole("button", { name: "Even geduld…" })).toBeDisabled();
 });
-test("while the code is asked for, the passkey button is disabled and keeps its label", () => {
-  render(<EmailForm onSubmit={vi.fn()} pending onPasskey={vi.fn()} />);
-  expect(screen.getAllByRole("button", { name: "Even geduld…" })).toHaveLength(1);
-  expect(screen.getByRole("button", { name: "Even geduld…" })).toHaveAttribute("type", "submit");
-  expect(screen.getByRole("button", { name: "Log in met je toegangssleutel" })).toBeDisabled();
-});
-test("while the passkey login pends, Stuur code is disabled and keeps its label", () => {
-  render(<EmailForm onSubmit={vi.fn()} pending passkeyPending onPasskey={vi.fn()} />);
-  expect(screen.getAllByRole("button", { name: "Even geduld…" })).toHaveLength(1);
-  expect(screen.getByRole("button", { name: "Even geduld…" })).toHaveAttribute("type", "button");
-  expect(screen.getByRole("button", { name: "Stuur code" })).toBeDisabled();
-});
 
 test("EmailForm shows the notice", () => {
   render(<EmailForm onSubmit={() => {}} pending={false} notice="Je account is verwijderd." />);
