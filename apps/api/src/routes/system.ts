@@ -56,12 +56,21 @@ export const systemRoutes: FastifyPluginAsyncZod<SystemRouteOptions> = async (
     },
     async (request) => {
       authorize(request.actor!, { action: "system.testSentryConnection" });
-      const dsn = monitoring?.dsn;
-      if (dsn === undefined) return { sentryOff: true, results: [] };
+      if (monitoring?.dsn === undefined) return { sentryOff: true, results: [] };
+      const { dsn, environment, release } = monitoring;
       const results = await Promise.all(
-        ([4, 6] as const).map((family) => testSentryConnection(dsn, family, { service: "api" })),
+        ([4, 6] as const).map((family) =>
+          testSentryConnection(dsn, family, { service: "api", environment, release }),
+        ),
       );
-      request.log.info({ sentryConnection: results }, "Sentry connection test");
+      // The results hold statuses, error codes and scrubbed page titles: never the DSN or its key.
+      const allArrived = results.every(
+        ({ status }) => typeof status === "number" && status >= 200 && status <= 299,
+      );
+      request.log[allArrived ? "debug" : "warn"](
+        { sentryConnection: results },
+        "Sentry connection test",
+      );
       return { sentryOff: false, results };
     },
   );

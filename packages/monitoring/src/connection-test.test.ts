@@ -70,6 +70,64 @@ test("the answer never holds the DSN's key", async () => {
   expect(JSON.stringify(result)).not.toContain("public");
 });
 
+test("a key or address that crosses character 200 never survives in part", async () => {
+  // A made-up key of one repeated letter: low entropy, so it never looks like a secret to gitleaks.
+  const key = "k".repeat(16);
+  const dsn = fake.dsn.replace("public@", `${key}@`);
+  fake.answerWith(403, {}, `${"x".repeat(180)}?sentry_key=${key}&more`);
+  const withKey = await testSentryConnection(dsn, 4);
+  expect(withKey.status).toBe(403);
+  // The key starts at character 192, so a cut before cleaning would leave "kkkkkkkk".
+  expect(withKey.answer).not.toContain("kkkk");
+  expect(withKey.answer!.length).toBeLessThanOrEqual(200);
+  fake.answerWith(403, {}, `${"x".repeat(190)} noor@example.test wrote`);
+  const withAddress = await testSentryConnection(dsn, 4);
+  expect(withAddress.answer).not.toContain("noor");
+});
+
+test("the test event carries the environment and the release when given", async () => {
+  await testSentryConnection(fake.dsn, 4, {
+    service: "api",
+    environment: "staging",
+    release: "rel-1",
+  });
+  expect(fake.events().at(-1)).toMatchObject({ environment: "staging", release: "rel-1" });
+});
+
+test("an error that request() throws at once is unreachable too", async () => {
+  // Node validates the family when it looks the host name up, inside request().
+  const result = await testSentryConnection(fake.dsn.replace("127.0.0.1", "localhost"), 5 as 4);
+  expect(result).toMatchObject({ status: "unreachable", answer: expect.any(String) });
+});
+
+test("over IPv4 a host that only listens on IPv6 is unreachable", async (context) => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200);
+    response.end("{}");
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "::1", resolve);
+    });
+  } catch {
+    context.skip("this machine has no IPv6 loopback");
+  }
+  const { port } = server.address() as AddressInfo;
+  try {
+    const dsn = `http://key@localhost:${port}/1`;
+    expect(await testSentryConnection(dsn, 6)).toEqual({ family: 6, status: 200 });
+    expect(await testSentryConnection(dsn, 4)).toEqual({
+      family: 4,
+      status: "unreachable",
+      answer: expect.stringMatching(/^E[A-Z]+$/),
+    });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test("over IPv6 a host that only listens on IPv4 is unreachable, with the error code", async () => {
   // An address literal skips the lookup, so the family only counts for a host name.
   const dsn = fake.dsn.replace("127.0.0.1", "localhost");

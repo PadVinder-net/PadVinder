@@ -19,7 +19,17 @@ export type SentryConnectionResult = {
   answer?: string;
 };
 
-function envelopeFor(dsn: string, family: 4 | 6, service: string | undefined): string {
+export type SentryConnectionTestOptions = {
+  /** Default 10,000 ms, for the connection and the answer together. */
+  timeoutMs?: number;
+  /** The `service` tag of the test event (`api`). */
+  service?: string;
+  /** Set on the test event, so staging's and production's tests tell apart in one project. */
+  environment?: string;
+  release?: string;
+};
+
+function envelopeFor(dsn: string, family: 4 | 6, options: SentryConnectionTestOptions): string {
   const eventId = randomUUID().replaceAll("-", "");
   const now = new Date();
   return [
@@ -31,17 +41,22 @@ function envelopeFor(dsn: string, family: 4 | 6, service: string | undefined): s
       level: "info",
       platform: "node",
       message: `Sentry connection test over IPv${family}`,
-      ...(service !== undefined && { tags: { service } }),
+      ...(options.environment !== undefined && { environment: options.environment }),
+      ...(options.release !== undefined && { release: options.release }),
+      ...(options.service !== undefined && { tags: { service: options.service } }),
     }),
   ].join("\n");
 }
 
-/** The refusing page's title, or the start of its body; scrubbed, and never with the key. */
+/**
+ * The refusing page's title, or the start of its body; never with an address or the key. The whole
+ * body is cleaned before it is cut, so nothing that crosses the cut survives in part.
+ */
 function answerFrom(body: string, publicKey: string): string | undefined {
-  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(body)?.[1]?.trim();
-  const text = title || body.slice(0, ANSWER_LENGTH).trim();
-  if (text === "") return undefined;
-  return scrub(text).replaceAll(publicKey, "[key]");
+  const clean = scrub(body).replaceAll(publicKey, "[key]");
+  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(clean)?.[1]?.trim();
+  const text = title || clean.slice(0, ANSWER_LENGTH).trim();
+  return text === "" ? undefined : text;
 }
 
 /** A short, non-personal name for why a request got no answer. */
@@ -62,7 +77,7 @@ function unreachableReason(error: unknown): string {
 export async function testSentryConnection(
   dsn: string,
   family: 4 | 6,
-  options: { timeoutMs?: number; service?: string } = {},
+  options: SentryConnectionTestOptions = {},
 ): Promise<SentryConnectionResult> {
   let publicKey: string;
   let url: URL;
@@ -73,7 +88,7 @@ export async function testSentryConnection(
   } catch (error) {
     return { family, status: "unreachable", answer: unreachableReason(error) };
   }
-  const body = envelopeFor(dsn, family, options.service);
+  const body = envelopeFor(dsn, family, options);
   // Loaded here, not at the top: the services load this package before Sentry starts.
   const { request } =
     url.protocol === "http:" ? await import("node:http") : await import("node:https");
@@ -90,39 +105,46 @@ export async function testSentryConnection(
     const fail = (error: unknown) =>
       settle({ family, status: "unreachable", answer: unreachableReason(error) });
 
-    const outgoing = request(
-      url,
-      {
-        method: "POST",
-        family,
-        headers: {
-          "Content-Type": "application/x-sentry-envelope",
-          "Content-Length": Buffer.byteLength(body),
+    let outgoing: ReturnType<typeof request>;
+    try {
+      outgoing = request(
+        url,
+        {
+          method: "POST",
+          family,
+          headers: {
+            "Content-Type": "application/x-sentry-envelope",
+            "Content-Length": Buffer.byteLength(body),
+          },
         },
-      },
-      (response) => {
-        const status = response.statusCode ?? 0;
-        if (status >= 200 && status <= 299) {
-          response.resume();
-          settle({ family, status });
-          return;
-        }
-        const chunks: Buffer[] = [];
-        let length = 0;
-        const finish = () => {
-          const answer = answerFrom(Buffer.concat(chunks).toString("utf8"), publicKey);
-          settle({ family, status, ...(answer !== undefined && { answer }) });
-          response.destroy();
-        };
-        response.on("data", (chunk: Buffer) => {
-          chunks.push(chunk);
-          length += chunk.length;
-          if (length >= MAX_BODY_BYTES) finish();
-        });
-        response.on("end", finish);
-        response.on("error", finish);
-      },
-    );
+        (response) => {
+          const status = response.statusCode ?? 0;
+          if (status >= 200 && status <= 299) {
+            response.resume();
+            settle({ family, status });
+            return;
+          }
+          const chunks: Buffer[] = [];
+          let length = 0;
+          const finish = () => {
+            const answer = answerFrom(Buffer.concat(chunks).toString("utf8"), publicKey);
+            settle({ family, status, ...(answer !== undefined && { answer }) });
+            response.destroy();
+          };
+          response.on("data", (chunk: Buffer) => {
+            chunks.push(chunk);
+            length += chunk.length;
+            if (length >= MAX_BODY_BYTES) finish();
+          });
+          response.on("end", finish);
+          response.on("error", finish);
+        },
+      );
+    } catch (error) {
+      // Node checks some options (the family, for one) inside request() and throws at once.
+      fail(error);
+      return;
+    }
     timer = setTimeout(() => {
       settle({ family, status: "unreachable", answer: "TimeoutError" });
       outgoing.destroy();
