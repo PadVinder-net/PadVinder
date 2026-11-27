@@ -1,3 +1,4 @@
+export { testSentryConnection, type SentryConnectionResult } from "./connection-test";
 export { DsnError, parseDsn, type Dsn } from "./dsn";
 export {
   forwardEnvelope,
