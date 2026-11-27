@@ -4,12 +4,12 @@ import type { NodeOptions } from "@sentry/node";
 
 /**
  * The address family of every request the API and the worker send to Sentry: IPv4. On 27 November
- * 2026 the Systeemstatus connection test showed that Google's front end before Sentry's ingest
- * refuses the Alwaysdata service machines' IPv6 address with a 403 HTML page, while it takes their
- * IPv4 address (the SSH host is not refused). The services prefer IPv6, so every event, browser
- * envelope and problem report was refused. Only Sentry's traffic is forced: the database and SMTP
- * keep Node's default. Not through a proxy: with `http_proxy` or `https_proxy` set, the proxy
- * resolves Sentry's host.
+ * 2026 a connection test from the services (since removed) showed that Google's front end before
+ * Sentry's ingest refuses the Alwaysdata service machines' IPv6 address with a 403 HTML page, while
+ * it takes their IPv4 address (the SSH host is not refused). The services prefer IPv6, so every
+ * event, browser envelope and problem report was refused. Only Sentry's traffic is forced: the
+ * database and SMTP keep Node's default. Not through a proxy: with `http_proxy` or `https_proxy`
+ * set, the proxy resolves Sentry's host.
  */
 export const SENTRY_ADDRESS_FAMILY = 4;
 
@@ -42,14 +42,14 @@ export type SentryPostResult =
     };
 
 /**
- * Posts an envelope to Sentry over one address family only, with `Content-Type:
+ * Posts an envelope to Sentry over `SENTRY_ADDRESS_FAMILY` only, with `Content-Type:
  * application/x-sentry-envelope` and no other header of ours. The timeout covers the connection
  * and the answer together. Never throws.
  */
 export function postToSentry(
   url: URL,
   body: string | Uint8Array,
-  options: { family: 4 | 6; timeoutMs: number },
+  options: { timeoutMs: number },
 ): Promise<SentryPostResult> {
   return new Promise<SentryPostResult>((resolve) => {
     let settled = false;
@@ -68,7 +68,7 @@ export function postToSentry(
         url,
         {
           method: "POST",
-          family: options.family,
+          family: SENTRY_ADDRESS_FAMILY,
           headers: {
             "Content-Type": "application/x-sentry-envelope",
             "Content-Length": Buffer.byteLength(body),

@@ -13,7 +13,6 @@ export * from "./me-query";
 export * from "./membership";
 export * from "./platform-administration";
 export * from "./problem-reports";
-export * from "./sentry-connection-test";
 export * from "./query-client";
 export * from "./species";
 export * from "./server-events";

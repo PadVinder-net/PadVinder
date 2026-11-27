@@ -15,6 +15,5 @@ export * from "./organizations";
 export * from "./platform-admins";
 export * from "./problem-reports";
 export * from "./species";
-export * from "./system";
 export * from "./version";
 export * from "./working-groups";
