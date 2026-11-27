@@ -14,6 +14,7 @@ const meta = {
       onLoggedIn: () => {},
     },
     saveName: { pending: false, failed: false, submit: () => {} },
+    logOut: { submit: () => {}, failed: false },
     children: null,
   },
   decorators: [

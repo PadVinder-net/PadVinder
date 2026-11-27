@@ -1,4 +1,6 @@
 import { useState, type SubmitEvent } from "react";
+import { logOutFailedMessage } from "../../lib/messages";
+import { TextButton } from "../text-button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { FieldError, Step, WideButton, inputClass, labelClass } from "./form-parts";
@@ -7,9 +9,13 @@ export type NameFormProps = {
   onSubmit(values: { name: string; phone: string | null }): void;
   pending: boolean;
   error?: string;
+  /** "Log uit": the way back for someone who does not want to give a name now. */
+  onLogOut(): void;
+  /** Signing out failed, so the user is still logged in. */
+  logOutFailed?: boolean;
 };
 
-export function NameForm({ onSubmit, pending, error }: NameFormProps) {
+export function NameForm({ onSubmit, pending, error, onLogOut, logOutFailed }: NameFormProps) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [missingName, setMissingName] = useState(false);
@@ -31,7 +37,17 @@ export function NameForm({ onSubmit, pending, error }: NameFormProps) {
     <Step
       title="Hoe heet je?"
       intro="Je naam is te zien voor de mensen in je werkgroep. Je telefoonnummer alleen voor de coördinator van de werkgroep."
+      action={
+        // A link at the top, far from "Ga verder", so it is not tapped by mistake.
+        <TextButton className="-mr-3" onClick={onLogOut}>
+          Log uit
+        </TextButton>
+      }
     >
+      <FieldError
+        id="profile-log-out-error"
+        message={logOutFailed ? logOutFailedMessage : undefined}
+      />
       <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="profile-name" className={labelClass}>

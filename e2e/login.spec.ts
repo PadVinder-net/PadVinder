@@ -45,6 +45,19 @@ test("logging out returns to the login screen, also after a reload", async ({ pa
   await expect(page.getByRole("link", { name: "Meer" })).toHaveCount(0);
 });
 
+test("a new account can log out on the name step", async ({ page }) => {
+  const address = newAddress("no-name");
+  await askForCode(page, address);
+  await page.getByLabel("Code").fill(await readLoginCode(address));
+  await expect(page.getByRole("heading", { name: "Hoe heet je?" })).toBeVisible();
+  await page.getByRole("button", { name: "Log uit" }).click();
+  const loginHeading = page.getByRole("heading", { name: "Log in bij PadVinder" });
+  await expect(loginHeading).toBeVisible();
+
+  await page.reload();
+  await expect(loginHeading).toBeVisible();
+});
+
 test("the session survives a reload", async ({ page }) => {
   const address = newAddress("reload");
   await askForCode(page, address);

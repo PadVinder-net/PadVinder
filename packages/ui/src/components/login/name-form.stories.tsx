@@ -4,7 +4,7 @@ import { NameForm } from "./name-form";
 const meta = {
   title: "NameForm",
   component: NameForm,
-  args: { onSubmit: () => {}, pending: false },
+  args: { onSubmit: () => {}, onLogOut: () => {}, pending: false },
   decorators: [
     (Story) => (
       // The mobile app is phone only.
@@ -20,3 +20,4 @@ type Story = StoryObj<typeof meta>;
 
 export const Empty: Story = {};
 export const Pending: Story = { args: { pending: true } };
+export const LogOutFailed: Story = { args: { logOutFailed: true } };

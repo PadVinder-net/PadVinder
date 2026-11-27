@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { gateState, meLoadFailed, type GateState } from "./gate";
 import { getMeQueryKey } from "./generated/@tanstack/react-query.gen";
-import { clearOtherUserData, useMe, useUpdateMe } from "./me-query";
+import { clearOtherUserData, useLogOut, useMe, useUpdateMe } from "./me-query";
 
 /** What the gate shows: loading, the retry screen, or `gateState` once `me` is known. */
 export type AuthGateState = "loading" | "failed" | GateState;
@@ -14,6 +14,7 @@ export function useAuthGate() {
   const queryClient = useQueryClient();
   const me = useMe();
   const updateMe = useUpdateMe();
+  const logOut = useLogOut();
 
   const state: AuthGateState = me.isPending
     ? "loading"
@@ -37,6 +38,11 @@ export function useAuthGate() {
       pending: updateMe.isPending,
       failed: updateMe.isError,
       submit: (values: { name: string; phone: string | null }) => updateMe.mutate(values),
+    },
+    /** "Log uit" on the name step, so a new account is not stuck there. */
+    logOut: {
+      submit: () => void logOut.logOut(),
+      failed: logOut.failed,
     },
   };
 }

@@ -14,6 +14,11 @@ export type AuthGateViewProps = {
     failed: boolean;
     submit: NameFormProps["onSubmit"];
   };
+  /** "Log uit" on the name step; `failed` when signing out did not work. */
+  logOut: {
+    submit(): void;
+    failed: boolean;
+  };
   /**
    * What an applicant sees (`choose` or `waiting`: no membership and no admin role yet), such as
    * the mobile app's working group picker. Without it, applicants see the app.
@@ -37,6 +42,7 @@ export function AuthGateView({
   onRetry,
   login,
   saveName,
+  logOut,
   applicant,
   children,
 }: AuthGateViewProps) {
@@ -69,6 +75,8 @@ export function AuthGateView({
             pending={saveName.pending}
             error={saveName.failed ? connectionMessage : undefined}
             onSubmit={saveName.submit}
+            onLogOut={logOut.submit}
+            logOutFailed={logOut.failed}
           />
         </main>
       );

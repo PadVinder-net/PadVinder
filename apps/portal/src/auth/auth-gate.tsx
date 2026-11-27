@@ -36,6 +36,7 @@ export function AuthGate({
       onRetry={gate.retry}
       login={{ requestLoginCode, logInWithCode, onLoggedIn: gate.onLoggedIn }}
       saveName={gate.saveName}
+      logOut={gate.logOut}
     >
       {children}
     </AuthGateView>

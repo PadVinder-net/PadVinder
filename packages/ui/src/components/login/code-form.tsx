@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { isCompleteCode, normalizeCode } from "../../lib/code";
-import { Button } from "../ui/button";
+import { TextButton } from "../text-button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { FieldError, Step, WideButton, inputClass, labelClass } from "./form-parts";
@@ -92,15 +92,9 @@ export function CodeForm({
       <WideButton type="button" variant="outline" pending={pending} onClick={onResend}>
         Stuur opnieuw
       </WideButton>
-      <Button
-        type="button"
-        variant="link"
-        size="lg"
-        className="h-14 w-full text-lg"
-        onClick={onChangeEmail}
-      >
+      <TextButton className="h-14 w-full" onClick={onChangeEmail}>
         Ander e-mailadres
-      </Button>
+      </TextButton>
     </Step>
   );
 }
