@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { scrub } from "@padvinder/logging";
 import { parseDsn } from "./dsn";
+import { postToSentry, requestErrorReason } from "./sentry-request";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 /** How much of a refusing answer without a `<title>` is kept. */
 const ANSWER_LENGTH = 200;
-/** How much of a body is read at most: enough for a title or the start of an error page. */
-const MAX_BODY_BYTES = 64 * 1024;
 
 export type SentryConnectionResult = {
   family: 4 | 6;
@@ -59,18 +58,10 @@ function answerFrom(body: string, publicKey: string): string | undefined {
   return text === "" ? undefined : text;
 }
 
-/** A short, non-personal name for why a request got no answer. */
-function unreachableReason(error: unknown): string {
-  const code = (error as { code?: unknown } | null)?.code;
-  if (typeof code === "string") return code;
-  if (error instanceof Error) return error.name;
-  return "unknown";
-}
-
 /**
- * Sends one plain test event to the DSN's ingest address over IPv4 or IPv6 only (the `family` of
- * Node's `https.request`, or `http.request` for an `http:` DSN), to see whether this machine
- * reaches Sentry over that address family. The status is Sentry's (or its front end's) answer;
+ * Sends one plain test event to the DSN's ingest address over IPv4 or IPv6 only (`postToSentry`,
+ * the same request as the tunnel's and the problem reports', with the family given instead of
+ * `SENTRY_ADDRESS_FAMILY`), to see whether this machine reaches Sentry over that address family. The status is Sentry's (or its front end's) answer;
  * `unreachable` when none came within the timeout. Never throws; the result never holds the DSN
  * or its key.
  */
@@ -86,70 +77,14 @@ export async function testSentryConnection(
     publicKey = parsed.publicKey;
     url = new URL(`${parsed.ingestUrl}?sentry_version=7&sentry_key=${publicKey}`);
   } catch (error) {
-    return { family, status: "unreachable", answer: unreachableReason(error) };
+    return { family, status: "unreachable", answer: requestErrorReason(error) };
   }
-  const body = envelopeFor(dsn, family, options);
-  // Loaded here, not at the top: the services load this package before Sentry starts.
-  const { request } =
-    url.protocol === "http:" ? await import("node:http") : await import("node:https");
-
-  return new Promise<SentryConnectionResult>((resolve) => {
-    let settled = false;
-    let timer: NodeJS.Timeout | undefined;
-    const settle = (result: SentryConnectionResult) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(result);
-    };
-    const fail = (error: unknown) =>
-      settle({ family, status: "unreachable", answer: unreachableReason(error) });
-
-    let outgoing: ReturnType<typeof request>;
-    try {
-      outgoing = request(
-        url,
-        {
-          method: "POST",
-          family,
-          headers: {
-            "Content-Type": "application/x-sentry-envelope",
-            "Content-Length": Buffer.byteLength(body),
-          },
-        },
-        (response) => {
-          const status = response.statusCode ?? 0;
-          if (status >= 200 && status <= 299) {
-            response.resume();
-            settle({ family, status });
-            return;
-          }
-          const chunks: Buffer[] = [];
-          let length = 0;
-          const finish = () => {
-            const answer = answerFrom(Buffer.concat(chunks).toString("utf8"), publicKey);
-            settle({ family, status, ...(answer !== undefined && { answer }) });
-            response.destroy();
-          };
-          response.on("data", (chunk: Buffer) => {
-            chunks.push(chunk);
-            length += chunk.length;
-            if (length >= MAX_BODY_BYTES) finish();
-          });
-          response.on("end", finish);
-          response.on("error", finish);
-        },
-      );
-    } catch (error) {
-      // Node checks some options (the family, for one) inside request() and throws at once.
-      fail(error);
-      return;
-    }
-    timer = setTimeout(() => {
-      settle({ family, status: "unreachable", answer: "TimeoutError" });
-      outgoing.destroy();
-    }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-    outgoing.on("error", fail);
-    outgoing.end(body);
+  const result = await postToSentry(url, envelopeFor(dsn, family, options), {
+    family,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
+  if ("error" in result) return { family, status: "unreachable", answer: result.error };
+  if (result.status >= 200 && result.status <= 299) return { family, status: result.status };
+  const answer = answerFrom(result.body, publicKey);
+  return { family, status: result.status, ...(answer !== undefined && { answer }) };
 }

@@ -14,7 +14,7 @@ import {
   tracesSampler,
   withSpan,
 } from "./server";
-import { createTestTransport, startFakeSentry } from "./testing";
+import { createTestTransport, startFakeSentry, startIpv6OnlyFakeSentry } from "./testing";
 
 const settings = {
   dsn: undefined,
@@ -263,6 +263,37 @@ test("onSentrySendFailure hears nothing when Sentry takes the event", async () =
   } finally {
     await closeMonitoring();
     await fake.close();
+  }
+});
+
+test("the SDK sends over IPv4: an event to a Sentry that only listens on IPv6 does not arrive", async (context) => {
+  const ipv6 = await startIpv6OnlyFakeSentry();
+  if (ipv6 === null) return context.skip("this machine has no IPv6 loopback");
+  try {
+    startServerMonitoring({ service: "api", settings: { ...settings, dsn: ipv6.dsn } });
+    const failures: unknown[] = [];
+    onSentrySendFailure((failure) => failures.push(failure));
+    Sentry.captureException(new Error("over IPv6 only"));
+    await flushMonitoring();
+    // Without a family Node would try both addresses of localhost and reach ::1.
+    expect(ipv6.requests()).toEqual([]);
+    expect(failures).toEqual([{ status: "no answer", eventType: "error" }]);
+  } finally {
+    await closeMonitoring();
+    await ipv6.close();
+  }
+});
+
+test("the SDK reaches a Sentry on IPv4 by host name", async () => {
+  const ipv4 = await startFakeSentry({ dsnHost: "localhost" });
+  try {
+    startServerMonitoring({ service: "api", settings: { ...settings, dsn: ipv4.dsn } });
+    Sentry.captureException(new Error("over IPv4"));
+    await flushMonitoring();
+    expect(ipv4.events()).toHaveLength(1);
+  } finally {
+    await closeMonitoring();
+    await ipv4.close();
   }
 });
 

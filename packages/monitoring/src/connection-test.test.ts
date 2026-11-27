@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { testSentryConnection } from "./connection-test";
-import { startFakeSentry } from "./testing";
+import { startFakeSentry, startIpv6OnlyFakeSentry } from "./testing";
 
 let fake: Awaited<ReturnType<typeof startFakeSentry>>;
 beforeAll(async () => {
@@ -101,43 +101,34 @@ test("an error that request() throws at once is unreachable too", async () => {
 });
 
 test("over IPv4 a host that only listens on IPv6 is unreachable", async (context) => {
-  const server = createServer((_request, response) => {
-    response.writeHead(200);
-    response.end("{}");
-  });
+  const ipv6 = await startIpv6OnlyFakeSentry();
+  if (ipv6 === null) return context.skip("this machine has no IPv6 loopback");
   try {
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "::1", resolve);
-    });
-  } catch {
-    context.skip("this machine has no IPv6 loopback");
-  }
-  const { port } = server.address() as AddressInfo;
-  try {
-    const dsn = `http://key@localhost:${port}/1`;
-    expect(await testSentryConnection(dsn, 6)).toEqual({ family: 6, status: 200 });
-    expect(await testSentryConnection(dsn, 4)).toEqual({
+    expect(await testSentryConnection(ipv6.dsn, 6)).toEqual({ family: 6, status: 200 });
+    expect(await testSentryConnection(ipv6.dsn, 4)).toEqual({
       family: 4,
       status: "unreachable",
       answer: expect.stringMatching(/^E[A-Z]+$/),
     });
   } finally {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await ipv6.close();
   }
 });
 
 test("over IPv6 a host that only listens on IPv4 is unreachable, with the error code", async () => {
   // An address literal skips the lookup, so the family only counts for a host name.
-  const dsn = fake.dsn.replace("127.0.0.1", "localhost");
-  expect(await testSentryConnection(dsn, 4)).toEqual({ family: 4, status: 200 });
-  const result = await testSentryConnection(dsn, 6);
-  expect(result).toEqual({
-    family: 6,
-    status: "unreachable",
-    answer: expect.stringMatching(/^E[A-Z]+$/),
-  });
+  const ipv4 = await startFakeSentry({ dsnHost: "localhost" });
+  try {
+    expect(await testSentryConnection(ipv4.dsn, 4)).toEqual({ family: 4, status: 200 });
+    const result = await testSentryConnection(ipv4.dsn, 6);
+    expect(result).toEqual({
+      family: 6,
+      status: "unreachable",
+      answer: expect.stringMatching(/^E[A-Z]+$/),
+    });
+  } finally {
+    await ipv4.close();
+  }
 });
 
 test("a closed port is unreachable", async () => {
