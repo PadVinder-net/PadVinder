@@ -1,7 +1,7 @@
 import { apiErrorCodes } from "@padvinder/contracts";
 import { apiError } from "../errors";
 import type { Actor } from "./actor";
-import { confirmationOf, hasAdminRole } from "./confirmation";
+import { confirmationOf, hasAdminRole, withoutAdminRoles } from "./confirmation";
 
 /**
  * The permission rules, as pure functions. Routes never compare roles themselves: they call
@@ -25,7 +25,10 @@ export type Permission =
   | { action: "platform.manageSpecies" }
   | { action: "platform.manageOrganizations" }
   | { action: "platform.managePlatformAdmins" }
+  | { action: "platform.listPlatformAdmins" }
   | { action: "platform.deleteAccounts" }
+  | { action: "platform.lookUpAccounts" }
+  | { action: "admin.listAdministered" }
   | { action: "organization.view"; target: OrganizationTarget }
   | { action: "organization.readAuditLog"; target: OrganizationTarget }
   | { action: "organization.changeContact"; target: OrganizationTarget }
@@ -65,25 +68,27 @@ export type Decision = "allowed" | "forbidden" | "hidden" | "confirm";
  */
 export function requiredConfirmation(permission: Permission): "none" | "confirmed" | "recent" {
   switch (permission.action) {
-    case "passkeys.listOwn":
-      return "confirmed";
+    case "platform.deleteAccounts":
+    case "platform.managePlatformAdmins":
+    case "organization.manageAdmins":
+    case "platform.manageOrganizations":
     case "passkeys.removeOwn":
     case "organization.resetAdminPasskeys":
     case "platform.resetPlatformAdminPasskeys":
       return "recent";
     case "passkeys.add":
       return permission.hasPasskey ? "recent" : "none";
+    case "passkeys.listOwn":
     case "system.viewDatabaseDetails":
-    case "platform.manageSpecies":
-    case "platform.manageOrganizations":
-    case "platform.managePlatformAdmins":
-    case "platform.deleteAccounts":
     case "system.triggerTestError":
+    case "platform.manageSpecies":
+    case "platform.listPlatformAdmins":
+    case "platform.lookUpAccounts":
+    case "admin.listAdministered":
     case "organization.view":
     case "organization.readAuditLog":
     case "organization.changeContact":
     case "organization.rename":
-    case "organization.manageAdmins":
     case "organization.createWorkingGroup":
     case "workingGroup.manage":
     case "workingGroup.setCoordinator":
@@ -92,7 +97,7 @@ export function requiredConfirmation(permission: Permission): "none" | "confirme
     case "workingGroup.reviewRequests":
     case "workingGroup.addMembers":
     case "workingGroup.removeMember":
-      return "none";
+      return "confirmed";
     default: {
       const unreachable: never = permission;
       throw new Error(`No confirmation rule for ${JSON.stringify(unreachable)}`);
@@ -124,8 +129,10 @@ export function organizationRelationTo(
 const staff: readonly Relation[] = ["platformAdmin", "organizationAdmin", "coordinator"];
 
 /** By role alone, before any confirmation window. */
-function decideByRole(actor: Actor, permission: Permission): Exclude<Decision, "confirm"> {
+function decideByRoles(actor: Actor, permission: Permission): Exclude<Decision, "confirm"> {
   switch (permission.action) {
+    case "admin.listAdministered":
+      return "allowed";
     case "passkeys.listOwn":
     case "passkeys.removeOwn":
     case "passkeys.add":
@@ -148,7 +155,9 @@ function decideByRole(actor: Actor, permission: Permission): Exclude<Decision, "
     permission.action === "platform.manageSpecies" ||
     permission.action === "platform.manageOrganizations" ||
     permission.action === "platform.managePlatformAdmins" ||
-    permission.action === "platform.deleteAccounts"
+    permission.action === "platform.listPlatformAdmins" ||
+    permission.action === "platform.deleteAccounts" ||
+    permission.action === "platform.lookUpAccounts"
   ) {
     return actor.isPlatformAdmin ? "allowed" : "forbidden";
   }
@@ -209,13 +218,27 @@ function decideByRole(actor: Actor, permission: Permission): Exclude<Decision, "
 }
 
 export function decide(actor: Actor, permission: Permission): Decision {
-  const byRole = decideByRole(actor, permission);
-  if (byRole !== "allowed") return byRole;
+  // Roles first: whatever is not allowed stays as it is, so an unconfirmed admin keeps the 404
+  // for another organization.
+  const full = decideByRoles(actor, permission);
+  if (full !== "allowed") return full;
   const needed = requiredConfirmation(permission);
-  if (needed === "none") return "allowed";
-  const confirmation = confirmationOf(actor);
-  if (needed === "recent") return confirmation === "recent" ? "allowed" : "confirm";
-  return confirmation === "none" ? "confirm" : "allowed";
+  if (needed !== "none") {
+    const confirmation = confirmationOf(actor);
+    if (confirmation === "recent" || (needed === "confirmed" && confirmation === "confirmed")) {
+      return "allowed";
+    }
+  } else {
+    return "allowed";
+  }
+  // Not confirmed enough. The list of what an admin administers is the one action where the
+  // admin role alone is enough to ask.
+  if (permission.action === "admin.listAdministered") {
+    return hasAdminRole(actor) ? "confirm" : "allowed";
+  }
+  // Decide again without the admin roles: what the person is besides admin (a coordinator of
+  // the group) needs no passkey.
+  return decideByRoles(withoutAdminRoles(actor), permission) === "allowed" ? "allowed" : "confirm";
 }
 
 export function authorize(actor: Actor, permission: Permission): void {

@@ -22,8 +22,16 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import { buildApp } from "../app";
 import { createNoopNotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
+import { recordQueries } from "../testing/query-log";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -46,9 +54,11 @@ const me = (who: Who) => ctx.app.inject({ method: "GET", url: "/api/me", headers
 let n = 0;
 const uniqueAddress = (label: string) => `${label}-${++n}-${uuidv7().slice(-8)}@example.test`;
 
-const platformOnly = (ok: number) => ({
+const platformOnly = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 403,
+  organizationAdminUnconfirmed: 403,
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 403,
@@ -182,6 +192,7 @@ test("the request log of a lookup holds no address", async () => {
     const logged: TestApp = { app, mailer, mailQueue, t, close: async () => {} };
     const admin = await loginAs(logged, "log-hoofdbeheerder@example.test");
     await grantPlatformAdmin(t.db, { email: "log-hoofdbeheerder@example.test" }, system);
+    await stampSession(logged, admin.headers.cookie, new Date());
     const from = log.text().split("\n").filter(Boolean).length;
     const statuses = [];
     for (const email of ["log-hoofdbeheerder@example.test", "log-niemand@example.test", "jan@"]) {
@@ -388,4 +399,25 @@ test("a POST from a foreign Origin is refused", async () => {
     { email: cast.members.volunteer.email },
   );
   expect(own.statusCode).toBe(200);
+});
+
+test("the lookup is passkey_required for an unconfirmed platform admin, and the address is not looked up", async () => {
+  const who = cast.members.platformAdminUnconfirmed;
+  const baseline = await recordQueries(ctx.t.pool, async () => {
+    const res = await ctx.app.inject({
+      method: "DELETE",
+      url: `/api/passkeys/${uuidv7()}`,
+      headers: who.headers,
+    });
+    expect(res.json().code).toBe("passkey_required");
+  });
+  let body = "";
+  const queries = await recordQueries(ctx.t.pool, async () => {
+    const res = await lookup(who, { email: cast.members.volunteer.email });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("passkey_required");
+    body = res.body;
+  });
+  expect(queries).toEqual(baseline);
+  expect(body).not.toContain(cast.members.volunteer.email);
 });

@@ -35,6 +35,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { mapAdminErrors } from "../admin-errors";
 import { apiError, errorResponses } from "../errors";
+import { fieldAccess } from "../permissions/fields";
 import { authorize, decide } from "../permissions/rules";
 import { sendRequestDecidedMail } from "../mail/request-decided-mail";
 import { toMembershipRequestForReview } from "../serializers/membership-requests";
@@ -105,17 +106,21 @@ export const workingGroupRoutes: FastifyPluginAsyncZod<{
         summary:
           "The members of a working group by name. Email and phone only for its coordinators and admins",
         params: workingGroupParamsSchema,
-        response: { 200: memberListResponseSchema, ...errorResponses(400, 401, 404) },
+        response: { 200: memberListResponseSchema, ...errorResponses(400, 401, 403, 404) },
       },
     },
     async (request): Promise<MemberListResponse> => {
+      // The group row is read before the decision, to find the target. It leaks nothing: an
+      // outsider gets the same 404 for a missing group as for one they may not see.
       const group = await getWorkingGroup(db, request.params.workingGroupId);
       if (!group) throw apiError(404, apiErrorCodes.notFound, "Not found");
       const target = { workingGroupId: group.workingGroupId, organizationId: group.organizationId };
       authorize(request.actor!, { action: "workingGroup.listMembers", target });
-      const contact =
-        decide(request.actor!, { action: "workingGroup.viewMemberContact", target }) === "allowed";
-      return { members: await listMembers(db, group.workingGroupId, { contact }) };
+      const { include: contact, reveal } = fieldAccess(
+        decide(request.actor!, { action: "workingGroup.viewMemberContact", target }),
+      );
+      const members = await listMembers(db, group.workingGroupId, { contact });
+      return reveal ? { members, passkeyReveals: ["email", "phone", "hasLoggedIn"] } : { members };
     },
   );
 
@@ -195,12 +200,13 @@ export const workingGroupRoutes: FastifyPluginAsyncZod<{
         operationId: "listManagedWorkingGroups",
         summary:
           "The working groups you manage, with counts: all for a platform admin, those of your organizations for an admin, the ones you coordinate for a coordinator",
-        response: { 200: managedWorkingGroupListResponseSchema, ...errorResponses(401) },
+        response: { 200: managedWorkingGroupListResponseSchema, ...errorResponses(401, 403) },
       },
     },
-    async (request): Promise<ManagedWorkingGroupListResponse> => ({
-      workingGroups: await listManagedWorkingGroups(db, request.actor!),
-    }),
+    async (request): Promise<ManagedWorkingGroupListResponse> => {
+      authorize(request.actor!, { action: "admin.listAdministered" });
+      return { workingGroups: await listManagedWorkingGroups(db, request.actor!) };
+    },
   );
 
   app.patch(

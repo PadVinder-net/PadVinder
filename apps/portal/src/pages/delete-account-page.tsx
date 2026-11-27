@@ -19,6 +19,7 @@ import {
   showToast,
 } from "@padvinder/ui";
 import { useState } from "react";
+import { useOnSuccess } from "./use-on-success";
 
 /** What a search found: an account, or null when the address has none. */
 type Result = { account: AccountSummary | null };
@@ -63,10 +64,13 @@ export function DeleteAccountPage() {
   const [asking, setAsking] = useState(false);
 
   function search(email: string) {
-    // A new search replaces the result; `mutate`'s callbacks run for the latest search only.
     setResult(null);
-    find.mutate(email, { onSuccess: (account) => setResult({ account }) });
+    find.mutate(email);
   }
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(find.status, () => {
+    if (find.data !== undefined) setResult({ account: find.data });
+  });
 
   function askDelete() {
     remove.reset();
@@ -78,16 +82,16 @@ export function DeleteAccountPage() {
   };
 
   function confirmDelete(account: AccountSummary) {
-    remove.mutate(account.id, {
-      onSuccess: () => {
-        setAsking(false);
-        setResult(null);
-        find.reset();
-        setFormKey((key) => key + 1);
-        showToast(`Het account van ${nameOf(account)} is verwijderd.`);
-      },
-    });
+    remove.mutate(account.id);
   }
+  useOnSuccess(remove.status, () => {
+    const gone = result?.account;
+    setAsking(false);
+    setResult(null);
+    find.reset();
+    setFormKey((key) => key + 1);
+    if (gone) showToast(`Het account van ${nameOf(gone)} is verwijderd.`);
+  });
 
   const account = result?.account ?? null;
   return (

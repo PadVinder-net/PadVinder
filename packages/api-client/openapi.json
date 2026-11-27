@@ -510,6 +510,15 @@
             "required": [
               "lastHeartbeatAt"
             ]
+          },
+          "passkeyReveals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "database"
+              ]
+            }
           }
         },
         "required": [
@@ -978,6 +987,17 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MemberInput"
+            }
+          },
+          "passkeyReveals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "email",
+                "phone",
+                "hasLoggedIn"
+              ]
             }
           }
         },
@@ -1884,6 +1904,15 @@
               "lastHeartbeatAt"
             ],
             "additionalProperties": false
+          },
+          "passkeyReveals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "database"
+              ]
+            }
           }
         },
         "required": [
@@ -2371,6 +2400,17 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Member"
+            }
+          },
+          "passkeyReveals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "email",
+                "phone",
+                "hasLoggedIn"
+              ]
             }
           }
         },
@@ -3085,6 +3125,16 @@
               }
             }
           },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Default Response",
             "content": {
@@ -3202,6 +3252,16 @@
             }
           },
           "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -3500,6 +3560,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         }
       },
@@ -3608,6 +3678,16 @@
             }
           },
           "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -3940,6 +4020,16 @@
             }
           },
           "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -4843,6 +4933,16 @@
               }
             }
           },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Default Response",
             "content": {
@@ -4996,6 +5096,16 @@
             }
           },
           "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "Default Response",
             "content": {
               "application/json": {

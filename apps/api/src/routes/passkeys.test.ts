@@ -9,7 +9,13 @@ import {
 import { and, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 import {
   addPasskey,
@@ -82,9 +88,11 @@ async function newPlatformAdmin() {
   return { ...login, email, passkeyId };
 }
 
-const adminsOnly = (ok: number) => ({
+const adminsOnly = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: ok,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 403,
@@ -114,7 +122,9 @@ test("resetting an admin of the organization", async () => {
     cast,
     {
       platformAdmin: 204,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 204,
+      organizationAdminUnconfirmed: "passkey_required",
       organizationAdminOtherOrganization: 404,
       coordinator: 404,
       volunteer: 404,
@@ -135,7 +145,9 @@ test("resetting a platform admin", async () => {
     cast,
     {
       platformAdmin: 204,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 403,
+      organizationAdminUnconfirmed: 403,
       coordinator: 403,
       volunteer: 403,
       volunteerOtherGroup: 403,

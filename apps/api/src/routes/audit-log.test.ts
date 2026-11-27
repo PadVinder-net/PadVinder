@@ -9,7 +9,7 @@ import type { AuditLogEntry, AuditLogPage } from "@padvinder/contracts";
 import { count, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { createCast, expectStatuses, type Cast } from "../testing/cast";
+import { createCast, expectStatuses, type Cast, type ExpectedStatuses } from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
 let ctx: TestApp;
@@ -82,9 +82,11 @@ beforeAll(async () => {
 });
 afterAll(() => ctx.close());
 
-const everyone = {
+const everyone: ExpectedStatuses = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,
@@ -93,9 +95,11 @@ const everyone = {
   applicant: 200,
   anonymous: 401,
 };
-const adminsOfIt = {
+const adminsOfIt: ExpectedStatuses = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 404,
   volunteer: 404,
   volunteerOtherGroup: 404,
@@ -245,4 +249,25 @@ test("reading writes no entry, and POST, PATCH and DELETE on the path are 404", 
   }
   const [after] = await ctx.t.db.select({ n: count() }).from(auditLogEntries);
   expect(after!.n).toBe(before!.n);
+});
+
+test("an unconfirmed organization admin asking another organization gets 404, their own passkey_required; a platform admin passkey_required for any", async () => {
+  const unknown = "00000000-0000-7000-8000-000000000000";
+  const admin = cast.members.organizationAdminUnconfirmed.headers;
+  for (const id of [cast.otherOrganization.id, unknown]) {
+    expect((await read(admin, `?organizationId=${id}`)).statusCode).toBe(404);
+  }
+  const own = await read(admin, `?organizationId=${cast.organization.id}`);
+  expect(own.statusCode).toBe(403);
+  expect(own.json().code).toBe("passkey_required");
+  for (const id of [cast.organization.id, cast.otherOrganization.id, unknown]) {
+    const res = await read(cast.members.platformAdminUnconfirmed.headers, `?organizationId=${id}`);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("passkey_required");
+  }
+  const coordinator = await read(
+    cast.members.coordinator.headers,
+    `?organizationId=${cast.otherOrganization.id}`,
+  );
+  expect(coordinator.statusCode).toBe(404);
 });

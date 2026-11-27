@@ -5,6 +5,7 @@ import {
   mayManageWorkingGroup,
   mayRemoveMember,
   refetchAdministration,
+  requestPasskeyConfirmation,
   useManagedWorkingGroups,
   useMe,
   useRemoveMembership,
@@ -36,6 +37,7 @@ import { AddMembers, mayAddMembers } from "./add-members";
 import { RequireManagesSomething } from "../layout/require-manages-something";
 import { NotFoundPage } from "./not-found-page";
 import { LoadError } from "./load-error";
+import { useOnSuccess } from "./use-on-success";
 
 /**
  * One working group (`/working-groups/{workingGroupId}`): its details and its members. It is found
@@ -103,8 +105,26 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
   const queryClient = useQueryClient();
   const members = useQuery(listMembersOptions({ path: { workingGroupId: group.id } }));
   const edit = useUpdateWorkingGroup();
-  const setActive = useUpdateWorkingGroup();
-  const setCoordinator = useSetCoordinator();
+  // A switch on has no dialog; its toast comes from the mutation's success, so a request sent
+  // again after a passkey confirmation says it too.
+  const setActive = useUpdateWorkingGroup({
+    onSuccess: (saved, variables) => {
+      if (variables.patch.active === true) showToast(`Werkgroep ${saved.name} staat aan.`);
+    },
+  });
+  const setCoordinator = useSetCoordinator({
+    onSuccess: ({ membershipId, isCoordinator }) => {
+      const member = members.data?.members.find(
+        (candidate) => candidate.membershipId === membershipId,
+      );
+      const name = nameInSentence(member?.name ?? "");
+      showToast(
+        isCoordinator
+          ? `${name} is nu coördinator van ${group.name}.`
+          : `${name} is geen coördinator meer van ${group.name}.`,
+      );
+    },
+  });
   const remove = useRemoveMembership();
   const [form, setForm] = useState({ open: false, key: 0 });
   const [askingTurnOff, setAskingTurnOff] = useState(false);
@@ -128,23 +148,20 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
       closeForm();
       return;
     }
-    edit.mutate(
-      { workingGroupId: group.id, patch },
-      {
-        onSuccess: (saved) => {
-          closeForm();
-          showToast(`Werkgroep ${saved.name} is gewijzigd.`);
-        },
-      },
-    );
+    edit.mutate({ workingGroupId: group.id, patch });
   }
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(edit.status, () => {
+    if (!edit.data) return;
+    closeForm();
+    showToast(`Werkgroep ${edit.data.name} is gewijzigd.`);
+  });
 
   function switchOn() {
     // Not `mutate`'s callbacks: those fire only for the latest call, and each tap gets its toast.
-    void setActive.mutateAsync({ workingGroupId: group.id, patch: { active: true } }).then(
-      (saved) => showToast(`Werkgroep ${saved.name} staat aan.`),
-      (error: unknown) => showToast(failureText(error)),
-    );
+    void setActive
+      .mutateAsync({ workingGroupId: group.id, patch: { active: true } })
+      .catch((error: unknown) => showToast(failureText(error)));
   }
 
   function askTurnOff() {
@@ -153,28 +170,20 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
   }
 
   function confirmTurnOff() {
-    setActive.mutate(
-      { workingGroupId: group.id, patch: { active: false } },
-      {
-        onSuccess: (saved) => {
-          setAskingTurnOff(false);
-          showToast(`Werkgroep ${saved.name} staat uit.`);
-        },
-      },
-    );
+    setActive.mutate({ workingGroupId: group.id, patch: { active: false } });
   }
+  // Only the switching off has a dialog to close; a switch on shows its toast above.
+  useOnSuccess(setActive.status, () => {
+    if (!setActive.data || setActive.variables?.patch.active !== false) return;
+    setAskingTurnOff(false);
+    showToast(`Werkgroep ${setActive.data.name} staat uit.`);
+  });
 
   function handleSetCoordinator(member: Member, isCoordinator: boolean) {
-    const name = nameInSentence(member.name);
-    void setCoordinator.mutateAsync({ membershipId: member.membershipId, isCoordinator }).then(
-      () =>
-        showToast(
-          isCoordinator
-            ? `${name} is nu coördinator van ${group.name}.`
-            : `${name} is geen coördinator meer van ${group.name}.`,
-        ),
-      (error: unknown) => showToast(failureText(error)),
-    );
+    // The toast is the hook's; an error shows here.
+    void setCoordinator
+      .mutateAsync({ membershipId: member.membershipId, isCoordinator })
+      .catch((error: unknown) => showToast(failureText(error)));
   }
 
   function askRemove(member: Member) {
@@ -187,16 +196,17 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
     if (!member) return;
     remove.mutate(
       { membershipId: member.membershipId },
-      {
-        onSuccess: () => {
-          setRemoving((current) => ({ ...current, open: false }));
-          showToast(`${nameInSentence(member.name)} is verwijderd uit ${group.name}.`);
-        },
-        // The list's member count changed too.
-        onSettled: () => void refetchAdministration(queryClient),
-      },
+      // The list's member count changed too; also when the request failed.
+      { onError: () => void refetchAdministration(queryClient) },
     );
   }
+  useOnSuccess(remove.status, () => {
+    // Also after a confirmation, when the request was sent again.
+    void refetchAdministration(queryClient);
+    setRemoving((current) => ({ ...current, open: false }));
+    if (removing.member)
+      showToast(`${nameInSentence(removing.member.name)} is verwijderd uit ${group.name}.`);
+  });
 
   // While a save runs, the dialogs stay open: closed, the answer would show nowhere, and reopening
   // would reset the mutation and allow a second save.
@@ -249,6 +259,12 @@ function WorkingGroupDetails({ me, group }: { me: MeResponse; group: ManagedWork
           canRemove={(member) => mayRemoveMember(me, group, member.isCoordinator)}
           onSetCoordinator={handleSetCoordinator}
           onRemove={askRemove}
+          // The bars only where the API left fields out for a confirmation.
+          onReveal={
+            members.data.passkeyReveals?.length
+              ? () => requestPasskeyConfirmation(queryClient)
+              : undefined
+          }
         />
       ) : members.isError ? (
         <LoadError onRetry={() => void members.refetch()} />

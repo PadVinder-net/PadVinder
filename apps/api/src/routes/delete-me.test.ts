@@ -8,6 +8,7 @@ import {
   liveEventsChannel,
   membershipRequests,
   organizationAdmins,
+  removeOrganizationAdmin,
   revokePlatformAdmin,
   users,
   workingGroupMemberships,
@@ -79,17 +80,42 @@ async function requestToJoin(who: CastLogin, workingGroupId: string): Promise<st
   return id;
 }
 
+/**
+ * The cast has two platform admins and two admins of `cast.organization`. Tests about "the last
+ * one" take the second ones away first.
+ */
+async function onlyTheFirstAdmins(): Promise<void> {
+  const system = { kind: "system" } as const;
+  await revokePlatformAdmin(
+    ctx.t.db,
+    { email: cast.members.platformAdminUnconfirmed.email },
+    system,
+  );
+  await removeOrganizationAdmin(
+    ctx.t.db,
+    {
+      organizationId: cast.organization.id,
+      userId: cast.members.organizationAdminUnconfirmed.userId,
+    },
+    system,
+  );
+}
+
 /** The mails about requests (not the login codes) sent so far. */
 const requestMails = () => ctx.mailer.sent.filter((mail) => !mail.subject.includes("inlogcode"));
 
 test("who may delete their account", async () => {
-  // The platform admin is the only one; the admins and coordinators are the only ones of their
-  // organization or working group.
+  // The members are tried in the order of the cast. The first platform admin and the first admin
+  // of the organization have a second one; once those leave, the second is the only one. The
+  // coordinators and the other organization's admin are the only ones of their group or
+  // organization.
   await expectStatuses(
     cast,
     {
-      platformAdmin: 409,
-      organizationAdmin: 409,
+      platformAdmin: 204,
+      platformAdminUnconfirmed: 409,
+      organizationAdmin: 204,
+      organizationAdminUnconfirmed: 409,
       coordinator: 409,
       volunteer: 204,
       volunteerOtherGroup: 204,
@@ -246,6 +272,7 @@ test("the same address logs in again as a new account without a name", async () 
 });
 
 test("the only platform admin is refused with 409 last_platform_admin", async () => {
+  await onlyTheFirstAdmins();
   const admin = cast.members.platformAdmin;
   const res = await del(admin);
   expect(res.statusCode).toBe(409);
@@ -291,6 +318,7 @@ test("a blocked deletion answers 409 last_coordinator with the blockers, and the
 });
 
 test("the last admin gets 409 last_organization_admin, with the contact address to ask", async () => {
+  await onlyTheFirstAdmins();
   await ctx.t.db
     .update(organizations)
     .set({ contactEmail: "contact-cast@example.test" })
@@ -311,6 +339,7 @@ test("the last admin gets 409 last_organization_admin, with the contact address 
 });
 
 test("an admin who is also the only coordinator: the code follows the first blocker, a group", async () => {
+  await onlyTheFirstAdmins();
   const admin = cast.members.organizationAdmin;
   await grantCoordinator(
     ctx.t.db,
@@ -338,6 +367,7 @@ test("an admin who is also the only coordinator: the code follows the first bloc
 });
 
 test("the last platform admin still gets 409 last_platform_admin without blockers", async () => {
+  await onlyTheFirstAdmins();
   const res = await del(cast.members.platformAdmin);
   expect(res.statusCode).toBe(409);
   expect(res.json()).toEqual({
@@ -350,6 +380,11 @@ test("the last platform admin still gets 409 last_platform_admin without blocker
 });
 
 test("with a second platform admin it works", async () => {
+  await revokePlatformAdmin(
+    ctx.t.db,
+    { email: cast.members.platformAdminUnconfirmed.email },
+    { kind: "system" },
+  );
   await grantPlatformAdmin(ctx.t.db, { email: cast.members.volunteer.email }, { kind: "system" });
   expect((await del(cast.members.platformAdmin)).statusCode).toBe(204);
   expect(await userRow(cast.members.platformAdmin.userId)).toMatchObject({

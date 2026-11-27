@@ -26,7 +26,15 @@ export function useCreateSpecies() {
 }
 
 /** Changes a species with a partial patch and returns it. The list is refetched after success. */
-export function useUpdateSpecies() {
+export function useUpdateSpecies(
+  options: {
+    /** Runs on every success, also of a request sent again after a passkey confirmation. */
+    onSuccess?(
+      saved: Species,
+      variables: { speciesId: string; patch: UpdateSpeciesRequestInput },
+    ): void;
+  } = {},
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -43,6 +51,9 @@ export function useUpdateSpecies() {
       });
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: listSpeciesQueryKey() }),
+    onSuccess: (saved, variables) => {
+      options.onSuccess?.(saved, variables);
+      return queryClient.invalidateQueries({ queryKey: listSpeciesQueryKey() });
+    },
   });
 }

@@ -48,3 +48,29 @@ test("no requests at all says so", () => {
   render(<MembershipRequestList groups={[]} onOpen={() => {}} />);
   expect(screen.getByText("Er zijn geen open aanmeldingen.")).toBeVisible();
 });
+
+test("a hidden group shows its name and the bar, and no member or request", async () => {
+  const onReveal = vi.fn();
+  render(
+    <MembershipRequestList
+      groups={[{ workingGroup: noor!.workingGroup, requests: [noor!] }]}
+      hiddenGroups={[fleur!.workingGroup]}
+      onReveal={onReveal}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: fleur!.workingGroup.name })).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Toon met je toegangssleutel" }));
+  expect(onReveal).toHaveBeenCalledOnce();
+});
+
+test("without onReveal nothing changes", () => {
+  render(
+    <MembershipRequestList
+      groups={[{ workingGroup: noor!.workingGroup, requests: [noor!] }]}
+      hiddenGroups={[fleur!.workingGroup]}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: "Toon met je toegangssleutel" })).toBeNull();
+});

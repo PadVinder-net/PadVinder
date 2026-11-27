@@ -1,6 +1,7 @@
 import { devices, expect, test, type Browser, type Page } from "@playwright/test";
 import { runAdmin } from "./helpers/admin.ts";
 import { newAddress, randomWord } from "./helpers/mailpit.ts";
+import { confirmSession } from "./helpers/database.ts";
 import { createSession } from "./helpers/session.ts";
 import { createWorkingGroup, makeVolunteer } from "./helpers/working-groups.ts";
 
@@ -29,6 +30,7 @@ async function logInAsPlatformAdmin(page: Page): Promise<string> {
   runAdmin("grant-platform-admin", "--email", address);
   const name = `Hanna ${randomWord()}`;
   await createSession(page.context(), address, { name });
+  await confirmSession(page.context());
   return name;
 }
 
@@ -90,6 +92,7 @@ test("an organization admin reads the log of their own organization only", async
   const group = createWorkingGroup();
   const adminName = `Bram ${randomWord()}`;
   await createSession(page.context(), group.adminAddress, { name: adminName });
+  await confirmSession(page.context());
 
   await page.goto("/");
   const navigation = page.getByRole("navigation", { name: "Beheer" });

@@ -1,11 +1,13 @@
 import {
   apiErrorCode,
   mayRemoveMember,
+  requestPasskeyConfirmation,
   useMe,
   useRemoveMembership,
   type MeResponse,
 } from "@padvinder/api-client";
-import { apiErrorMessage, MemberDetail, nameInSentence } from "@padvinder/ui";
+import { apiErrorMessage, MemberDetail, nameInSentence, PasskeyHidden } from "@padvinder/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router";
 import { LoadError, Loading, SubScreen, type FlashState } from "./sub-screen";
 import { useMemberLists } from "./working-group-lists";
@@ -27,27 +29,40 @@ export function MemberScreen() {
 /** There is no endpoint for one membership: the member is found in the lists of the user's groups. */
 function MemberOfGroup({ me, membershipId }: { me: MeResponse; membershipId: string }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const lists = useMemberLists(me);
   const remove = useRemoveMembership();
 
   const found = lists.groups
-    .flatMap(({ workingGroup, members }) => members.map((member) => ({ workingGroup, member })))
+    .flatMap(({ workingGroup, members, reveals }) =>
+      members.map((member) => ({ workingGroup, member, reveals })),
+    )
     .find(({ member }) => member.membershipId === membershipId);
 
   if (!found) {
     if (lists.error) return <LoadError error={lists.error} onRetry={lists.refetch} />;
     if (lists.isPending) return <Loading>Lid laden…</Loading>;
+    // The member may belong to a group that is only named until the confirmation: ask for it
+    // instead of claiming the member is gone.
+    if (lists.hiddenGroups.length > 0)
+      return (
+        <div className="flex flex-col gap-3">
+          <p className="text-lg">Je ziet dit lid pas na bevestiging met je toegangssleutel.</p>
+          <PasskeyHidden onReveal={() => requestPasskeyConfirmation(queryClient)} />
+        </div>
+      );
     return <p className="text-lg">{apiErrorMessage("not_found")}</p>;
   }
 
-  const { workingGroup, member } = found;
+  const { workingGroup, member, reveals } = found;
   return (
     <MemberDetail
       member={member}
       workingGroupName={workingGroup.name}
       // For convenience only: the API decides, and a refusal shows its text.
-      canRemove={mayRemoveMember(me, workingGroup, member.isCoordinator)}
+      canRemove={mayRemoveMember(me, workingGroup, member.isCoordinator, { now: new Date() })}
       pending={remove.isPending}
+      onReveal={reveals ? () => requestPasskeyConfirmation(queryClient) : undefined}
       error={remove.isError ? apiErrorMessage(apiErrorCode(remove.error)) : undefined}
       onRemove={() =>
         remove.mutate(

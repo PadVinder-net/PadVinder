@@ -26,14 +26,11 @@ async function newPortalPage(browser: Browser): Promise<Page> {
 }
 
 /**
- * From the header, through Profiel, to Toegangssleutels, and makes the first passkey in the modal
- * that opens there: an admin without a confirmed session cannot list their passkeys yet.
+ * Opens Toegangssleutels and makes the first passkey in the modal that opens there: an admin
+ * without a confirmed session cannot list their passkeys yet.
  */
 async function makeFirstPasskey(page: Page): Promise<void> {
-  await page.goto("/");
-  await page.getByRole("link", { name: "Profiel" }).click();
-  await expect(page.getByRole("heading", { name: "Profiel", level: 1 })).toBeVisible();
-  await page.getByRole("link", { name: "Toegangssleutels" }).click();
+  await page.goto("/profile/passkeys");
 
   const modal = page.getByRole("dialog", { name: "Maak een toegangssleutel" });
   await expect(modal).toContainText("Voor beheer heb je een toegangssleutel nodig.");
@@ -86,12 +83,14 @@ test("an admin with a passkey confirms on a code session", async ({ page }) => {
     await page.getByLabel("Code").fill(await readLoginCode(group.adminAddress, { count: 2 }));
     await expect(page).toHaveURL(/\/working-groups$/);
 
-    await page.getByRole("link", { name: "Profiel" }).click();
-    await page.getByRole("link", { name: "Toegangssleutels" }).click();
+    // Werkgroepen is the first page that needs the passkey, so the modal opens there.
     const modal = page.getByRole("dialog", { name: "Bevestig dat jij het bent" });
     await expect(modal).toContainText("Voor beheer vraagt PadVinder om je toegangssleutel.");
     await modal.getByRole("button", { name: "Gebruik je toegangssleutel" }).click();
     await expect(modal).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Profiel" }).click();
+    await page.getByRole("link", { name: "Toegangssleutels" }).click();
     await expect(page.getByRole("listitem").filter({ hasText: "Toegevoegd op" })).toHaveCount(1);
   } finally {
     await authenticator.remove();

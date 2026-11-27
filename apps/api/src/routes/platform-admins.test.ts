@@ -1,10 +1,24 @@
-import { auditLogEntries, deleteAccount, grantPlatformAdmin, passkeys, users } from "@padvinder/db";
+import {
+  auditLogEntries,
+  deleteAccount,
+  grantPlatformAdmin,
+  passkeys,
+  revokePlatformAdmin,
+  users,
+} from "@padvinder/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { testEnv } from "../test-env";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -40,9 +54,11 @@ type Row = {
 const rows = (res: { json: () => unknown }) =>
   (res.json() as { platformAdmins: Row[] }).platformAdmins;
 
-const platformOnly = (ok: number) => ({
+const platformOnly = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 403,
+  organizationAdminUnconfirmed: 403,
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 403,
@@ -174,6 +190,17 @@ test("the address of a deleted account is 400 with an issue on email", async () 
 
 test("the only platform admin who logged in cannot remove themself: 409 last_platform_admin, and the flag stays", async () => {
   const self = cast.members.platformAdmin;
+  // The cast's second platform admin has logged in too: take the flag away for this test.
+  const second = cast.members.platformAdminUnconfirmed;
+  await revokePlatformAdmin(ctx.t.db, { email: second.email }, { kind: "system" });
+  try {
+    await onlyPlatformAdminCannotRemoveThemself(self);
+  } finally {
+    await grantPlatformAdmin(ctx.t.db, { email: second.email }, { kind: "system" });
+  }
+});
+
+async function onlyPlatformAdminCannotRemoveThemself(self: CastLogin) {
   const loggedInPlatformAdmins = await ctx.t.db
     .select({ id: users.id })
     .from(users)
@@ -192,7 +219,7 @@ test("the only platform admin who logged in cannot remove themself: 409 last_pla
   const [account] = await ctx.t.db.select().from(users).where(eq(users.id, self.userId));
   expect(account?.isPlatformAdmin).toBe(true);
   expect((await list(self)).statusCode).toBe(200);
-});
+}
 
 /** The `role.platform_admin_revoked` entries about this user. */
 const revokedEntries = (userId: string) =>
@@ -224,6 +251,7 @@ test("with a second platform admin who logged in, someone removes themself, and 
   const email = uniqueAddress("tweede");
   const second = await loginAs(ctx, email, { name: "Tweede Hoofdbeheerder" });
   await grantPlatformAdmin(ctx.t.db, { email }, { kind: "system" });
+  await stampSession(ctx, second.headers.cookie, new Date());
   expect((await list(second)).statusCode).toBe(200);
   const res = await remove(second, second.userId);
   expect(res.statusCode).toBe(204);

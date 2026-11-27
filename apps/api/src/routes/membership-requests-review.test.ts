@@ -17,8 +17,9 @@ import { createMemoryMailer, createMemoryMailQueue } from "@padvinder/mail";
 import { startNotificationHub, type NotificationHub } from "../realtime/notification-hub";
 import { testEnv } from "../test-env";
 import { openEvents } from "../test-open-events";
-import { createCast, expectStatuses, type Cast } from "../testing/cast";
+import { createCast, expectStatuses, type Cast, type ExpectedStatuses } from "../testing/cast";
 import { loginAs, type TestApp } from "../testing/login";
+import { stampSession } from "../testing/passkeys";
 
 // A real notification hub, so a test can read the live events from the stream.
 let t: TestDatabase | undefined;
@@ -53,9 +54,11 @@ afterAll(async () => {
 
 type Who = { headers: Record<string, string> };
 
-const reviewers = {
+const reviewers: ExpectedStatuses = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 200,
   volunteer: 403,
   volunteerOtherGroup: 404,
@@ -65,9 +68,11 @@ const reviewers = {
   anonymous: 401,
 };
 
-const everyone = {
+const everyone: Omit<ExpectedStatuses, "anonymous"> = {
   platformAdmin: 200,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: 200,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 200,
   volunteer: 200,
   volunteerOtherGroup: 200,
@@ -540,6 +545,7 @@ test("a decided or withdrawn request is not in the list", async () => {
 test("an admin who also coordinates a group gets its requests once", async () => {
   const email = `beheerder-coordinator-${uuidv7()}@example.test`;
   const login = await loginAs(ctx, email, { name: "Dubbele Rol" });
+  await stampSession(ctx, login.headers.cookie, new Date());
   await grantOrganizationAdmin(
     ctx.t.db,
     { email, organizationId: cast.organization.id },
@@ -582,4 +588,26 @@ test("every request in the list opens for the same person", async () => {
     expect(ids.length).toBeGreaterThan(0);
     for (const id of ids) expect((await getOne(cast.members[who], id)).statusCode).toBe(200);
   }
+});
+
+test("an unconfirmed organization admin who coordinates a group gets passkey_required on the whole list, and its own group's list", async () => {
+  const email = `beheerder-coordinator-${uuidv7()}@example.test`;
+  const login = await loginAs(ctx, email, { name: "Dubbele Rol" });
+  await grantOrganizationAdmin(
+    ctx.t.db,
+    { email, organizationId: cast.organization.id },
+    { kind: "system" },
+  );
+  await ctx.t.db.insert(workingGroupMemberships).values({
+    userId: login.userId,
+    workingGroupId: cast.workingGroup.workingGroupId,
+    isCoordinator: true,
+  });
+  const id = await freshRequest();
+  const all = await listAll(login);
+  expect(all.statusCode).toBe(403);
+  expect(all.json().code).toBe("passkey_required");
+  const own = await list(login);
+  expect(own.statusCode).toBe(200);
+  expect(idsOf(own)).toContain(id);
 });

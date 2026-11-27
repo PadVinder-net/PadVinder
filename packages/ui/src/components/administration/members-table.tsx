@@ -1,6 +1,7 @@
 import type { Member } from "@padvinder/contracts";
 import { displayName } from "../../lib/display-name";
 import { mailHref, telHref } from "../contact-rows";
+import { PasskeyHidden } from "../passkeys/passkey-hidden";
 import { RowMenu, type RowMenuItem } from "../row-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
@@ -10,6 +11,8 @@ export type MembersTableProps = {
   canRemove(member: Member): boolean;
   onSetCoordinator(member: Member, isCoordinator: boolean): void;
   onRemove(member: Member): void;
+  /** Asks for a passkey confirmation; the contact cells then show a grey bar when hidden. */
+  onReveal?(): void;
 };
 
 const linkClass = "underline underline-offset-4 break-all";
@@ -20,6 +23,7 @@ export function MembersTable({
   canRemove,
   onSetCoordinator,
   onRemove,
+  onReveal,
 }: MembersTableProps) {
   if (members.length === 0) {
     return <p className="text-lg">Deze werkgroep heeft nog geen leden.</p>;
@@ -64,10 +68,14 @@ export function MembersTable({
                   <a href={mailHref(member.email)} className={linkClass}>
                     {member.email}
                   </a>
+                ) : onReveal ? (
+                  <PasskeyHidden onReveal={onReveal} />
                 ) : null}
               </TableCell>
               <TableCell>
-                {member.phone ? (
+                {member.email === undefined && onReveal ? (
+                  <PasskeyHidden onReveal={onReveal} width="short" />
+                ) : member.phone ? (
                   telHref(member.phone) ? (
                     <a href={telHref(member.phone)} className={linkClass}>
                       {member.phone}

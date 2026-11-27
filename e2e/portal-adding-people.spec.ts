@@ -1,6 +1,7 @@
 import { devices, expect, test, type Browser, type Page } from "@playwright/test";
 import { runAdmin } from "./helpers/admin.ts";
 import { newAddress, randomWord, readLoginCode, readMail } from "./helpers/mailpit.ts";
+import { confirmSession } from "./helpers/database.ts";
 import { createSession } from "./helpers/session.ts";
 import { createWorkingGroup, makeVolunteer } from "./helpers/working-groups.ts";
 
@@ -40,6 +41,7 @@ test("a platform admin makes an organization and a group and adds two people wit
   const platformAdmin = newAddress("hoofdbeheerder");
   runAdmin("grant-platform-admin", "--email", platformAdmin);
   await createSession(page.context(), platformAdmin, { name: "Hanna Hoofd" });
+  await confirmSession(page.context());
 
   const word = randomWord();
   const organizationName = `Paddentrek ${word}`;

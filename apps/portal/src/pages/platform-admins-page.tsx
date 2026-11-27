@@ -55,7 +55,19 @@ export function PlatformAdminsPage() {
   const me = useMe().data;
   const admins = usePlatformAdmins();
   const add = useAddPlatformAdmin();
-  const remove = useRemovePlatformAdmin();
+  // The toast comes from the mutation's own success, which also runs after a confirmation and
+  // after the page is gone (removing yourself refetches me, which unmounts this page).
+  const remove = useRemovePlatformAdmin({
+    onRemoved: (userId) => {
+      setRemoving((current) => ({ ...current, open: false }));
+      const admin = admins.data?.platformAdmins.find((candidate) => candidate.userId === userId);
+      showToast(
+        userId === me?.user.id
+          ? "Je bent geen hoofdbeheerder meer."
+          : `${admin ? nameOrAddress(admin) : "Deze persoon"} is geen hoofdbeheerder meer.`,
+      );
+    },
+  });
   const resetPasskeys = useResetPlatformAdminPasskeys();
   const [adding, setAdding] = useState<AddState>({ open: false, key: 0, step: "email", email: "" });
   const [removing, setRemoving] = useState<RemoveState>({ open: false, admin: null });
@@ -83,13 +95,13 @@ export function PlatformAdminsPage() {
 
   function appoint() {
     const email = adding.email;
-    add.mutate(email, {
-      onSuccess: () => {
-        setAdding((current) => ({ ...current, open: false }));
-        showToast(`${email} is hoofdbeheerder.`);
-      },
-    });
+    add.mutate(email);
   }
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(add.status, () => {
+    setAdding((current) => ({ ...current, open: false }));
+    showToast(`${add.variables ?? ""} is hoofdbeheerder.`);
+  });
 
   function askRemove(admin: PlatformAdmin) {
     remove.reset();
@@ -99,21 +111,7 @@ export function PlatformAdminsPage() {
   function confirmRemove() {
     const admin = removing.admin;
     if (!admin) return;
-    const own = admin.userId === me?.user.id;
-    // Not `mutate`'s callbacks: removing yourself refetches me first, which unmounts this page,
-    // and those callbacks would then not run. The toast still has to say it happened.
-    void remove.mutateAsync(admin.userId).then(
-      () => {
-        setRemoving((current) => ({ ...current, open: false }));
-        showToast(
-          own
-            ? "Je bent geen hoofdbeheerder meer."
-            : `${nameOrAddress(admin)} is geen hoofdbeheerder meer.`,
-        );
-      },
-      // The dialog shows the text of `remove.error`.
-      () => {},
-    );
+    remove.mutate(admin.userId);
   }
   const cancelRemove = () => {
     if (!remove.isPending) setRemoving((current) => ({ ...current, open: false }));

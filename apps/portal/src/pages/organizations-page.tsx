@@ -21,6 +21,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 import { LoadError } from "./load-error";
 import { NotFoundPage } from "./not-found-page";
+import { useOnSuccess } from "./use-on-success";
 
 /**
  * The organizations (`/organizations`): for a platform admin or an admin of more than one
@@ -84,17 +85,20 @@ function NewOrganization() {
   }
 
   function save(values: OrganizationFormValues) {
-    create.mutate(
-      { name: values.name, adminEmail: values.adminEmail, contactEmail: values.contactEmail },
-      {
-        onSuccess: (saved) => {
-          setForm((current) => ({ ...current, open: false }));
-          showToast(`Organisatie ${saved.name} is toegevoegd.`);
-          void navigate(`/organizations/${saved.id}`);
-        },
-      },
-    );
+    create.mutate({
+      name: values.name,
+      adminEmail: values.adminEmail,
+      contactEmail: values.contactEmail,
+    });
   }
+
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(create.status, () => {
+    if (!create.data) return;
+    setForm((current) => ({ ...current, open: false }));
+    showToast(`Organisatie ${create.data.name} is toegevoegd.`);
+    void navigate(`/organizations/${create.data.id}`);
+  });
 
   // While the save runs, the modal stays open: closed, the answer would show nowhere.
   function close() {

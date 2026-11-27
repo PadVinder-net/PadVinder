@@ -24,15 +24,18 @@ export const auditLogRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app, { d
         summary:
           "One page of the audit log, newest first: all for a platform admin, the entries of the organizations you administer for an organization admin, empty for others",
         querystring: listAuditLogEntriesQuerySchema,
-        response: { 200: auditLogPageSchema, ...errorResponses(400, 401, 404) },
+        response: { 200: auditLogPageSchema, ...errorResponses(400, 401, 403, 404) },
       },
     },
     async (request): Promise<AuditLogPage> => {
       const actor = request.actor!;
       const { organizationId } = request.query;
       if (organizationId !== undefined) {
+        // The organization first: reads only the actor, so another organization stays 404 for an
+        // unconfirmed organization admin, and their own gives passkey_required.
         authorize(actor, { action: "organization.readAuditLog", target: { organizationId } });
       }
+      authorize(actor, { action: "admin.listAdministered" });
       return listAuditLogEntries(db, actor, request.query);
     },
   );

@@ -3,6 +3,7 @@ import { type Db, liveEventsChannel } from "@padvinder/db";
 import type { ServerResponse } from "node:http";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { type Actor, loadActor } from "../permissions/actor";
+import { effectiveActor } from "../permissions/confirmation";
 import { addressOf, shouldDeliver } from "../realtime/audience";
 import type { NotificationHub } from "../realtime/notification-hub";
 
@@ -102,7 +103,10 @@ export const eventsRoutes: FastifyPluginAsyncZod<{
           await reload();
           if (ended) return;
         }
-        if (!shouldDeliver(actor, liveEventAudiences[event.type], addressOf(event))) return;
+        // The roles are those of the actor loaded at most `sessionRecheckMs` ago; the moment is
+        // that of the delivery, so a confirmation that runs out stops admin events at once.
+        const deliverTo = effectiveActor({ ...actor, now: new Date() });
+        if (!shouldDeliver(deliverTo, liveEventAudiences[event.type], addressOf(event))) return;
         write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
       };
       // The hub has already validated the event against the channel's schema.

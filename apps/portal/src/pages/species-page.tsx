@@ -20,6 +20,7 @@ import {
   type SpeciesFormValues,
 } from "@padvinder/ui";
 import { useState } from "react";
+import { useOnSuccess } from "./use-on-success";
 
 type FormState = {
   open: boolean;
@@ -68,7 +69,13 @@ export function SpeciesPage() {
   const species = useSpecies();
   const create = useCreateSpecies();
   const edit = useUpdateSpecies();
-  const setActive = useUpdateSpecies();
+  // A switch on has no dialog; its toast comes from the mutation's success, so a request sent
+  // again after a passkey confirmation says it too.
+  const setActive = useUpdateSpecies({
+    onSuccess: (saved, variables) => {
+      if (variables.patch.active === true) showToast(`${nameOf(saved)} staat aan.`);
+    },
+  });
   const [form, setForm] = useState<FormState>({ open: false, key: 0, species: null });
   const [turnOff, setTurnOff] = useState<TurnOffState>({ open: false, species: null });
 
@@ -87,31 +94,28 @@ export function SpeciesPage() {
         closeForm();
         return;
       }
-      edit.mutate(
-        { speciesId: form.species.id, patch },
-        {
-          onSuccess: (saved) => {
-            closeForm();
-            showToast(`${nameOf(saved)} is gewijzigd.`);
-          },
-        },
-      );
+      edit.mutate({ speciesId: form.species.id, patch });
     } else {
-      create.mutate(values, {
-        onSuccess: (saved) => {
-          closeForm();
-          showToast(`${nameOf(saved)} is toegevoegd.`);
-        },
-      });
+      create.mutate(values);
     }
   }
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(edit.status, () => {
+    if (!edit.data) return;
+    closeForm();
+    showToast(`${nameOf(edit.data)} is gewijzigd.`);
+  });
+  useOnSuccess(create.status, () => {
+    if (!create.data) return;
+    closeForm();
+    showToast(`${nameOf(create.data)} is toegevoegd.`);
+  });
 
   function switchOn(item: Species) {
     // Not `mutate`'s callbacks: those fire only for the latest call, and each tap gets its toast.
-    void setActive.mutateAsync({ speciesId: item.id, patch: { active: true } }).then(
-      (saved) => showToast(`${nameOf(saved)} staat aan.`),
-      (error: unknown) => showToast(apiErrorMessage(apiErrorCode(error))),
-    );
+    void setActive
+      .mutateAsync({ speciesId: item.id, patch: { active: true } })
+      .catch((error: unknown) => showToast(apiErrorMessage(apiErrorCode(error))));
   }
 
   function askTurnOff(item: Species) {
@@ -121,16 +125,14 @@ export function SpeciesPage() {
 
   function confirmTurnOff() {
     if (!turnOff.species) return;
-    setActive.mutate(
-      { speciesId: turnOff.species.id, patch: { active: false } },
-      {
-        onSuccess: (saved) => {
-          setTurnOff((current) => ({ ...current, open: false }));
-          showToast(`${nameOf(saved)} staat uit.`);
-        },
-      },
-    );
+    setActive.mutate({ speciesId: turnOff.species.id, patch: { active: false } });
   }
+  // Only the switching off has a dialog to close; a switch on shows its toast above.
+  useOnSuccess(setActive.status, () => {
+    if (!setActive.data || setActive.variables?.patch.active !== false) return;
+    setTurnOff((current) => ({ ...current, open: false }));
+    showToast(`${nameOf(setActive.data)} staat uit.`);
+  });
 
   function handleSetActive(id: string, active: boolean) {
     const item = species.data?.species.find((candidate) => candidate.id === id);

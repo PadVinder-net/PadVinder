@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { runAdmin } from "./helpers/admin.ts";
 import { newAddress, randomWord } from "./helpers/mailpit.ts";
+import { confirmSession } from "./helpers/database.ts";
 import { createSession } from "./helpers/session.ts";
 import { createWorkingGroup, makeVolunteer } from "./helpers/working-groups.ts";
 
@@ -11,6 +12,7 @@ async function logInAsPlatformAdmin(page: Page, label: string): Promise<void> {
   const address = newAddress(label);
   runAdmin("grant-platform-admin", "--email", address);
   await createSession(page.context(), address);
+  await confirmSession(page.context());
 }
 
 /** Fills the open species form and saves it. */

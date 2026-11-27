@@ -43,9 +43,18 @@ export function useAddPlatformAdmin() {
 }
 
 /** Takes the platform admin role from a user. */
-export function useRemovePlatformAdmin() {
+export function useRemovePlatformAdmin(
+  options: {
+    /**
+     * Runs on every success, also of a request sent again after a passkey confirmation and after
+     * the page is gone (removing yourself refetches me, which unmounts the page).
+     */
+    onRemoved?(userId: string): void;
+  } = {},
+) {
   const onSettled = useSettledAdmins();
   return useMutation({
+    onSuccess: (_data, userId) => options.onRemoved?.(userId),
     mutationFn: async (userId: string) => {
       await removePlatformAdmin({ path: { userId }, throwOnError: true });
     },

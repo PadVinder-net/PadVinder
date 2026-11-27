@@ -39,3 +39,10 @@ export const NotOpenable: Story = { args: { onOpen: undefined } };
 export const WithContactRights: Story = {
   args: { groups: [{ workingGroup: noord, members: membersWithContactFixture }] },
 };
+export const WithHiddenGroups: Story = {
+  args: {
+    groups: [{ workingGroup: noord, members: membersFixture }],
+    hiddenGroups: [zuidOost],
+    onReveal: () => {},
+  },
+};

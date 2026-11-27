@@ -18,7 +18,9 @@ test("everyone logged in gets the list, nobody else", async () =>
     cast,
     {
       platformAdmin: 200,
+      platformAdminUnconfirmed: 200,
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: 200,
       coordinator: 200,
       volunteer: 200,
       volunteerOtherGroup: 200,

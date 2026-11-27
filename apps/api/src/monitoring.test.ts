@@ -18,6 +18,7 @@ import { loadActor } from "./permissions/actor";
 import type { NotificationHub } from "./realtime/notification-hub";
 import { openEvents } from "./test-open-events";
 import { createTestApp, loginAs, type TestApp } from "./testing/login";
+import { stampSession } from "./testing/passkeys";
 
 const sentry = createTestTransport();
 
@@ -67,6 +68,7 @@ beforeAll(async () => {
     { email: "monitoring-admin@example.test" },
     { kind: "system" },
   );
+  await stampSession(ctx, admin.headers.cookie, new Date());
   await ctx.app.listen({ host: "127.0.0.1", port: 0 });
   origin = `http://127.0.0.1:${(ctx.app.server.address() as AddressInfo).port}`;
 });

@@ -70,12 +70,13 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
       schema: {
         operationId: "listOrganizations",
         summary: "The organizations you administer: all for a platform admin, none for others",
-        response: { 200: organizationListResponseSchema, ...errorResponses(401) },
+        response: { 200: organizationListResponseSchema, ...errorResponses(401, 403) },
       },
     },
-    async (request): Promise<OrganizationListResponse> => ({
-      organizations: await listAdministeredOrganizations(db, request.actor!),
-    }),
+    async (request): Promise<OrganizationListResponse> => {
+      authorize(request.actor!, { action: "admin.listAdministered" });
+      return { organizations: await listAdministeredOrganizations(db, request.actor!) };
+    },
   );
 
   app.get(
@@ -86,7 +87,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
         operationId: "getOrganization",
         summary: "One organization with its admins",
         params: organizationParamsSchema,
-        response: { 200: organizationDetailSchema, ...errorResponses(400, 401, 404) },
+        response: { 200: organizationDetailSchema, ...errorResponses(400, 401, 403, 404) },
       },
     },
     async (request): Promise<OrganizationDetail> => {
@@ -144,9 +145,11 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
       const { organizationId } = request.params;
       const target = { organizationId };
       // Both are decided before anything changes: a body with a name from an admin changes nothing.
-      authorize(actor, { action: "organization.changeContact", target });
+      // Rename first: an admin who may not rename at all gets 403 not_allowed, never a request for
+      // a passkey that would not help.
       if (request.body.name !== undefined)
         authorize(actor, { action: "organization.rename", target });
+      authorize(actor, { action: "organization.changeContact", target });
       await mapAdminErrors(
         () =>
           updateOrganization(
@@ -226,7 +229,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
           "Add a working group with its first coordinator (admins of the organization and platform admins)",
         params: organizationParamsSchema,
         body: createWorkingGroupRequestSchema,
-        response: { 201: managedWorkingGroupSchema, ...errorResponses(400, 401, 404, 409) },
+        response: { 201: managedWorkingGroupSchema, ...errorResponses(400, 401, 403, 404, 409) },
       },
     },
     async (request, reply): Promise<ManagedWorkingGroup> => {

@@ -11,6 +11,7 @@ import {
 } from "@padvinder/ui";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { useOnSuccess } from "./use-on-success";
 
 export type CreateWorkingGroupProps = {
   open: boolean;
@@ -57,17 +58,15 @@ export function CreateWorkingGroup({ open, organizations, onClose }: CreateWorki
 
   function save(values: WorkingGroupFormValues) {
     const { organizationId, ...body } = values;
-    create.mutate(
-      { organizationId, body },
-      {
-        onSuccess: (saved) => {
-          onClose();
-          showToast(`Werkgroep ${saved.name} is toegevoegd.`);
-          void navigate(`/working-groups/${saved.id}`);
-        },
-      },
-    );
+    create.mutate({ organizationId, body });
   }
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(create.status, () => {
+    if (!create.data) return;
+    onClose();
+    showToast(`Werkgroep ${create.data.name} is toegevoegd.`);
+    void navigate(`/working-groups/${create.data.id}`);
+  });
 
   // While the save runs, the modal stays open: closed, the answer would show nowhere.
   function close() {

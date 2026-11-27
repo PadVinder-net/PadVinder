@@ -27,3 +27,10 @@ export const AsCoordinator: Story = {
   args: { canSetCoordinator: false, canRemove: (member) => !member.isCoordinator },
 };
 export const Empty: Story = { args: { members: [] } };
+/** An unconfirmed admin: the contact details are left out and a bar asks for the passkey. */
+export const Hidden: Story = {
+  args: {
+    members: membersWithContactFixture.map(({ email: _email, phone: _phone, ...rest }) => rest),
+    onReveal: () => {},
+  },
+};

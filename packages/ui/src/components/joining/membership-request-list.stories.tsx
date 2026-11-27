@@ -33,3 +33,10 @@ export const TwoGroups: Story = {
   },
 };
 export const Empty: Story = {};
+export const WithHiddenGroups: Story = {
+  args: {
+    groups: [{ workingGroup: noor!.workingGroup, requests: [noor!, sem!] }],
+    hiddenGroups: [fleur!.workingGroup],
+    onReveal: () => {},
+  },
+};

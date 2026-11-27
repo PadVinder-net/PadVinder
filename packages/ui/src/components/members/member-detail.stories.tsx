@@ -36,3 +36,4 @@ export const Nameless: Story = {
   args: { member: { ...membersWithContactFixture[1]!, name: "" } },
 };
 export const NeverLoggedIn: Story = { args: { member: membersWithContactFixture[3]! } };
+export const Hidden: Story = { args: { member: membersFixture[1]!, onReveal: () => {} } };

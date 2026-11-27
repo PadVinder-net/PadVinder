@@ -84,7 +84,9 @@ test("who may list the members", async () => {
     cast,
     {
       platformAdmin: 200,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: 200,
       coordinator: 200,
       volunteer: 200,
       volunteerOtherGroup: 404,
@@ -148,7 +150,9 @@ test("who may remove a volunteer", async () => {
     cast,
     {
       platformAdmin: 204,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 204,
+      organizationAdminUnconfirmed: "passkey_required",
       coordinator: 204,
       volunteer: 403,
       volunteerOtherGroup: 404,
@@ -342,4 +346,39 @@ test("removing a person who was added by mistake and never logged in frees the a
   expect(again.json().results).toEqual([{ email: address, outcome: "added" }]);
   const [newAccount] = await ctx.t.db.select().from(users).where(eq(users.email, address));
   expect(newAccount!.id).not.toBe(account!.id);
+});
+
+test("an unconfirmed organization admin who is a volunteer gets the members without the contact keys, and passkeyReveals", async () => {
+  const res = await list(cast.members.organizationAdminUnconfirmed);
+  expect(res.statusCode).toBe(200);
+  const body = res.json();
+  expect(body.passkeyReveals).toEqual(["email", "phone", "hasLoggedIn"]);
+  expect(body.members.length).toBeGreaterThanOrEqual(2);
+  for (const member of body.members) {
+    expect(Object.keys(member).sort()).toEqual(["isCoordinator", "membershipId", "name", "userId"]);
+  }
+  // The raw members hold none of the keys; the names appear only in passkeyReveals.
+  expect(JSON.stringify(body.members)).not.toMatch(/email|phone|hasLoggedIn/);
+  expect(res.body).not.toMatch(/example\.test/);
+});
+
+test("a confirmed admin gets the keys and no passkeyReveals", async () => {
+  const res = await list(cast.members.organizationAdmin);
+  expect(res.statusCode).toBe(200);
+  expect(res.json().passkeyReveals).toBeUndefined();
+  expect(res.body).not.toContain("passkeyReveals");
+  expect(res.body).toContain('"email"');
+  expect(res.body).toContain('"hasLoggedIn"');
+});
+
+test("a volunteer who is no admin gets neither the contact keys nor passkeyReveals", async () => {
+  const res = await list(cast.members.volunteer);
+  expect(res.body).not.toContain("passkeyReveals");
+  expect(res.body).not.toContain('"email"');
+});
+
+test("an unconfirmed organization admin who is no member of the group gets passkey_required on its members", async () => {
+  const res = await list(cast.members.organizationAdminUnconfirmed, cast.otherGroup.workingGroupId);
+  expect(res.statusCode).toBe(403);
+  expect(res.json().code).toBe("passkey_required");
 });

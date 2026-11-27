@@ -189,3 +189,19 @@ test("an organization admin without a passkey shows Nog geen toegangssleutel; th
   await userEvent.click(screen.getByRole("menuitem", { name: "Verwijder toegangssleutels" }));
   expect(onResetPasskeys).toHaveBeenCalledWith(admins[1]);
 });
+
+test("the members table shows the bar in the contact cells", async () => {
+  const onReveal = vi.fn();
+  const hidden = membersWithContactFixture.map(({ email: _e, phone: _p, ...rest }) => rest);
+  render(<MembersTable members={hidden} {...memberProps} onReveal={onReveal} />);
+  const buttons = screen.getAllByRole("button", { name: "Toon met je toegangssleutel" });
+  expect(buttons).toHaveLength(hidden.length * 2);
+  await userEvent.click(buttons[0]!);
+  expect(onReveal).toHaveBeenCalledOnce();
+});
+
+test("the members table without onReveal shows no bar", () => {
+  const hidden = membersWithContactFixture.map(({ email: _e, phone: _p, ...rest }) => rest);
+  render(<MembersTable members={hidden} {...memberProps} />);
+  expect(screen.queryByRole("button", { name: "Toon met je toegangssleutel" })).toBeNull();
+});

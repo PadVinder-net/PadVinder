@@ -1,4 +1,4 @@
-import { usePasskeyConfirmation } from "@padvinder/api-client";
+import { useAdminConfirmationExpiry, usePasskeyConfirmation } from "@padvinder/api-client";
 import { PasskeyModal } from "@padvinder/ui";
 
 /**
@@ -7,6 +7,8 @@ import { PasskeyModal } from "@padvinder/ui";
  */
 export function PasskeyConfirmationHost() {
   const confirmation = usePasskeyConfirmation();
+  // When the confirmation runs out, me is refetched, so the screens fall back without a reload.
+  useAdminConfirmationExpiry();
   return (
     <PasskeyModal
       open={confirmation.open}

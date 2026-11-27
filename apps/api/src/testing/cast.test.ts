@@ -49,11 +49,16 @@ test("the cast has the roles it says", async () => {
   expect(cast.foreignGroup.organizationId).toBe(cast.otherOrganization.id);
 });
 
-test("the cast has eight members, and each organization exactly its own admin", async () => {
-  expect(Object.keys(cast.members)).toHaveLength(8);
+test("the cast has ten members, and each organization its admins", async () => {
+  expect(Object.keys(cast.members)).toHaveLength(10);
   const admins = async (organizationId: string) =>
     (await getOrganization(ctx.t.db, organizationId))?.admins.map((admin) => admin.userId);
-  expect(await admins(cast.organization.id)).toEqual([cast.members.organizationAdmin.userId]);
+  expect((await admins(cast.organization.id))?.sort()).toEqual(
+    [
+      cast.members.organizationAdmin.userId,
+      cast.members.organizationAdminUnconfirmed.userId,
+    ].sort(),
+  );
   expect(await admins(cast.otherOrganization.id)).toEqual([
     cast.members.organizationAdminOtherOrganization.userId,
   ]);
@@ -85,7 +90,9 @@ test("every member's cookie is a working session", async () => {
     cast,
     {
       platformAdmin: 200,
+      platformAdminUnconfirmed: 200,
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: 200,
       coordinator: 200,
       volunteer: 200,
       volunteerOtherGroup: 200,
@@ -101,7 +108,9 @@ test("every member's cookie is a working session", async () => {
 test("expectStatuses names the members whose status differs", async () => {
   const all = {
     platformAdmin: 200,
+    platformAdminUnconfirmed: 200,
     organizationAdmin: 200,
+    organizationAdminUnconfirmed: 200,
     coordinator: 200,
     volunteer: 200,
     volunteerOtherGroup: 200,
@@ -121,7 +130,7 @@ test("expectStatuses names the members whose status differs", async () => {
   expect(error?.message).not.toContain("coordinator:");
 });
 
-test("the cast's three admins are recently confirmed; nobody else is stamped", async () => {
+test("the cast's unconfirmed admins have no passkey moment; the other admins are recently confirmed", async () => {
   const { rows } = await ctx.t.pool.query<{ user_id: string; passkey_verified_at: Date | null }>(
     "select user_id, passkey_verified_at from sessions",
   );
@@ -135,4 +144,61 @@ test("the cast's three admins are recently confirmed; nobody else is stamped", a
   for (const r of rows.filter((r) => r.passkey_verified_at)) {
     expect(Date.now() - r.passkey_verified_at!.getTime()).toBeLessThan(10 * 60 * 1000);
   }
+});
+
+test("organizationAdminUnconfirmed is an admin of cast.organization and a volunteer of cast.workingGroup", async () => {
+  const access = await getAccess(ctx.t.db, cast.members.organizationAdminUnconfirmed.userId);
+  expect(access?.adminOfOrganizationIds).toEqual([cast.organization.id]);
+  expect(access?.memberships).toMatchObject([
+    { workingGroupId: cast.workingGroup.workingGroupId, isCoordinator: false },
+  ]);
+  const platform = await getAccess(ctx.t.db, cast.members.platformAdminUnconfirmed.userId);
+  expect(platform?.isPlatformAdmin).toBe(true);
+  expect(platform?.memberships).toEqual([]);
+});
+
+test("expectStatuses tells 403 not_allowed from 403 passkey_required", async () => {
+  const all = {
+    platformAdmin: 200,
+    platformAdminUnconfirmed: 200,
+    organizationAdmin: 200,
+    organizationAdminUnconfirmed: 200,
+    coordinator: 200,
+    volunteer: 200,
+    volunteerOtherGroup: 200,
+    coordinatorOtherOrganization: 200,
+    organizationAdminOtherOrganization: 200,
+    applicant: 200,
+    anonymous: 200,
+  } as const;
+  const reply = (code: string) => async () => ({
+    statusCode: 403,
+    body: JSON.stringify({ code }),
+  });
+  await expectStatuses(cast, { ...all, platformAdmin: "passkey_required" }, async (headers) =>
+    headers.cookie === cast.members.platformAdmin.headers.cookie
+      ? reply("passkey_required")()
+      : { statusCode: 200, body: "{}" },
+  );
+  const wrong = await expectStatuses(cast, { ...all, platformAdmin: 403 }, async (headers) =>
+    headers.cookie === cast.members.platformAdmin.headers.cookie
+      ? reply("passkey_required")()
+      : { statusCode: 200, body: "{}" },
+  ).then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(wrong?.message).toContain("platformAdmin: expected 403, got passkey_required");
+  const wrong2 = await expectStatuses(
+    cast,
+    { ...all, platformAdmin: "passkey_required" },
+    async (headers) =>
+      headers.cookie === cast.members.platformAdmin.headers.cookie
+        ? reply("not_allowed")()
+        : { statusCode: 200, body: "{}" },
+  ).then(
+    () => null,
+    (e: unknown) => e as Error,
+  );
+  expect(wrong2?.message).toContain("platformAdmin: expected passkey_required, got 403");
 });

@@ -1,6 +1,7 @@
 import { devices, expect, test, type Browser, type Page } from "@playwright/test";
 import { runAdmin } from "./helpers/admin.ts";
 import { newAddress, randomWord } from "./helpers/mailpit.ts";
+import { confirmSession } from "./helpers/database.ts";
 import { createSession } from "./helpers/session.ts";
 import { createWorkingGroup, makeVolunteer } from "./helpers/working-groups.ts";
 
@@ -52,6 +53,7 @@ test("a platform admin makes an organization, and its admin makes a working grou
   const platformAdmin = newAddress("hoofdbeheerder");
   runAdmin("grant-platform-admin", "--email", platformAdmin);
   await createSession(page.context(), platformAdmin);
+  await confirmSession(page.context());
 
   const word = randomWord();
   const organizationName = `Paddentrek ${word}`;
@@ -73,6 +75,7 @@ test("a platform admin makes an organization, and its admin makes a working grou
   const adminPage = await newPortalPage(browser);
   try {
     await createSession(adminPage.context(), adminAddress, { name: "Bram Beheer" });
+    await confirmSession(adminPage.context());
     await adminPage.goto("/");
     // Home sends someone who manages something to the first item, Werkgroepen.
     await expect(adminPage).toHaveURL(/\/working-groups$/);
@@ -108,6 +111,7 @@ test("an admin makes a member coordinator, and the last coordinator cannot go", 
   const volunteer = newAddress("vrijwilliger");
   makeVolunteer(volunteer, group.id);
   await createSession(context, group.adminAddress, { name: "Bram Beheer" });
+  await confirmSession(context);
 
   await page.goto(`/working-groups/${group.id}`);
   await expect(page.getByRole("heading", { name: group.name })).toBeVisible();
@@ -143,6 +147,7 @@ test("a working group that is switched off leaves its member's app, and comes ba
   const volunteer = newAddress("vrijwilliger");
   makeVolunteer(volunteer, group.id);
   await createSession(context, group.adminAddress, { name: "Bram Beheer" });
+  await confirmSession(context);
 
   const phone = await newPhonePage(browser);
   try {

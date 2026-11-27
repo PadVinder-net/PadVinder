@@ -90,7 +90,7 @@ function NavItemLink({ item, openCount = 0 }: { item: NavItem; openCount?: numbe
  * manages. Only rendered for someone who manages something, so a volunteer never asks for the list.
  */
 function RequestsLink({ item }: { item: NavItem }) {
-  const workingGroups = useManagedWorkingGroups().data?.workingGroups ?? [];
+  const workingGroups = useManagedWorkingGroups({ background: true }).data?.workingGroups ?? [];
   const openCount = workingGroups.reduce((sum, group) => sum + group.pendingRequestCount, 0);
   return <NavItemLink item={item} openCount={openCount} />;
 }

@@ -7,8 +7,15 @@ import {
 import { and, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import {
+  createCast,
+  expectStatuses,
+  type Cast,
+  type CastLogin,
+  type ExpectedStatuses,
+} from "../testing/cast";
 import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import { recordQueries } from "../testing/query-log";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -73,9 +80,11 @@ const entriesFor = (subjectId: string, action: string) =>
     .from(auditLogEntries)
     .where(and(eq(auditLogEntries.subjectId, subjectId), eq(auditLogEntries.action, action)));
 
-const managersOfGroup = (ok: number) => ({
+const managersOfGroup = (ok: number): ExpectedStatuses => ({
   platformAdmin: ok,
+  platformAdminUnconfirmed: "passkey_required",
   organizationAdmin: ok,
+  organizationAdminUnconfirmed: "passkey_required",
   coordinator: 403,
   volunteer: 403,
   volunteerOtherGroup: 404,
@@ -90,7 +99,9 @@ test("everyone logged in gets their own list", async () =>
     cast,
     {
       platformAdmin: 200,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: "passkey_required",
       coordinator: 200,
       volunteer: 200,
       volunteerOtherGroup: 200,
@@ -140,7 +151,9 @@ test("only the organization's admins and platform admins create a working group"
     cast,
     {
       platformAdmin: 201,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 201,
+      organizationAdminUnconfirmed: "passkey_required",
       coordinator: 404,
       volunteer: 404,
       volunteerOtherGroup: 404,
@@ -366,5 +379,79 @@ test("the list everyone chooses from still holds exactly id, name, city and orga
   const res = await send(cast.members.applicant, "GET", "/api/working-groups");
   for (const group of res.json().workingGroups) {
     expect(Object.keys(group).sort()).toEqual(["city", "id", "name", "organization"]);
+  }
+});
+
+/**
+ * What an unconfirmed admin's request queries before it answers `passkey_required`: the actor's
+ * own load, which a request that is refused at once (here: removing a passkey needs a recent
+ * confirmation, and nothing is read before `authorize`) shows as the baseline.
+ */
+const baselineQueries = (who: Who) =>
+  recordQueries(ctx.t.pool, async () => {
+    const res = await ctx.app.inject({
+      method: "DELETE",
+      url: `/api/passkeys/${uuidv7()}`,
+      headers: who.headers,
+    });
+    expect(res.json().code).toBe("passkey_required");
+  });
+
+test.each([
+  "/api/managed-working-groups",
+  "/api/organizations",
+  "/api/membership-requests",
+  "/api/audit-log-entries",
+  "/api/platform-admins",
+])("%s is passkey_required for an unconfirmed admin and reads nothing", async (path) => {
+  for (const who of [
+    cast.members.platformAdminUnconfirmed,
+    cast.members.organizationAdminUnconfirmed,
+  ]) {
+    if (path === "/api/platform-admins" && who === cast.members.organizationAdminUnconfirmed)
+      continue;
+    const baseline = await baselineQueries(who);
+    expect(baseline.length).toBeGreaterThan(0);
+    let status = 0;
+    let code: string | undefined;
+    const queries = await recordQueries(ctx.t.pool, async () => {
+      const res = await send(who, "GET", path);
+      status = res.statusCode;
+      code = res.json().code;
+    });
+    expect(status).toBe(403);
+    expect(code).toBe("passkey_required");
+    // The same queries as a request that is refused at once: only the actor was loaded.
+    expect(queries).toEqual(baseline);
+  }
+});
+
+test("the spy sees queries: a confirmed admin's list runs more than the actor's load", async () => {
+  const baseline = await baselineQueries(cast.members.platformAdminUnconfirmed);
+  const queries = await recordQueries(ctx.t.pool, async () => {
+    expect(
+      (await send(cast.members.platformAdmin, "GET", "/api/managed-working-groups")).statusCode,
+    ).toBe(200);
+  });
+  expect(queries.length).toBeGreaterThan(baseline.length);
+});
+
+test("the audit log of one organization answers 404 or passkey_required and reads nothing", async () => {
+  const unknown = "00000000-0000-7000-8000-000000000000";
+  const cases = [
+    [cast.members.organizationAdminUnconfirmed, cast.otherOrganization.id, 404],
+    [cast.members.organizationAdminUnconfirmed, unknown, 404],
+    [cast.members.organizationAdminUnconfirmed, cast.organization.id, 403],
+    [cast.members.platformAdminUnconfirmed, cast.organization.id, 403],
+    [cast.members.platformAdminUnconfirmed, unknown, 403],
+  ] as const;
+  for (const [who, id, status] of cases) {
+    const baseline = await baselineQueries(who);
+    let got = 0;
+    const queries = await recordQueries(ctx.t.pool, async () => {
+      got = (await send(who, "GET", `/api/audit-log-entries?organizationId=${id}`)).statusCode;
+    });
+    expect(got).toBe(status);
+    expect(queries).toEqual(baseline);
   }
 });

@@ -77,7 +77,9 @@ test("coordinators and admins of the group add people, nobody else", async () =>
     cast,
     {
       platformAdmin: 200,
+      platformAdminUnconfirmed: "passkey_required",
       organizationAdmin: 200,
+      organizationAdminUnconfirmed: "passkey_required",
       coordinator: 200,
       volunteer: 403,
       volunteerOtherGroup: 404,

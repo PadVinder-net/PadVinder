@@ -95,7 +95,9 @@ test("every logged-in user may send a report; without a login 401", async () => 
     cast,
     {
       platformAdmin: 204,
+      platformAdminUnconfirmed: 204,
       organizationAdmin: 204,
+      organizationAdminUnconfirmed: 204,
       coordinator: 204,
       volunteer: 204,
       volunteerOtherGroup: 204,

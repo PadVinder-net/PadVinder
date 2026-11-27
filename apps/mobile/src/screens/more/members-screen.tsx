@@ -1,5 +1,11 @@
-import { mayOpenMembers, useMe, type MeResponse } from "@padvinder/api-client";
+import {
+  mayOpenMembers,
+  requestPasskeyConfirmation,
+  useMe,
+  type MeResponse,
+} from "@padvinder/api-client";
 import { apiErrorMessage, MemberList } from "@padvinder/ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { FlashMessage, LoadError, Loading, SubScreen } from "./sub-screen";
 import { useMemberLists } from "./working-group-lists";
@@ -18,19 +24,28 @@ export function MembersScreen() {
 
 function Members({ me }: { me: MeResponse }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const lists = useMemberLists(me);
   if (lists.error) return <LoadError error={lists.error} onRetry={lists.refetch} />;
   if (lists.isPending) return <Loading>Leden laden…</Loading>;
   // No group to list: the menu hides Leden, and a URL typed by hand gets the API's "no".
-  if (lists.groups.length === 0) return <p className="text-lg">{apiErrorMessage("not_allowed")}</p>;
+  if (lists.groups.length === 0 && lists.hiddenGroups.length === 0)
+    return <p className="text-lg">{apiErrorMessage("not_allowed")}</p>;
   const openable = new Set(
     lists.groups
-      .filter(({ workingGroup }) => mayOpenMembers(me, workingGroup))
+      .filter(({ workingGroup }) => mayOpenMembers(me, workingGroup, { now: new Date() }))
       .map(({ workingGroup }) => workingGroup.id),
+  );
+  // A group whose list left fields out for a confirmation opens too: the detail shows the bars.
+  const revealing = new Set(
+    lists.groups.filter((group) => group.reveals).map(({ workingGroup }) => workingGroup.id),
   );
   return (
     <MemberList
       groups={lists.groups}
+      hiddenGroups={lists.hiddenGroups}
+      onReveal={() => requestPasskeyConfirmation(queryClient)}
+      revealable={(workingGroupId) => revealing.has(workingGroupId)}
       onOpen={(membershipId) => void navigate(`/more/members/${membershipId}`)}
       // Only coordinators and admins of a group open its members; elsewhere the rows are plain.
       canOpen={(workingGroupId) => openable.has(workingGroupId)}

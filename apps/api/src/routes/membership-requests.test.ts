@@ -59,14 +59,16 @@ async function newGroup(name: string) {
 }
 
 test("everyone logged in may ask, except for a group they belong to", async () => {
-  // The cast's coordinator and volunteer belong to cast.workingGroup; admin rights do not count
-  // as a membership.
+  // The cast's coordinator, volunteer and organizationAdminUnconfirmed belong to cast.workingGroup;
+  // admin rights do not count as a membership.
   try {
     await expectStatuses(
       cast,
       {
         platformAdmin: 201,
+        platformAdminUnconfirmed: 201,
         organizationAdmin: 201,
+        organizationAdminUnconfirmed: 409,
         coordinator: 409,
         volunteer: 409,
         volunteerOtherGroup: 201,
@@ -324,7 +326,9 @@ test("only the applicant may withdraw their request; for everyone else it does n
     cast,
     {
       platformAdmin: 404,
+      platformAdminUnconfirmed: 404,
       organizationAdmin: 404,
+      organizationAdminUnconfirmed: 404,
       coordinator: 404,
       volunteer: 404,
       volunteerOtherGroup: 404,

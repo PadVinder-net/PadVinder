@@ -84,3 +84,43 @@ test("a member without a name, and one who never logged in, get their placeholde
   expect(screen.getByText("(nog geen naam)")).toBeVisible();
   expect(screen.getByText("(nog niet ingelogd)")).toBeVisible();
 });
+
+test("a hidden group shows its name and the bar, and no member or request", async () => {
+  const onReveal = vi.fn();
+  render(
+    <MemberList
+      groups={[{ workingGroup: noord, members: membersFixture }]}
+      hiddenGroups={[zuidOost]}
+      onReveal={onReveal}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: zuidOost.name })).toBeVisible();
+  expect(screen.queryByText("Deze werkgroep heeft nog geen leden.")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Toon met je toegangssleutel" }));
+  expect(onReveal).toHaveBeenCalledOnce();
+});
+
+test("without onReveal nothing changes", () => {
+  render(
+    <MemberList
+      groups={[{ workingGroup: noord, members: membersFixture }]}
+      hiddenGroups={[zuidOost]}
+    />,
+  );
+  expect(screen.queryByRole("heading", { name: zuidOost.name })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Toon met je toegangssleutel" })).toBeNull();
+});
+
+test("rows of a revealable group open although canOpen says no", async () => {
+  const onOpen = vi.fn();
+  render(
+    <MemberList
+      groups={[{ workingGroup: noord, members: membersFixture }]}
+      onOpen={onOpen}
+      canOpen={() => false}
+      revealable={() => true}
+    />,
+  );
+  await userEvent.click(screen.getAllByRole("button")[0]!);
+  expect(onOpen).toHaveBeenCalledOnce();
+});

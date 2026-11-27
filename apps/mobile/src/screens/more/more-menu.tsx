@@ -12,8 +12,8 @@ const itemClass =
  */
 export function MoreMenu({ me }: { me: MeResponse }) {
   const directory = useWorkingGroupDirectory();
-  const requests = useRequestLists(me);
-  const reviews = requests.groups.length > 0;
+  const requests = useRequestLists(me, { background: true });
+  const reviews = requests.groups.length + requests.hiddenGroups.length > 0;
   const hasMembers =
     directory.data !== undefined &&
     memberListWorkingGroups(me, directory.data.workingGroups).length > 0;

@@ -4,7 +4,9 @@ import {
   adminConfirmedUntil,
   ADMIN_PASSKEY_CONFIRMATION_WINDOW,
   confirmationOf,
+  effectiveActor,
   hasAdminRole,
+  withoutAdminRoles,
 } from "./confirmation";
 
 const now = new Date("2026-11-26T12:00:00Z");
@@ -51,4 +53,27 @@ test("adminConfirmedUntil is passkeyVerifiedAt + 24 h for an admin, null for a n
   expect(
     adminConfirmedUntil({ ...base, isPlatformAdmin: true, passkeyVerifiedAt: agoMs(25 * 3600e3) }),
   ).toBeNull();
+});
+
+test("effectiveActor drops the admin roles only of an unconfirmed admin", () => {
+  const admin: Actor = { ...base, isPlatformAdmin: true, adminOfOrganizationIds: ["o-a"] };
+  const confirmed = { ...admin, passkeyVerifiedAt: agoMs(1000) };
+  expect(effectiveActor(confirmed)).toBe(confirmed);
+  const unconfirmed = effectiveActor(admin);
+  expect(unconfirmed.isPlatformAdmin).toBe(false);
+  expect(unconfirmed.adminOfOrganizationIds).toEqual([]);
+  expect(unconfirmed.userId).toBe(admin.userId);
+  const volunteer: Actor = { ...base, memberships: [] };
+  expect(effectiveActor(volunteer)).toBe(volunteer);
+  expect(withoutAdminRoles(admin).memberships).toBe(admin.memberships);
+});
+
+test("effectiveActor keeps the admin roles of a session confirmed an hour ago", () => {
+  const admin: Actor = {
+    ...base,
+    isPlatformAdmin: true,
+    adminOfOrganizationIds: ["o-a"],
+    passkeyVerifiedAt: agoMs(60 * 60 * 1000),
+  };
+  expect(effectiveActor(admin)).toBe(admin);
 });

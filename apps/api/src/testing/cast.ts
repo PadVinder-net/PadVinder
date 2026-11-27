@@ -1,6 +1,7 @@
 import {
   createOrganization,
   createWorkingGroup,
+  grantOrganizationAdmin,
   grantPlatformAdmin,
   workingGroupMemberships,
 } from "@padvinder/db";
@@ -10,7 +11,9 @@ import { stampSession } from "./passkeys";
 
 export type CastMember =
   | "platformAdmin"
+  | "platformAdminUnconfirmed"
   | "organizationAdmin"
+  | "organizationAdminUnconfirmed"
   | "coordinator"
   | "volunteer"
   | "volunteerOtherGroup"
@@ -18,14 +21,18 @@ export type CastMember =
   | "organizationAdminOtherOrganization"
   | "applicant";
 
+export type ExpectedStatuses = Record<CastMember | "anonymous", number | "passkey_required">;
+
 export type CastLogin = { userId: string; email: string; headers: { cookie: string } };
 
 export type Cast = {
-  /** `organizationAdmin` is its only admin. */
+  /** Its admins are `organizationAdmin` and `organizationAdminUnconfirmed`. */
   organization: { id: string };
   /** `organizationAdminOtherOrganization` is its only admin. */
   otherOrganization: { id: string };
-  /** In `organization`; `coordinator` and `volunteer` belong to it. */
+  /**
+   * In `organization`; `coordinator`, `volunteer` and `organizationAdminUnconfirmed` belong to it.
+   */
   workingGroup: WorkingGroupTarget;
   /**
    * In `organization`; `volunteerOtherGroup` belongs to it. Its coordinator is
@@ -43,7 +50,7 @@ const system = { kind: "system" } as const;
 export const OTHER_GROUP_COORDINATOR_EMAIL = "cast-coordinator-other-group@example.test";
 
 /**
- * The standard cast for permission tests: two organizations, three working groups and eight
+ * The standard cast for permission tests: two organizations, three working groups and ten
  * logged-in people, made through the real login flow and the administration functions.
  */
 export async function createCast(ctx: TestApp): Promise<Cast> {
@@ -55,7 +62,9 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
   };
   const members = {
     platformAdmin: await login("platformAdmin"),
+    platformAdminUnconfirmed: await login("platformAdminUnconfirmed"),
     organizationAdmin: await login("organizationAdmin"),
+    organizationAdminUnconfirmed: await login("organizationAdminUnconfirmed"),
     coordinator: await login("coordinator"),
     volunteer: await login("volunteer"),
     volunteerOtherGroup: await login("volunteerOtherGroup"),
@@ -64,7 +73,8 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
     applicant: await login("applicant"),
   } satisfies Record<CastMember, CastLogin>;
 
-  // The admins are recently confirmed, so the existing admin tests meet no confirmation rule.
+  // Three admins are recently confirmed, so the existing admin tests meet no confirmation rule.
+  // The two unconfirmed admins are never stamped: their sessions have no passkey moment.
   for (const admin of [
     members.platformAdmin,
     members.organizationAdmin,
@@ -108,10 +118,21 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
   );
 
   await grantPlatformAdmin(db, { email: members.platformAdmin.email }, system);
+  await grantPlatformAdmin(db, { email: members.platformAdminUnconfirmed.email }, system);
+  await grantOrganizationAdmin(
+    db,
+    { email: members.organizationAdminUnconfirmed.email, organizationId: organization.id },
+    system,
+  );
   // There is no administration function for a volunteer: approval comes later.
   await db.insert(workingGroupMemberships).values([
     {
       userId: members.volunteer.userId,
+      workingGroupId: workingGroup.workingGroupId,
+      isCoordinator: false,
+    },
+    {
+      userId: members.organizationAdminUnconfirmed.userId,
       workingGroupId: workingGroup.workingGroupId,
       isCoordinator: false,
     },
@@ -132,19 +153,33 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
  */
 export async function expectStatuses(
   cast: Cast,
-  expected: Record<CastMember | "anonymous", number>,
-  send: (headers: Record<string, string>) => Promise<{ statusCode: number }>,
+  expected: ExpectedStatuses,
+  send: (headers: Record<string, string>) => Promise<{ statusCode: number; body: string }>,
 ): Promise<void> {
   const who = [...(Object.keys(cast.members) as CastMember[]), "anonymous" as const];
   const mismatches: string[] = [];
   for (const name of who) {
     const headers = name === "anonymous" ? {} : cast.members[name].headers;
-    const { statusCode } = await send(headers);
-    if (statusCode !== expected[name]) {
-      mismatches.push(`${name}: expected ${expected[name]}, got ${statusCode}`);
+    const { statusCode, body } = await send(headers);
+    const want = expected[name];
+    const code = statusCode === 403 ? errorCodeOf(body) : undefined;
+    const wantStatus = want === "passkey_required" ? 403 : want;
+    const matches =
+      statusCode === wantStatus && (want === "passkey_required") === (code === "passkey_required");
+    if (!matches) {
+      const got = code === "passkey_required" ? "passkey_required" : String(statusCode);
+      mismatches.push(`${name}: expected ${want}, got ${got}`);
     }
   }
   if (mismatches.length > 0) {
     throw new Error(`Unexpected statuses:\n${mismatches.join("\n")}`);
+  }
+}
+
+function errorCodeOf(body: string): unknown {
+  try {
+    return (JSON.parse(body) as { code?: unknown }).code;
+  } catch {
+    return undefined;
   }
 }

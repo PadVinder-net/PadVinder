@@ -8,6 +8,7 @@ import type { FastifyRequest } from "fastify";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import type { ApiEnv } from "../env";
 import { loadActor } from "../permissions/actor";
+import { fieldAccess } from "../permissions/fields";
 import { decide } from "../permissions/rules";
 
 /** The whole database check answers within this time, also when the database hangs. */
@@ -56,6 +57,7 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
       const now = new Date();
       let database: HealthResponse["database"];
       let lastHeartbeat: Date | null;
+      let revealsDatabase = false;
       // Outside the database check's own timeout: a slow actor load means "no actor", it must
       // not make the database look unreachable. It never rejects.
       const actorLoad = loadActorOrNull(request);
@@ -65,8 +67,11 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
           DATABASE_CHECK_TIMEOUT_MS,
         );
         const actor = await actorLoad;
-        const showDetails =
-          actor !== null && decide(actor, { action: "system.viewDatabaseDetails" }) === "allowed";
+        const access = fieldAccess(
+          actor === null ? "hidden" : decide(actor, { action: "system.viewDatabaseDetails" }),
+        );
+        const showDetails = access.include;
+        revealsDatabase = access.reveal;
         database = showDetails
           ? {
               reachable: true,
@@ -97,6 +102,7 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
           latestMigration: null,
         };
         lastHeartbeat = null;
+        revealsDatabase = false;
       }
 
       const status = deriveOverallStatus({
@@ -110,6 +116,7 @@ export const healthRoutes: FastifyPluginAsyncZod<{ env: ApiEnv; db: Db }> = asyn
         checkedAt: now.toISOString(),
         database,
         worker: { lastHeartbeatAt: lastHeartbeat?.toISOString() ?? null },
+        ...(revealsDatabase ? { passkeyReveals: ["database" as const] } : {}),
       });
     },
   );

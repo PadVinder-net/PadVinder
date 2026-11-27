@@ -39,7 +39,7 @@ export const platformAdminRoutes: FastifyPluginAsyncZod<{ db: Db }> = async (app
       },
     },
     async (request): Promise<PlatformAdminListResponse> => {
-      authorize(request.actor!, { action: "platform.managePlatformAdmins" });
+      authorize(request.actor!, { action: "platform.listPlatformAdmins" });
       return listResponse();
     },
   );
