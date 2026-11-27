@@ -272,3 +272,31 @@ test("with only the server DSN set a report is only logged and answers 204", asy
     await onlyServer.close();
   }
 });
+
+test("a refused report is logged with Sentry's status and its reason, scrubbed", async () => {
+  const log = createTestLogger("info");
+  const logged = await createTestApp(
+    {},
+    {
+      logger: log.logger,
+      monitoring: { dsn: other.dsn, browserDsn: fake.dsn, environment: "staging", release: "r" },
+    },
+  );
+  try {
+    const person = await newPerson(logged);
+    fake.answerWith(
+      403,
+      {},
+      '{"detail":"event submission rejected with_reason: ProjectId","to":"noor@example.test"}',
+    );
+    expect((await send(logged, person.headers)).statusCode).toBe(502);
+    const line = log
+      .entries()
+      .find((entry) => entry.msg === "Sentry did not take a problem report");
+    expect(line).toMatchObject({ level: "warn", sentryStatus: 403 });
+    expect(line?.sentryAnswer).toContain("with_reason: ProjectId");
+    expect(log.text()).not.toContain("noor@example.test");
+  } finally {
+    await logged.close();
+  }
+});

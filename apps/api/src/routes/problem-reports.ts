@@ -74,7 +74,14 @@ export const problemReportRoutes: FastifyPluginAsyncZod<ProblemReportOptions> = 
       });
       const result = await forwardEnvelope(envelope, settings.browserDsn);
       if (result.status === "unreachable" || result.status < 200 || result.status > 299) {
-        request.log.warn({ sentryStatus: result.status }, "Sentry did not take a problem report");
+        request.log.warn(
+          {
+            sentryStatus: result.status,
+            // Sentry's own reason (scrubbed), or why no answer came: what a 403 or 502 means.
+            sentryAnswer: result.status === "unreachable" ? result.reason : result.detail,
+          },
+          "Sentry did not take a problem report",
+        );
         throw apiError(502, apiErrorCodes.reportNotSent, "Sentry did not take the report");
       }
       return reply.code(204).send(null);

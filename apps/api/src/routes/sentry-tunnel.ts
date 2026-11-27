@@ -87,7 +87,14 @@ export const sentryTunnelRoutes: FastifyPluginAsyncZod<SentryTunnelOptions> = as
         result.status === "unreachable" ||
         (result.status !== 429 && (result.status < 200 || result.status > 299))
       ) {
-        request.log.warn({ sentryStatus: result.status }, "Sentry did not take a browser envelope");
+        request.log.warn(
+          {
+            sentryStatus: result.status,
+            // Sentry's own reason (scrubbed), or why no answer came: what a 403 or 502 means.
+            sentryAnswer: result.status === "unreachable" ? result.reason : result.detail,
+          },
+          "Sentry did not take a browser envelope",
+        );
         throw apiError(502, apiErrorCodes.sentryUnavailable, "Sentry did not take the envelope");
       }
       if (result.retryAfter !== undefined) reply.header("retry-after", result.retryAfter);

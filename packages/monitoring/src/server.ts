@@ -126,6 +126,23 @@ export function startServerMonitoring(options: {
 }
 
 /** Sets the account's ID as the only user field on the current isolation scope, or clears it. */
+/** An event or transaction the server SDK could not deliver: Sentry's status, or no answer at all. */
+export type SentrySendFailure = { status: number | "no answer"; eventType: string };
+
+/**
+ * Calls `listener` for every event or transaction Sentry refused (a status of 400 or more) or that
+ * got no answer, so the service can log it: the SDK itself stays silent about a failed send. The
+ * failure holds only the status and the kind of event, never the event. Does nothing while Sentry
+ * is off.
+ */
+export function onSentrySendFailure(listener: (failure: SentrySendFailure) => void): void {
+  Sentry.getClient()?.on("afterSendEvent", (event, response) => {
+    const statusCode = response?.statusCode;
+    if (statusCode !== undefined && statusCode < 400) return;
+    listener({ status: statusCode ?? "no answer", eventType: event.type ?? "error" });
+  });
+}
+
 export function setMonitoringUser(id: string | null): void {
   if (!enabled) return;
   Sentry.getIsolationScope().setUser(id === null ? null : { id });

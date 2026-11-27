@@ -1,6 +1,11 @@
 import { loadApiEnv, type ApiEnv } from "./env";
 import { createLogger, installCrashHandlers } from "@padvinder/logging";
-import { closeMonitoring, flushMonitoring, type MonitoringSettings } from "@padvinder/monitoring";
+import {
+  closeMonitoring,
+  flushMonitoring,
+  onSentrySendFailure,
+  type MonitoringSettings,
+} from "@padvinder/monitoring";
 import { startApi } from "./start-api";
 
 /** The API process: loaded by main.ts after Sentry has started, with the settings it read. */
@@ -17,6 +22,14 @@ export async function run(monitoring: MonitoringSettings): Promise<void> {
   const logger = createLogger({ service: "api", level: env.LOG_LEVEL });
   // The crash's log line is what Sentry captures; send it before the process exits.
   installCrashHandlers(logger, { beforeExit: () => flushMonitoring() });
+  // The SDK says nothing when Sentry refuses an event; a warning (never an error, which Sentry
+  // would capture again) says it here, with the status only.
+  onSentrySendFailure((failure) =>
+    logger.warn(
+      { sentryStatus: failure.status, eventType: failure.eventType },
+      "Sentry did not take an event",
+    ),
+  );
 
   // A terminal Ctrl-C reaches both tsx and the API, so a repeat within this window is not a force.
   const FORCE_EXIT_AFTER_MS = 1_000;

@@ -266,13 +266,36 @@ test("forwardEnvelope passes Sentry's status and rate limit headers on", async (
     status: 429,
     retryAfter: "60",
     rateLimits: "60:error:key",
+    detail: "{}",
   });
+});
+
+test("forwardEnvelope keeps Sentry's reason when it refuses, scrubbed and cut to 300 characters", async () => {
+  fake!.answerWith(
+    403,
+    {},
+    `{"detail":"event submission rejected with_reason: ProjectId","to":"noor@example.test"}${"x".repeat(400)}`,
+  );
+  const result = await forwardEnvelope(new Uint8Array([123, 125]), fake!.dsn);
+  expect(result).toMatchObject({ status: 403 });
+  const detail = (result as { detail?: string }).detail ?? "";
+  expect(detail).toContain("event submission rejected with_reason: ProjectId");
+  expect(detail).not.toContain("noor@example.test");
+  expect(detail.length).toBeLessThanOrEqual(300);
+});
+
+test("forwardEnvelope keeps no body for an accepted envelope", async () => {
+  fake!.answerWith(200, {}, '{"id":"abc"}');
+  expect(await forwardEnvelope(new Uint8Array([123, 125]), fake!.dsn)).toEqual({ status: 200 });
 });
 
 test("forwardEnvelope answers unreachable for a closed port and after its timeout", async () => {
   const closed = await startFakeSentry();
   await closed.close();
-  expect(await forwardEnvelope(new Uint8Array([1]), closed.dsn)).toEqual({ status: "unreachable" });
+  expect(await forwardEnvelope(new Uint8Array([1]), closed.dsn)).toEqual({
+    status: "unreachable",
+    reason: "ECONNREFUSED",
+  });
   // A server that accepts the connection and never answers: the timeout ends the wait.
   const silent = createServer(() => {});
   await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
@@ -282,7 +305,7 @@ test("forwardEnvelope answers unreachable for a closed port and after its timeou
       await forwardEnvelope(new Uint8Array([1]), `http://key@127.0.0.1:${port}/1`, {
         timeoutMs: 50,
       }),
-    ).toEqual({ status: "unreachable" });
+    ).toEqual({ status: "unreachable", reason: "TimeoutError" });
   } finally {
     silent.closeAllConnections();
     await new Promise((resolve) => silent.close(resolve));

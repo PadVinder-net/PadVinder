@@ -1,5 +1,5 @@
 import { createLogger, installCrashHandlers } from "@padvinder/logging";
-import { closeMonitoring, flushMonitoring } from "@padvinder/monitoring";
+import { closeMonitoring, flushMonitoring, onSentrySendFailure } from "@padvinder/monitoring";
 import { loadWorkerEnv, type WorkerEnv } from "./env";
 import { startWorker } from "./start-worker";
 
@@ -16,6 +16,14 @@ export async function run(): Promise<void> {
   const logger = createLogger({ service: "worker", level: env.LOG_LEVEL });
   // The crash's log line is what Sentry captures; send it before the process exits.
   installCrashHandlers(logger, { beforeExit: () => flushMonitoring() });
+  // The SDK says nothing when Sentry refuses an event; a warning (never an error, which Sentry
+  // would capture again) says it here, with the status only.
+  onSentrySendFailure((failure) =>
+    logger.warn(
+      { sentryStatus: failure.status, eventType: failure.eventType },
+      "Sentry did not take an event",
+    ),
+  );
 
   // A terminal Ctrl-C reaches both tsx and the worker, so a repeat within this window is not a force.
   const FORCE_EXIT_AFTER_MS = 1_000;
