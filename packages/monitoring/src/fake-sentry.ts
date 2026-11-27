@@ -26,13 +26,17 @@ export async function startFakeSentry(): Promise<{
   envelopes(): Envelope[];
   events(): Event[];
   transactions(): Event[];
-  /** The answer to the next envelopes: a status and response headers. Default 200. */
-  answerWith(status: number, headers?: Record<string, string>): void;
+  /** The answer to the next envelopes: a status, response headers and a body. Default 200, `{}`. */
+  answerWith(status: number, headers?: Record<string, string>, body?: string): void;
   close(): Promise<void>;
 }> {
   const bodies: string[] = [];
   const requests: FakeSentryRequest[] = [];
-  let answer: { status: number; headers: Record<string, string> } = { status: 200, headers: {} };
+  let answer: { status: number; headers: Record<string, string>; body: string } = {
+    status: 200,
+    headers: {},
+    body: "{}",
+  };
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -54,7 +58,7 @@ export async function startFakeSentry(): Promise<{
         "content-type": "application/json",
         ...(isEnvelope ? answer.headers : {}),
       });
-      response.end("{}");
+      response.end(isEnvelope ? answer.body : "{}");
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -67,8 +71,8 @@ export async function startFakeSentry(): Promise<{
     envelopes,
     events: () => itemsOfType(envelopes(), "event"),
     transactions: () => itemsOfType(envelopes(), "transaction"),
-    answerWith(status, headers = {}) {
-      answer = { status, headers };
+    answerWith(status, headers = {}, body = "{}") {
+      answer = { status, headers, body };
     },
     close: () =>
       new Promise<void>((resolve, reject) => {

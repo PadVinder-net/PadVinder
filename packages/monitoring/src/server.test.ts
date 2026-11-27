@@ -6,6 +6,7 @@ import { afterEach, expect, test } from "vitest";
 import {
   closeMonitoring,
   flushMonitoring,
+  onSentrySendFailure,
   runInNewTrace,
   runJobInSpan,
   setMonitoringUser,
@@ -13,7 +14,7 @@ import {
   tracesSampler,
   withSpan,
 } from "./server";
-import { createTestTransport } from "./testing";
+import { createTestTransport, startFakeSentry } from "./testing";
 
 const settings = {
   dsn: undefined,
@@ -229,4 +230,40 @@ test("stack frames are relative to the release directory; filename and abs_path 
   });
   expect(frames[1]!.filename).toBe("node:internal/process");
   expect(JSON.stringify(t.events())).not.toContain("/home/someone");
+});
+
+test("onSentrySendFailure hears an event Sentry refused, with its status and the kind of event", async () => {
+  const fake = await startFakeSentry();
+  try {
+    fake.answerWith(403);
+    startServerMonitoring({ service: "api", settings: { ...settings, dsn: fake.dsn } });
+    const failures: unknown[] = [];
+    onSentrySendFailure((failure) => failures.push(failure));
+    Sentry.captureException(new Error("refused"));
+    await flushMonitoring();
+    expect(failures).toEqual([{ status: 403, eventType: "error" }]);
+  } finally {
+    await closeMonitoring();
+    await fake.close();
+  }
+});
+
+test("onSentrySendFailure hears nothing when Sentry takes the event", async () => {
+  const fake = await startFakeSentry();
+  try {
+    startServerMonitoring({ service: "api", settings: { ...settings, dsn: fake.dsn } });
+    const failures: unknown[] = [];
+    onSentrySendFailure((failure) => failures.push(failure));
+    Sentry.captureException(new Error("taken"));
+    await flushMonitoring();
+    expect(fake.events()).toHaveLength(1);
+    expect(failures).toEqual([]);
+  } finally {
+    await closeMonitoring();
+    await fake.close();
+  }
+});
+
+test("onSentrySendFailure does nothing while Sentry is off", () => {
+  expect(() => onSentrySendFailure(() => {})).not.toThrow();
 });

@@ -151,3 +151,29 @@ test("an API that cannot start sends its error to Sentry before it exits", async
     await new Promise((resolve) => blocker.close(resolve));
   }
 }, 30_000);
+
+test("an event Sentry refuses is logged with Sentry's status", async () => {
+  const refusing = await startFakeSentry();
+  refusing.answerWith(403);
+  try {
+    const api = await startMain(refusing.dsn);
+    // A traced request: its transaction is refused at shutdown, when the SDK flushes.
+    const res = await fetch(`${api.url}/api/auth/email-otp/send-verification-otp`, {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json" },
+      body: JSON.stringify({ email: "refused@example.test", type: "sign-in" }),
+    });
+    expect(res.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    api.child.kill("SIGTERM");
+    expect(await api.closed).toBe(0);
+    const line = api
+      .output()
+      .split("\n")
+      .find((text) => text.includes("Sentry did not take an event"));
+    expect(line, api.output()).toBeDefined();
+    expect(JSON.parse(line!)).toMatchObject({ level: "warn", sentryStatus: 403 });
+  } finally {
+    await refusing.close();
+  }
+}, 30_000);

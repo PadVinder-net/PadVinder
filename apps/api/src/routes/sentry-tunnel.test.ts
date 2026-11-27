@@ -1,3 +1,4 @@
+import { createTestLogger } from "@padvinder/logging/testing";
 import { startFakeSentry } from "@padvinder/monitoring/testing";
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import { createTestApp, type TestApp } from "../testing/login";
@@ -283,4 +284,31 @@ test("envelopes reach the browser project's server only, with its DSN in the hea
   expect(other.requests()).toHaveLength(0);
   expect(fake.requests().length).toBe(before + 1);
   expect(fake.envelopes().at(-1)![0].dsn).toBe(fake.dsn);
+});
+
+test("a refused envelope is logged with Sentry's status and its reason, scrubbed", async () => {
+  const log = createTestLogger("info");
+  const logged = await createTestApp(
+    {},
+    {
+      logger: log.logger,
+      monitoring: { dsn: other.dsn, browserDsn: fake.dsn, environment: "staging", release: "r" },
+    },
+  );
+  try {
+    fake.answerWith(
+      403,
+      {},
+      '{"detail":"event submission rejected with_reason: ProjectId","to":"noor@example.test"}',
+    );
+    expect((await postEnvelope(logged, browserEnvelope())).statusCode).toBe(502);
+    const line = log
+      .entries()
+      .find((entry) => entry.msg === "Sentry did not take a browser envelope");
+    expect(line).toMatchObject({ level: "warn", sentryStatus: 403 });
+    expect(line?.sentryAnswer).toContain("with_reason: ProjectId");
+    expect(log.text()).not.toContain("noor@example.test");
+  } finally {
+    await logged.close();
+  }
 });

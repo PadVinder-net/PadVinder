@@ -1,3 +1,4 @@
+import { scrub } from "@padvinder/logging";
 import { parseEnvelope, serializeEnvelope, type Envelope } from "@sentry/core";
 import { parseDsn } from "./dsn";
 import { scrubEvent, scrubStrings } from "./scrub-event";
@@ -154,8 +155,17 @@ export type ForwardResult =
       /** Sentry's `Retry-After` and `X-Sentry-Rate-Limits`, for the browser SDK to back off. */
       retryAfter?: string;
       rateLimits?: string;
+      /** Sentry's answer when it refused (not 2xx), scrubbed and cut to 300 characters: for the log. */
+      detail?: string;
     }
-  | { status: "unreachable" };
+  | {
+      status: "unreachable";
+      /** Why no answer came: the network error's code (`ECONNREFUSED`) or `TimeoutError`. */
+      reason?: string;
+    };
+
+/** How much of a refusing answer is kept for the log. */
+const DETAIL_LENGTH = 300;
 
 /**
  * Posts an envelope to the DSN's ingest address with only `Content-Type` of our own: no header of
@@ -177,15 +187,27 @@ export async function forwardEnvelope(
       body: new Uint8Array(envelope),
       signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_FORWARD_TIMEOUT_MS),
     });
-    await response.body?.cancel();
+    const refused = response.status < 200 || response.status > 299;
+    // Sentry says why it refused in the body; anything else is not needed.
+    const detail = refused ? scrub((await response.text()).slice(0, DETAIL_LENGTH)) : undefined;
+    if (!refused) await response.body?.cancel();
     const retryAfter = response.headers.get("retry-after");
     const rateLimits = response.headers.get("x-sentry-rate-limits");
     return {
       status: response.status,
       ...(retryAfter !== null && { retryAfter }),
       ...(rateLimits !== null && { rateLimits }),
+      ...(detail !== undefined && { detail }),
     };
-  } catch {
-    return { status: "unreachable" };
+  } catch (error) {
+    return { status: "unreachable", reason: unreachableReason(error) };
   }
+}
+
+/** A short, non-personal name for why a request got no answer. */
+function unreachableReason(error: unknown): string {
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
+  if (typeof cause?.code === "string") return cause.code;
+  if (error instanceof Error) return error.name;
+  return "unknown";
 }

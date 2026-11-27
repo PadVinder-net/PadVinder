@@ -10,11 +10,13 @@ export { scrubBreadcrumb, scrubEvent } from "./scrub-event";
 export {
   closeMonitoring,
   flushMonitoring,
+  onSentrySendFailure,
   runInNewTrace,
   runJobInSpan,
   setMonitoringUser,
   startServerMonitoring,
   withSpan,
+  type SentrySendFailure,
   type TransportFactory,
 } from "./server";
 export {
