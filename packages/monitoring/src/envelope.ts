@@ -2,7 +2,7 @@ import { scrub } from "@padvinder/logging";
 import { parseEnvelope, serializeEnvelope, type Envelope } from "@sentry/core";
 import { parseDsn } from "./dsn";
 import { scrubEvent, scrubStrings } from "./scrub-event";
-import { postToSentry, SENTRY_ADDRESS_FAMILY } from "./sentry-request";
+import { postToSentry } from "./sentry-request";
 import type { DeploymentEnvironment } from "./settings";
 
 /** The item types the browser SDK sends that we use. Replays, attachments and the rest are dropped. */
@@ -184,10 +184,7 @@ export async function forwardEnvelope(
   const result = await postToSentry(
     new URL(`${ingestUrl}?sentry_version=7&sentry_key=${publicKey}`),
     envelope,
-    {
-      family: SENTRY_ADDRESS_FAMILY,
-      timeoutMs: options.timeoutMs ?? DEFAULT_FORWARD_TIMEOUT_MS,
-    },
+    { timeoutMs: options.timeoutMs ?? DEFAULT_FORWARD_TIMEOUT_MS },
   );
   if ("error" in result) return { status: "unreachable", reason: result.error };
   const refused = result.status < 200 || result.status > 299;

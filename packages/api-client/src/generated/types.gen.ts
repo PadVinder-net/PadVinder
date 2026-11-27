@@ -335,17 +335,6 @@ export type UpdateSpeciesRequestInput = {
     active?: boolean;
 };
 
-export type SentryConnectionResultInput = {
-    family: 4 | 6;
-    status: number | 'unreachable';
-    answer?: string;
-};
-
-export type SentryConnectionTestResponseInput = {
-    sentryOff: boolean;
-    results: Array<SentryConnectionResultInput>;
-};
-
 export type VersionResponseInput = {
     minimumAppVersion: string;
     commit: string;
@@ -680,17 +669,6 @@ export type UpdateSpeciesRequest = {
     scientificName?: string;
     needsVerification?: boolean;
     active?: boolean;
-};
-
-export type SentryConnectionResult = {
-    family: 4 | 6;
-    status: number | 'unreachable';
-    answer?: string;
-};
-
-export type SentryConnectionTestResponse = {
-    sentryOff: boolean;
-    results: Array<SentryConnectionResult>;
 };
 
 export type VersionResponse = {
@@ -1730,35 +1708,6 @@ export type TriggerTestErrorErrors = {
 };
 
 export type TriggerTestErrorError = TriggerTestErrorErrors[keyof TriggerTestErrorErrors];
-
-export type TestSentryConnectionData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/system/sentry-connection-test';
-};
-
-export type TestSentryConnectionErrors = {
-    /**
-     * Default Response
-     */
-    401: ApiError;
-    /**
-     * Default Response
-     */
-    403: ApiError;
-};
-
-export type TestSentryConnectionError = TestSentryConnectionErrors[keyof TestSentryConnectionErrors];
-
-export type TestSentryConnectionResponses = {
-    /**
-     * Default Response
-     */
-    200: SentryConnectionTestResponse;
-};
-
-export type TestSentryConnectionResponse = TestSentryConnectionResponses[keyof TestSentryConnectionResponses];
 
 export type ListReviewableMembershipRequestsData = {
     body?: never;
