@@ -1,6 +1,8 @@
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { grantPlatformAdmin } from "@padvinder/db";
+import { startFakeSentry } from "@padvinder/monitoring/testing";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createCast, expectStatuses, type Cast } from "../testing/cast";
-import { createTestApp, type TestApp } from "../testing/login";
+import { createTestApp, loginAs, type TestApp } from "../testing/login";
 
 let ctx: TestApp;
 let cast: Cast;
@@ -40,4 +42,81 @@ test("the answers carry the stable error codes", async () => {
   expect(asVolunteer.json()).toMatchObject({ statusCode: 403, code: "not_allowed" });
   const anonymous = await triggerTestError({});
   expect(anonymous.json()).toMatchObject({ statusCode: 401, code: "not_logged_in" });
+});
+
+describe("POST /api/system/sentry-connection-test", () => {
+  let fake: Awaited<ReturnType<typeof startFakeSentry>>;
+  let on: TestApp;
+  beforeAll(async () => {
+    fake = await startFakeSentry();
+    on = await createTestApp(
+      {},
+      {
+        monitoring: {
+          dsn: fake.dsn,
+          browserDsn: undefined,
+          environment: "staging",
+          release: "rel-1",
+        },
+      },
+    );
+  });
+  afterAll(async () => {
+    await on?.close();
+    await fake?.close();
+  });
+
+  const testConnection = (app: TestApp, headers: Record<string, string>) =>
+    app.app.inject({ method: "POST", url: "/api/system/sentry-connection-test", headers });
+
+  test("only a platform admin runs it", async () => {
+    await expectStatuses(
+      cast,
+      {
+        platformAdmin: 200,
+        organizationAdmin: 403,
+        coordinator: 403,
+        volunteer: 403,
+        volunteerOtherGroup: 403,
+        coordinatorOtherOrganization: 403,
+        organizationAdminOtherOrganization: 403,
+        applicant: 403,
+        anonymous: 401,
+      },
+      (headers) => testConnection(ctx, headers),
+    );
+    const refused = await testConnection(ctx, cast.members.volunteer.headers);
+    expect(refused.json()).toMatchObject({ statusCode: 403, code: "not_allowed" });
+  });
+
+  test("without SENTRY_DSN it says Sentry is off and sends nothing", async () => {
+    const response = await testConnection(ctx, cast.members.platformAdmin.headers);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ sentryOff: true, results: [] });
+  });
+
+  test("with SENTRY_DSN it tries IPv4 and IPv6, and the answer holds no DSN or key", async () => {
+    const { headers } = await loginAs(on, "hoofdbeheerder-sentry@example.test");
+    await grantPlatformAdmin(
+      on.t.db,
+      { email: "hoofdbeheerder-sentry@example.test" },
+      { kind: "system" },
+    );
+    const before = fake.events().length;
+    const response = await testConnection(on, headers);
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ sentryOff: boolean; results: { family: number }[] }>();
+    expect(body.sentryOff).toBe(false);
+    expect(body.results.map((result) => result.family)).toEqual([4, 6]);
+    // The fake listens on 127.0.0.1, which IPv4 reaches.
+    expect(body.results[0]).toEqual({ family: 4, status: 200 });
+    expect(fake.events().slice(before)).toContainEqual(
+      expect.objectContaining({
+        message: "Sentry connection test over IPv4",
+        tags: { service: "api" },
+      }),
+    );
+    expect(response.body).not.toContain(fake.dsn);
+    expect(response.body).not.toContain("public");
+  });
 });

@@ -1283,6 +1283,67 @@
         },
         "additionalProperties": false
       },
+      "SentryConnectionResultInput": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  4
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  6
+                ]
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "unreachable"
+                ]
+              }
+            ]
+          },
+          "answer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "status"
+        ]
+      },
+      "SentryConnectionTestResponseInput": {
+        "type": "object",
+        "properties": {
+          "sentryOff": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SentryConnectionResultInput"
+            }
+          }
+        },
+        "required": [
+          "sentryOff",
+          "results"
+        ]
+      },
       "VersionResponseInput": {
         "type": "object",
         "properties": {
@@ -2640,6 +2701,69 @@
             "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "SentryConnectionResult": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  4
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  6
+                ]
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "unreachable"
+                ]
+              }
+            ]
+          },
+          "answer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "SentryConnectionTestResponse": {
+        "type": "object",
+        "properties": {
+          "sentryOff": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SentryConnectionResult"
+            }
+          }
+        },
+        "required": [
+          "sentryOff",
+          "results"
+        ],
         "additionalProperties": false
       },
       "VersionResponse": {
@@ -4474,6 +4598,44 @@
             }
           },
           "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/sentry-connection-test": {
+      "post": {
+        "operationId": "testSentryConnection",
+        "summary": "Send a test event to Sentry over IPv4 and over IPv6 (platform admins)",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentryConnectionTestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "Default Response",
             "content": {
               "application/json": {

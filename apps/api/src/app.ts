@@ -138,7 +138,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(userRoutes, { db: deps.db });
       await api.register(speciesRoutes, { db: deps.db });
       await api.register(auditLogRoutes, { db: deps.db });
-      await api.register(systemRoutes, { db: deps.db });
+      await api.register(systemRoutes, { db: deps.db, monitoring: deps.monitoring });
       await api.register(membershipRequestRoutes, {
         db: deps.db,
         mailer: deps.mailer,
