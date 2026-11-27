@@ -1,4 +1,5 @@
-import type { ClientRequest, IncomingHttpHeaders, request } from "node:http";
+import { request as httpRequest, type ClientRequest, type IncomingHttpHeaders } from "node:http";
+import { request as httpsRequest } from "node:https";
 import type { NodeOptions } from "@sentry/node";
 
 /**
@@ -7,24 +8,17 @@ import type { NodeOptions } from "@sentry/node";
  * refuses the Alwaysdata service machines' IPv6 address with a 403 HTML page, while it takes their
  * IPv4 address (the SSH host is not refused). The services prefer IPv6, so every event, browser
  * envelope and problem report was refused. Only Sentry's traffic is forced: the database and SMTP
- * keep Node's default.
+ * keep Node's default. Not through a proxy: with `http_proxy` or `https_proxy` set, the proxy
+ * resolves Sentry's host.
  */
 export const SENTRY_ADDRESS_FAMILY = 4;
 
 /** How much of an answer's body is read at most: enough for a title or the start of an error page. */
 const MAX_BODY_BYTES = 64 * 1024;
 
-type RequestFunction = typeof request;
-
-/**
- * Node's own `request` of `node:http` or `node:https`, by protocol. Taken with
- * `getBuiltinModule` when it is needed, not imported at the top: the services load this package
- * before Sentry starts.
- */
-function nativeRequest(protocol: string | null | undefined): RequestFunction {
-  return protocol === "http:"
-    ? process.getBuiltinModule("node:http").request
-    : process.getBuiltinModule("node:https").request;
+/** Node's own `request` of `node:http` or `node:https`, by protocol. */
+function nativeRequest(protocol: string | null | undefined): typeof httpRequest {
+  return protocol === "http:" ? httpRequest : httpsRequest;
 }
 
 /** A short, non-personal name for why a request got no answer: its code, or the error's name. */

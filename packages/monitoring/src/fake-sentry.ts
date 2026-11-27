@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gunzipSync } from "node:zlib";
@@ -104,10 +105,14 @@ export type FakeSentry = Awaited<ReturnType<typeof startFakeSentry>>;
 
 /**
  * A fake that listens on the IPv6 loopback only, with `localhost` in its DSN: a client reaches it
- * only over IPv6. Null on a machine without an IPv6 loopback, so the test can skip.
+ * only over IPv6. Null, so the test can skip, on a machine without an IPv6 loopback or where
+ * `localhost` does not resolve to `::1`: there a test that expects nothing to arrive would pass
+ * whatever family the client asked for.
  */
 export async function startIpv6OnlyFakeSentry(): Promise<FakeSentry | null> {
   try {
+    const addresses = await lookup("localhost", { all: true });
+    if (!addresses.some(({ address }) => address === "::1")) return null;
     return await startFakeSentry({ host: "::1", dsnHost: "localhost" });
   } catch {
     return null;

@@ -284,6 +284,21 @@ test("forwardEnvelope keeps Sentry's reason when it refuses, scrubbed and cut to
   expect(detail.length).toBeLessThanOrEqual(300);
 });
 
+test("forwardEnvelope's reason never holds the DSN's key, also where it crosses the cut", async () => {
+  // A made-up key of one repeated letter: low entropy, so it never looks like a secret to gitleaks.
+  const key = "k".repeat(16);
+  const dsn = fake!.dsn.replace("public@", `${key}@`);
+  fake!.answerWith(403, {}, `Your client may not get /api/1/envelope/?sentry_key=${key} here`);
+  const echoed = await forwardEnvelope(new Uint8Array([123, 125]), dsn);
+  expect((echoed as { detail?: string }).detail).toContain("sentry_key=[key]");
+  expect(JSON.stringify(echoed)).not.toContain("kkkk");
+  // The key starts at character 292, so a cut before cleaning would leave "kkkkkkkk".
+  fake!.answerWith(403, {}, `${"x".repeat(280)}?sentry_key=${key}&more`);
+  const cut = await forwardEnvelope(new Uint8Array([123, 125]), dsn);
+  expect((cut as { detail?: string }).detail).not.toContain("kkkk");
+  expect((cut as { detail?: string }).detail!.length).toBeLessThanOrEqual(300);
+});
+
 test("forwardEnvelope keeps no body for an accepted envelope", async () => {
   fake!.answerWith(200, {}, '{"id":"abc"}');
   expect(await forwardEnvelope(new Uint8Array([123, 125]), fake!.dsn)).toEqual({ status: 200 });

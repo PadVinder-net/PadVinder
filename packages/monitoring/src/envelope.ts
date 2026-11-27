@@ -156,7 +156,7 @@ export type ForwardResult =
       /** Sentry's `Retry-After` and `X-Sentry-Rate-Limits`, for the browser SDK to back off. */
       retryAfter?: string;
       rateLimits?: string;
-      /** Sentry's answer when it refused (not 2xx), scrubbed and cut to 300 characters: for the log. */
+      /** Sentry's answer when it refused (not 2xx), scrubbed, without the key and cut to 300 characters: for the log. */
       detail?: string;
     }
   | {
@@ -192,7 +192,11 @@ export async function forwardEnvelope(
   if ("error" in result) return { status: "unreachable", reason: result.error };
   const refused = result.status < 200 || result.status > 299;
   // Sentry says why it refused in the body; anything else is not needed.
-  const detail = refused ? scrub(result.body.slice(0, DETAIL_LENGTH)) : undefined;
+  // Google's front end can echo the request's URL, key and all. The whole body is cleaned before
+  // it is cut, so nothing that crosses the cut survives in part.
+  const detail = refused
+    ? scrub(result.body).replaceAll(publicKey, "[key]").slice(0, DETAIL_LENGTH)
+    : undefined;
   const retryAfter = singleHeader(result.headers["retry-after"]);
   const rateLimits = singleHeader(result.headers["x-sentry-rate-limits"]);
   return {
