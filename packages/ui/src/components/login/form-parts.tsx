@@ -3,19 +3,31 @@ import { Button } from "../ui/button";
 
 export const pendingLabel = "Even geduld…";
 
-/** Frame of a login step: heading, optional intro text, then the content. */
+/**
+ * Frame of a login step: heading, optional intro text, then the content. `action` sits at the
+ * right of the heading, away from the step's main button: for a rare way out, such as "Log uit".
+ */
 export function Step({
   title,
   intro,
+  action,
   children,
 }: {
   title: string;
   intro?: ReactNode;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-4 text-lg">
-      <h2 className="text-2xl font-semibold">{title}</h2>
+      {action ? (
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-semibold">{title}</h2>
+          {action}
+        </div>
+      ) : (
+        <h2 className="text-2xl font-semibold">{title}</h2>
+      )}
       {intro ? <p>{intro}</p> : null}
       {children}
     </section>

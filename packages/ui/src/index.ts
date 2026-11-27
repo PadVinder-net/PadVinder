@@ -51,6 +51,7 @@ export {
 } from "./components/joining/waiting-for-approval";
 export { ConfirmDialog, type ConfirmDialogProps } from "./components/confirm-dialog";
 export { Modal, type ModalProps } from "./components/modal";
+export { TextButton, type TextButtonProps } from "./components/text-button";
 export { dismissAllToasts, showToast, Toaster } from "./components/toast";
 export {
   MembershipRequestList,

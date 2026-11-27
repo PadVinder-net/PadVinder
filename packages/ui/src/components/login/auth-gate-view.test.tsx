@@ -13,6 +13,7 @@ function renderView(overrides: Partial<AuthGateViewProps> = {}) {
       onLoggedIn: vi.fn(),
     },
     saveName: { pending: false, failed: false, submit: vi.fn() },
+    logOut: { submit: vi.fn(), failed: false },
     children: <p>de app</p>,
     ...overrides,
   };
@@ -49,6 +50,17 @@ test("name shows the name step, with the connection message after a failed save"
   renderView({ state: "name", saveName: { pending: false, failed: true, submit: vi.fn() } });
   expect(screen.getByRole("heading", { name: "Hoe heet je?" })).toBeVisible();
   expect(screen.getByRole("alert")).toHaveTextContent("Het lukt nu niet.");
+});
+
+test("the name step has Log uit", async () => {
+  const { logOut } = renderView({ state: "name" });
+  await userEvent.click(screen.getByRole("button", { name: "Log uit" }));
+  expect(logOut.submit).toHaveBeenCalledOnce();
+});
+
+test("the name step says when logging out failed", () => {
+  renderView({ state: "name", logOut: { submit: vi.fn(), failed: true } });
+  expect(screen.getByRole("alert")).toHaveTextContent("Uitloggen lukt nu niet.");
 });
 
 test.each(["choose", "waiting"] as const)(

@@ -61,6 +61,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           notice: accountDeleted ? "Je account is verwijderd." : undefined,
         }}
         saveName={gate.saveName}
+        logOut={gate.logOut}
         applicant={me.data ? <ApplicantShell me={me.data} /> : null}
       >
         {children}

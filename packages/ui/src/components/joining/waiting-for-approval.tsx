@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ConfirmDialog } from "../confirm-dialog";
 import { Step, WideButton } from "../login/form-parts";
-import { Button } from "../ui/button";
+import { TextButton } from "../text-button";
 
 export type WaitingForApprovalProps = {
   workingGroupName: string;
@@ -30,14 +30,9 @@ export function WaitingForApproval({
       <WideButton type="button" variant="outline" onClick={onLogOut}>
         Log uit
       </WideButton>
-      <Button
-        type="button"
-        variant="link"
-        className="h-14 text-lg underline"
-        onClick={onOpenProfile}
-      >
+      <TextButton className="h-14" onClick={onOpenProfile}>
         Profiel
-      </Button>
+      </TextButton>
       <ConfirmDialog
         open={asking}
         title="Aanmelding intrekken?"
