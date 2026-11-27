@@ -1,4 +1,4 @@
-import { auditLogEntries, deleteAccount, grantPlatformAdmin, users } from "@padvinder/db";
+import { auditLogEntries, deleteAccount, grantPlatformAdmin, passkeys, users } from "@padvinder/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterAll, beforeAll, expect, test } from "vitest";
@@ -30,7 +30,13 @@ const remove = (who: Who, userId: string) =>
 let n = 0;
 const uniqueAddress = (label: string) => `${label}-${++n}-${uuidv7().slice(-8)}@example.test`;
 
-type Row = { userId: string; name: string; email: string; hasLoggedIn: boolean };
+type Row = {
+  userId: string;
+  name: string;
+  email: string;
+  hasLoggedIn: boolean;
+  hasPasskey: boolean;
+};
 const rows = (res: { json: () => unknown }) =>
   (res.json() as { platformAdmins: Row[] }).platformAdmins;
 
@@ -65,9 +71,16 @@ test("only a platform admin lists them", async () => {
     name: "Cast platformAdmin",
     email: cast.members.platformAdmin.email.toLowerCase(),
     hasLoggedIn: true,
+    hasPasskey: false,
   });
   for (const row of rows(res)) {
-    expect(Object.keys(row).sort()).toEqual(["email", "hasLoggedIn", "name", "userId"]);
+    expect(Object.keys(row).sort()).toEqual([
+      "email",
+      "hasLoggedIn",
+      "hasPasskey",
+      "name",
+      "userId",
+    ]);
   }
 });
 
@@ -105,6 +118,7 @@ test("appointing ' Nieuw@Example.TEST ' makes the account nieuw@example.test, sh
     name: "",
     email: "nieuw@example.test",
     hasLoggedIn: false,
+    hasPasskey: false,
   });
 });
 
@@ -248,4 +262,22 @@ test("a POST from a foreign Origin is refused", async () => {
     { email },
   );
   expect(own.statusCode).toBe(200);
+});
+
+test("each platform admin shows hasPasskey", async () => {
+  const email = uniqueAddress("platform-key");
+  const login = await loginAs(ctx, email);
+  await grantPlatformAdmin(ctx.t.db, { email }, { kind: "system" });
+  const find = async () =>
+    rows(await list(cast.members.platformAdmin)).find((row) => row.userId === login.userId);
+  expect((await find())?.hasPasskey).toBe(false);
+  await ctx.t.db.insert(passkeys).values({
+    userId: login.userId,
+    publicKey: "pk",
+    credentialID: `cred-${uuidv7()}`,
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+  });
+  expect((await find())?.hasPasskey).toBe(true);
 });

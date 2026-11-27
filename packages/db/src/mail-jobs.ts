@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbTransaction } from "./client";
 import {
@@ -6,6 +6,7 @@ import {
   organizations,
   users,
   workingGroupMemberships,
+  passkeys,
   workingGroups,
 } from "./schema";
 
@@ -26,6 +27,9 @@ export const mailJobSchema = z.discriminatedUnion("kind", [
     byUserId: id,
   }),
   z.strictObject({ kind: z.literal("organization-admin"), userId: id, organizationId: id }),
+  z.strictObject({ kind: z.literal("passkey-added"), userId: id, passkeyId: id }),
+  // `byUserId` equals `userId` when the person removed one of their own.
+  z.strictObject({ kind: z.literal("passkeys-removed"), userId: id, byUserId: id }),
 ]);
 
 export type MailJob = z.infer<typeof mailJobSchema>;
@@ -59,6 +63,17 @@ export type MailJobData =
       to: string;
       recipientName: string;
       organizationName: string;
+    }
+  | { kind: "passkey-added"; to: string; recipientName: string; addedAt: Date }
+  | {
+      kind: "passkeys-removed";
+      to: string;
+      recipientName: string;
+      byOther: boolean;
+      /** Null when not removed by someone else, or when that account is gone or has no name. */
+      byName: string | null;
+      /** The person's passkeys left when the mail is sent. */
+      remaining: number;
     };
 
 /** The name of an account that still exists and has one, else null. */
@@ -137,6 +152,37 @@ export async function loadMailJobData(db: Db, job: MailJob): Promise<MailJobData
         );
       if (!row) return null;
       return { kind: job.kind, ...row };
+    }
+    case "passkey-added": {
+      const [row] = await db
+        .select({ to: users.email, recipientName: users.name, addedAt: passkeys.createdAt })
+        .from(passkeys)
+        .innerJoin(users, eq(users.id, passkeys.userId))
+        .where(
+          and(eq(passkeys.id, job.passkeyId), eq(users.id, job.userId), isNull(users.deletedAt)),
+        );
+      // Null when the passkey was removed before the mail went out: that removal sends its own mail.
+      if (!row) return null;
+      return { kind: job.kind, ...row };
+    }
+    case "passkeys-removed": {
+      const [receiver] = await db
+        .select({ to: users.email, recipientName: users.name })
+        .from(users)
+        .where(and(eq(users.id, job.userId), isNull(users.deletedAt)));
+      if (!receiver) return null;
+      const [left] = await db
+        .select({ count: count() })
+        .from(passkeys)
+        .where(eq(passkeys.userId, job.userId));
+      const byOther = job.byUserId !== job.userId;
+      return {
+        kind: job.kind,
+        ...receiver,
+        byOther,
+        byName: byOther ? await loadByName(db, job.byUserId) : null,
+        remaining: left?.count ?? 0,
+      };
     }
   }
 }

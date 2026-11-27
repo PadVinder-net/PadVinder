@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@better-auth/passkey": "1.7.27",
     "@fastify/static": "^10.1.12",
     "@fastify/swagger": "^9.9.5",
     "@sentry/node": "11.18.0",
@@ -32,6 +33,7 @@
     "@padvinder/logging": "workspace:*",
     "@padvinder/mail": "workspace:*",
     "@padvinder/monitoring": "workspace:*",
+    "@simplewebauthn/server": "13.3.3",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.15.0",
     "pino-pretty": "^13.2.0",

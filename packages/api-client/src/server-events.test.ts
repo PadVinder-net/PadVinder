@@ -1,7 +1,7 @@
 import { LIVE_EVENT_TYPES } from "@padvinder/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { FakeEventSource } from "./testing";
-import { subscribeToServerEvents } from "./server-events";
+import { reopenServerEvents, subscribeToServerEvents } from "./server-events";
 
 // A second, fake union member, so the guard against a payload whose `type` differs from the SSE
 // event name can be reached: with one member, such a payload fails the union parse first.
@@ -175,6 +175,52 @@ describe("subscribeToServerEvents", () => {
       vi.advanceTimersByTime(100);
       reopened.unsubscribe();
       expect(FakeEventSource.instances[1]!.closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("reopenServerEvents closes and reopens every open stream, and onOpen runs", () => {
+    vi.useFakeTimers();
+    try {
+      FakeEventSource.instances = [];
+      // Streams of earlier tests are still open; these are told apart by their address.
+      const at = (url: string) => ({
+        url,
+        EventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+        reconnectDelays: [100],
+      });
+      const streams = (url: string) => FakeEventSource.instances.filter((s) => s.url === url);
+      const opened = { first: 0, second: 0 };
+      const closeFirst = subscribeToServerEvents({ onOpen: () => opened.first++ }, at("/first"));
+      const closeSecond = subscribeToServerEvents({ onOpen: () => opened.second++ }, at("/second"));
+      const closeThird = subscribeToServerEvents({}, at("/third"));
+      // The second waits to be opened again after a refusal; the third is closed already.
+      streams("/second")[0]!.fail(true);
+      closeThird();
+
+      reopenServerEvents();
+
+      // A new stream for each open subscription, at once: not after the pause.
+      const [first, firstAgain] = streams("/first");
+      const [second, secondAgain] = streams("/second");
+      expect(first!.closed && second!.closed).toBe(true);
+      expect(firstAgain!.closed || secondAgain!.closed).toBe(false);
+      expect(streams("/third")).toHaveLength(1);
+      firstAgain!.onopen?.();
+      secondAgain!.onopen?.();
+      expect(opened).toEqual({ first: 1, second: 1 });
+      // The pending reopen of the second stream was dropped, and the old streams stay quiet.
+      vi.advanceTimersByTime(1_000);
+      expect(streams("/second")).toHaveLength(2);
+      first!.onopen?.();
+      expect(opened.first).toBe(1);
+      // Closing closes the new stream, and a closed subscription is not opened again.
+      closeFirst();
+      closeSecond();
+      expect(firstAgain!.closed && secondAgain!.closed).toBe(true);
+      reopenServerEvents();
+      expect([...streams("/first"), ...streams("/second")]).toHaveLength(4);
     } finally {
       vi.useRealTimers();
     }

@@ -13,7 +13,7 @@ export {
 } from "./components/ui/table";
 export { cn } from "./lib/utils";
 export { formatDate, formatDateTime } from "./lib/format";
-export { displayName, nameInSentence } from "./lib/display-name";
+export { displayName, nameInSentence, nameOrAddress } from "./lib/display-name";
 export { parseEmailLines, type EmailLines } from "./lib/email-lines";
 export { normalizeCode } from "./lib/code";
 export { isPhoneScreen } from "./lib/is-phone";
@@ -36,6 +36,7 @@ export {
   logOutFailedMessage,
   noAccountMessage,
   organizationNameTakenMessage,
+  passkeyErrorMessage,
   personOutsideOrganizationMessage,
   speciesNameTakenMessage,
   workingGroupNameTakenMessage,
@@ -146,3 +147,5 @@ export {
 } from "./monitoring/browser-monitoring";
 export { useBrowserMonitoringUser } from "./monitoring/use-browser-monitoring-user";
 export { reloadOnPreloadError } from "./lib/reload-on-preload-error";
+export { PasskeyModal, type PasskeyModalProps } from "./components/passkeys/passkey-modal";
+export { PasskeysPanel, type PasskeysPanelProps } from "./components/passkeys/passkeys-panel";

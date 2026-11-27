@@ -7,6 +7,7 @@ import {
   useMe,
   useOrganization,
   useRemoveOrganizationAdmin,
+  useResetOrganizationAdminPasskeys,
   useUpdateOrganization,
 } from "@padvinder/api-client";
 import type {
@@ -22,6 +23,7 @@ import {
   invalidEmailMessage,
   Modal,
   nameInSentence,
+  nameOrAddress,
   OrganizationAdminsTable,
   OrganizationForm,
   organizationNameTakenMessage,
@@ -34,6 +36,7 @@ import { Link, useParams } from "react-router";
 import { CreateWorkingGroup } from "./create-working-group";
 import { LoadError } from "./load-error";
 import { NotFoundPage } from "./not-found-page";
+import { useOnSuccess } from "./use-on-success";
 
 /**
  * One organization (`/organizations/{organizationId}`): its contact address, its admins and its
@@ -118,9 +121,14 @@ function OrganizationDetails({
   const edit = useUpdateOrganization();
   const add = useAddOrganizationAdmin();
   const remove = useRemoveOrganizationAdmin();
+  const resetPasskeys = useResetOrganizationAdminPasskeys();
   const [editForm, setEditForm] = useState({ open: false, key: 0 });
   const [addForm, setAddForm] = useState({ open: false, key: 0 });
   const [removing, setRemoving] = useState<{ open: boolean; admin: OrganizationAdmin | null }>({
+    open: false,
+    admin: null,
+  });
+  const [resetting, setResetting] = useState<{ open: boolean; admin: OrganizationAdmin | null }>({
     open: false,
     admin: null,
   });
@@ -190,6 +198,26 @@ function OrganizationDetails({
     );
   }
 
+  function askReset(admin: OrganizationAdmin) {
+    resetPasskeys.reset();
+    setResetting({ open: true, admin });
+  }
+
+  function confirmReset() {
+    if (resetting.admin)
+      resetPasskeys.mutate({ organizationId: organization.id, userId: resetting.admin.userId });
+  }
+
+  // On the state, not in `mutate`'s callbacks: after a confirmation the request is sent again.
+  useOnSuccess(resetPasskeys.status, () => {
+    setResetting((current) => ({ ...current, open: false }));
+    if (resetting.admin)
+      showToast(`De toegangssleutels van ${nameOrAddress(resetting.admin)} zijn verwijderd.`);
+  });
+  const cancelReset = () => {
+    if (!resetPasskeys.isPending) setResetting((current) => ({ ...current, open: false }));
+  };
+
   // While a save runs, the dialogs stay open: closed, the answer would show nowhere.
   const closeEditUnlessSaving = () => {
     if (!edit.isPending) closeEdit();
@@ -230,6 +258,7 @@ function OrganizationDetails({
         admins={organization.admins}
         canRemove={isPlatformAdmin}
         onRemove={askRemove}
+        onResetPasskeys={askReset}
       />
 
       <div className="mt-8 mb-4 flex flex-wrap items-center justify-between gap-4">
@@ -273,6 +302,25 @@ function OrganizationDetails({
         error={remove.error ? failureText(remove.error) : undefined}
         onConfirm={confirmRemove}
         onCancel={cancelRemove}
+      />
+      <ConfirmDialog
+        open={resetting.open}
+        title={
+          resetting.admin
+            ? `Toegangssleutels van ${nameOrAddress(resetting.admin)} verwijderen?`
+            : ""
+        }
+        text={
+          resetting.admin
+            ? `Doe dit als ${nameOrAddress(resetting.admin)} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${nameOrAddress(resetting.admin)} een nieuwe bij de volgende keer beheren. ${nameOrAddress(resetting.admin)} moet daarna overal opnieuw inloggen.`
+            : ""
+        }
+        confirmLabel="Verwijder"
+        destructive
+        pending={resetPasskeys.isPending}
+        error={resetPasskeys.error ? failureText(resetPasskeys.error) : undefined}
+        onConfirm={confirmReset}
+        onCancel={cancelReset}
       />
       <CreateWorkingGroup
         open={creatingGroup}

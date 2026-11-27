@@ -51,3 +51,11 @@ test("the cross is named Sluiten", () => {
   expect(screen.getByRole("button", { name: "Sluiten" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
 });
+
+test("on opening, focus is on the dialog itself, not on the cross; Tab reaches the cross first", async () => {
+  setup();
+  const dialog = screen.getByRole("dialog", { name: "Soort wijzigen" });
+  expect(dialog).toHaveFocus();
+  await userEvent.tab();
+  expect(screen.getByRole("button", { name: "Sluiten" })).toHaveFocus();
+});

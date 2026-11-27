@@ -35,6 +35,8 @@ describe("with the limits on", () => {
     expect(IP_LIMITS).toEqual({
       sendCode: { window: 300, max: 30 },
       checkCode: { window: 300, max: 60 },
+      passkeyOptions: { window: 300, max: 60 },
+      passkeyVerify: { window: 300, max: 60 },
     });
   });
 

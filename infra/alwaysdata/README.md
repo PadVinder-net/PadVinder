@@ -368,6 +368,30 @@ NODEJS_VERSION=24 node --env-file=release.env --env-file=../../.env api/dist/adm
 - **Provisioning never restarts the services.** When the env file changed it prints `The services must be restarted ...`. Restart with `pnpm infra:services --environment <env> --restart` locally, in the panel (Advanced, Services), or by deploying again.
 - **Logs** are in `/home/<account>/admin/logs/services/<folder>/<service id>-<date>.log` (service output: API and worker, with Alwaysdata's own lines), `/home/<account>/admin/logs/http/` (requests) and `/home/<account>/admin/logs/sites/` (site starts and errors). The service logs are JSON lines with `service`, `level` and `msg`: one line per request at `info`, and health checks only on a warning. Read them over SSH with `jq -R 'fromjson?'`, which skips Alwaysdata's own lines that are not JSON (`pino-pretty` is not in the release, and nothing is installed on the server), or in the panel. The deploy steps are in the GitHub Actions run.
 - **Processes and memory:** the panel, Advanced, Processes. Services run on servers separate from SSH.
+- **A database session** on an environment's database: over SSH, with `psql`, given the connection by a few lines of Node that read `DATABASE_URL` from the environment's env file (`--env-file`, as the services do) and start `psql` with `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` and `PGDATABASE` in its environment. The password is never in an argument (anyone on the shared SSH host can read arguments with `ps`; a process's environment only its own user), never printed and never in the shell history. Do not source the env file in the shell instead: its values are not quoted for a shell (`MAIL_FROM=PadVinder <…>`).
+
+  ```sh
+  ssh <account>@ssh-<account>.alwaysdata.net
+  cd padvinder/<env>
+  NODEJS_VERSION=24 node --env-file=.env -e '
+  const url = new URL(process.env.DATABASE_URL);
+  const keep = ["PATH", "HOME", "TERM", "LANG", "PAGER"];
+  const env = Object.fromEntries(keep.filter((key) => process.env[key]).map((key) => [key, process.env[key]]));
+  Object.assign(env, {
+    PGHOST: url.hostname,
+    PGPORT: url.port || "5432",
+    PGUSER: decodeURIComponent(url.username),
+    PGPASSWORD: decodeURIComponent(url.password),
+    PGDATABASE: decodeURIComponent(url.pathname.slice(1)),
+  });
+  const { status } = require("node:child_process").spawnSync("psql", [], { stdio: "inherit", env });
+  process.exit(status ?? 1);
+  '
+  ```
+
+  `psql` gets only those variables, not the env file's other secrets. Check the database name in the prompt (`<account>_production` or `<account>_staging`) before you type anything; `\q` ends the session. Use it only for what the application offers no way to do, such as the procedures in [`docs/emergency-procedures.md`](../../docs/emergency-procedures.md). Tried locally against a stand-in env file (26 November 2026); not yet on the account (see "Verification").
+
+- **The last platform admin lost all passkeys:** follow "The last platform admin lost all passkeys" in [`docs/emergency-procedures.md`](../../docs/emergency-procedures.md), in a database session as above. Another platform admin repairs a platform admin in the portal instead.
 - **Backups:** Alwaysdata makes a daily dump in `/home/<account>/admin/backup/<date>/postgresql/<database>.sql.zst`. A second, hourly copy elsewhere during the season is planned, not built.
 
 - **Mails from staging carry `[STAGING]`.** After the pull request that added `MAIL_SUBJECT_PREFIX` is merged, run Provision for `staging` with `apply` on once (it rewrites the env file with the new line), then restart staging's services (`pnpm infra:services --environment staging --restart`) or wait for the next deploy. Until then staging's mails have no prefix; nothing breaks.
@@ -439,6 +463,8 @@ Record each one in the table above (name and type only) once it exists. `www.pad
 
 Let's Encrypt only issues a certificate when the address already points at Alwaysdata, so DNS comes before the site.
 
+**Passkeys belong to the host name.** The relying party ID of the admins' passkeys is the host name of `PUBLIC_ORIGIN` (`padvinder.net`, `staging.padvinder.net`). A passkey works only on that host name, so moving an environment to another domain makes every passkey there useless. After such a move, a platform admin removes each admin's passkeys (Verwijder toegangssleutels) and the admins add new ones; for the platform admins themselves, see "The last platform admin lost all passkeys" in [`docs/emergency-procedures.md`](../../docs/emergency-procedures.md). Moving to another host with the same domain keeps them.
+
 ## Rebuilding from scratch
 
 ### On a new Alwaysdata account
@@ -479,7 +505,7 @@ Everything is plain Linux processes against a standard PostgreSQL; nothing here 
 
    Or run the container image from `infra/container/Dockerfile` twice, once per program. Run both under a supervisor that restarts them (systemd or similar).
 
-4. **Files:** copy uploads once they exist. **DNS:** point the records above at the new host, and let the proxy get certificates.
+4. **Files:** copy uploads once they exist. **DNS:** point the records above at the new host, and let the proxy get certificates. Keep the domain: the passkeys belong to the host name of `PUBLIC_ORIGIN`, and a new one makes every passkey useless (see "DNS").
 
 ## Verification
 
@@ -552,5 +578,13 @@ Sentry in the browser and problem reports (the project `padvinder-browser`), aft
 | A report from a crash screen is linked to the crash's event                                                                                                                      | This cannot be forced on a production build: the dev crash routes are absent there, and an error thrown in the console reaches `window.onerror` but never the crash screen (only a React error boundary or the router's error element shows it). It is covered by the end-to-end tests (`e2e/problem-reports.spec.ts`, `e2e/portal-problem-reports.spec.ts`) and the real-SDK test `apps/mobile/src/components/crash-monitoring.test.tsx`. On staging or production, check it on the first real crash report: the feedback in Sentry shows the linked issue                                                                                                                                                                                 | OPEN   |
 | A problem report on production mails the maintainer                                                                                                                              | Send one from the production app (outside the season, as the maintainer); the alert rule for new user feedback mails within a few minutes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | OPEN   |
 | The tunnel forwards without the phone's headers and without a cookie                                                                                                             | In the Network tab or with `curl -X POST https://staging.padvinder.net/api/sentry-tunnel --data-binary @envelope` (an envelope from the browser's Network tab): 2xx, and the event in Sentry has no `user_agent` and no IP address                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | OPEN   |
+
+Passkeys and the emergency procedure, after the pull request "Passkeys exist":
+
+| What                                                                                                                                                                                                          | How to check                                                                                                                                                                      | Status                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| The database session command in "Operating notes" opens `psql` on the environment's database over SSH (`psql` is on the SSH host, and Node reads the env file), and the password is in no process's arguments | Run it on staging; type `select current_database();`, and in a second SSH session `ps -o args` for that user shows `psql` without the URL or password                             | OPEN (tried locally against a stand-in env file, 26 November 2026) |
+| "The last platform admin lost all passkeys" (`docs/emergency-procedures.md`) works on the real account                                                                                                        | On staging, with a test platform admin who has a passkey: follow the steps, then log in with a code and add a new passkey as a first one; Toegangssleutels shows only the new one | OPEN                                                               |
+| Passkeys work on the real domains (relying party ID `padvinder.net` and `staging.padvinder.net`)                                                                                                              | On staging: make a passkey in the portal, then let the confirmation lapse (or log in again with a code) and confirm with it in the modal "Bevestig dat jij het bent"              | OPEN                                                               |
 
 When a name differs, change it in `src/resources.ts` only, and the fake in `src/testing/fake-api.ts` if its answers differ.

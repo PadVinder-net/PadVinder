@@ -17,6 +17,10 @@ export const LOGIN_CODE_LIMITS = { perQuarterHour: 3, perDay: 10 };
 export const IP_LIMITS = {
   sendCode: { window: 300, max: 30 },
   checkCode: { window: 300, max: 60 },
+  /** Each of the two `generate-*` passkey routes. */
+  passkeyOptions: { window: 300, max: 60 },
+  /** Each of the two `verify-*` passkey routes. */
+  passkeyVerify: { window: 300, max: 60 },
 };
 
 const QUARTER_HOUR_MS = 15 * 60 * 1000;

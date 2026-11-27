@@ -6,6 +6,7 @@ import {
 } from "@padvinder/db";
 import type { WorkingGroupTarget } from "../permissions/rules";
 import { loginAs, type TestApp } from "./login";
+import { stampSession } from "./passkeys";
 
 export type CastMember =
   | "platformAdmin"
@@ -62,6 +63,15 @@ export async function createCast(ctx: TestApp): Promise<Cast> {
     organizationAdminOtherOrganization: await login("organizationAdminOtherOrganization"),
     applicant: await login("applicant"),
   } satisfies Record<CastMember, CastLogin>;
+
+  // The admins are recently confirmed, so the existing admin tests meet no confirmation rule.
+  for (const admin of [
+    members.platformAdmin,
+    members.organizationAdmin,
+    members.organizationAdminOtherOrganization,
+  ]) {
+    await stampSession(ctx, admin.headers.cookie, new Date());
+  }
 
   const newOrganization = async (name: string, admin: CastLogin) => {
     const created = await createOrganization(db, { name, adminEmail: admin.email }, system);

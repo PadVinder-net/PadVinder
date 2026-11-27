@@ -1,3 +1,4 @@
+import { createQueryClient } from "@padvinder/api-client";
 import { mockFetch } from "@padvinder/api-client/testing";
 import {
   applicantMeFixture,
@@ -10,9 +11,11 @@ import {
 import type { MeResponse } from "@padvinder/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { startAuthentication } from "@simplewebauthn/browser";
+import { expect, test, vi } from "vitest";
 import { renderPortal } from "../testing/render-portal";
 import {
+  answerRequests,
   emitAccessChanged,
   errorResponse,
   holdRequests,
@@ -20,6 +23,12 @@ import {
   recordRequests,
   requestsTo,
 } from "../testing/requests";
+
+vi.mock("@simplewebauthn/browser", () => ({
+  browserSupportsWebAuthn: vi.fn(() => true),
+  startAuthentication: vi.fn(),
+  startRegistration: vi.fn(),
+}));
 
 const voorbeeldstad = organizationsFixture[1]!;
 const pagePath = `/organizations/${voorbeeldstad.id}`;
@@ -344,4 +353,99 @@ test("Nieuwe werkgroep opens the form for this organization", async () => {
     `${path}/working-groups`,
   );
   expect(router.state.location.pathname).toBe(`/working-groups/${noord.id}`);
+});
+
+const resettable = {
+  ...organizationDetailFixture,
+  admins: organizationDetailFixture.admins.map((admin) => ({ ...admin, mayResetPasskeys: true })),
+};
+const resetPath = `${adminPath}/${firstAdmin.userId}/passkeys`;
+
+test("resetting an admin asks first and names them; the request goes to the organization's route", async () => {
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    [`GET ${path}`]: resettable,
+    [`DELETE ${resetPath}`]: new Response(null, { status: 204 }),
+    ...baseRoutes,
+  });
+  const requests = recordRequests();
+  renderPortal(pagePath);
+  await userEvent.click(
+    await screen.findByRole("button", { name: `Acties voor ${firstAdmin.name}` }),
+  );
+  await userEvent.click(
+    await screen.findByRole("menuitem", { name: "Verwijder toegangssleutels" }),
+  );
+  const dialog = await screen.findByRole("alertdialog");
+  expect(
+    within(dialog).getByText(`Toegangssleutels van ${firstAdmin.name} verwijderen?`),
+  ).toBeVisible();
+  expect(
+    within(dialog).getByText(
+      `Doe dit als ${firstAdmin.name} geen toegangssleutel meer heeft, bijvoorbeeld na het kwijtraken van een telefoon. Daarna maakt ${firstAdmin.name} een nieuwe bij de volgende keer beheren. ${firstAdmin.name} moet daarna overal opnieuw inloggen.`,
+    ),
+  ).toBeVisible();
+  expect(requestsTo(requests, "DELETE", "/api/organizations")).toEqual([]);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder" }));
+  expect(
+    await screen.findByText(`De toegangssleutels van ${firstAdmin.name} zijn verwijderd.`),
+  ).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(requestsTo(requests, "DELETE", "/api/organizations").map((r) => r.path)).toEqual([
+    resetPath,
+  ]);
+});
+
+test("a reset that needs a confirmation goes through after it, and the dialog closes with the toast", async () => {
+  let confirmed = false;
+  mockFetch({
+    "/api/me": {
+      ...platformAdminMeFixture,
+      user: { ...platformAdminMeFixture.user, hasPasskey: true },
+    },
+    [`GET ${path}`]: resettable,
+    "POST /api/auth/passkey/generate-authenticate-options": { challenge: "c" },
+    "POST /api/auth/passkey/verify-authentication": { ok: true },
+    ...baseRoutes,
+  });
+  answerRequests(
+    (url, request) => request.method === "DELETE" && url.pathname === resetPath,
+    () =>
+      confirmed ? new Response(null, { status: 204 }) : errorResponse(403, "passkey_required"),
+  );
+  vi.mocked(startAuthentication).mockImplementation(async () => {
+    confirmed = true;
+    return { id: "x" } as never;
+  });
+  const requests = recordRequests();
+  renderPortal(pagePath, createQueryClient());
+  await userEvent.click(
+    await screen.findByRole("button", { name: `Acties voor ${firstAdmin.name}` }),
+  );
+  await userEvent.click(
+    await screen.findByRole("menuitem", { name: "Verwijder toegangssleutels" }),
+  );
+  const dialog = await screen.findByRole("alertdialog");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Verwijder" }));
+  const modal = await screen.findByRole("dialog", { name: "Bevestig dat jij het bent" });
+  await userEvent.click(within(modal).getByRole("button", { name: "Gebruik je toegangssleutel" }));
+  expect(
+    await screen.findByText(`De toegangssleutels van ${firstAdmin.name} zijn verwijderd.`),
+  ).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(requestsTo(requests, "DELETE", "/api/organizations")).toHaveLength(2);
+});
+
+test("without mayResetPasskeys the row has no reset action", async () => {
+  mockFetch({
+    "/api/me": platformAdminMeFixture,
+    [`GET ${path}`]: organizationDetailFixture,
+    ...baseRoutes,
+  });
+  renderPortal(pagePath);
+  await userEvent.click(
+    await screen.findByRole("button", { name: `Acties voor ${firstAdmin.name}` }),
+  );
+  expect(screen.queryByRole("menuitem", { name: "Verwijder toegangssleutels" })).toBeNull();
 });

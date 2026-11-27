@@ -5,7 +5,7 @@ import {
   pruneLoginData,
   recordLoginCodeRequest,
 } from "./login-code-requests";
-import { rateLimits } from "./schema";
+import { rateLimits, verifications } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 let t: TestDatabase | undefined;
@@ -50,6 +50,22 @@ test("pruning deletes only requests and IP counters older than 24 hours", async 
   await pruneLoginData(t!.db, now);
   expect(await countAll("prune@example.test")).toBe(1);
   expect((await t!.db.select().from(rateLimits)).map((row) => row.key)).toEqual(["recent"]);
+});
+
+test("pruneLoginData deletes expired challenge rows and keeps a valid login code", async () => {
+  const row = (identifier: string, expiresAt: Date) => ({ identifier, value: "v", expiresAt });
+  await t!.db
+    .insert(verifications)
+    .values([
+      row("challenge-old", minutesAgo(25 * 60)),
+      row("challenge-just-expired", minutesAgo(60)),
+      row("sign-in-otp-valid@example.test", new Date(now.getTime() + 20 * 60_000)),
+    ]);
+  await pruneLoginData(t!.db, now);
+  const identifiers = (await t!.db.select().from(verifications)).map((r) => r.identifier);
+  expect(identifiers).not.toContain("challenge-old");
+  expect(identifiers).toContain("challenge-just-expired");
+  expect(identifiers).toContain("sign-in-otp-valid@example.test");
 });
 
 test("the lock for one address makes a second transaction wait", async () => {

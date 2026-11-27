@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createLogger } from "@padvinder/logging";
+import { countPasskeys } from "@padvinder/db";
+import { createTestDatabase } from "@padvinder/db/testing";
+import { createLogger, DATABASE_ERROR_MESSAGE, QUERY_ERROR_MESSAGE } from "@padvinder/logging";
 import * as Sentry from "@sentry/node";
 import { afterEach, expect, test } from "vitest";
 import {
@@ -71,6 +74,32 @@ test("an error line without err becomes a message event; no Sentry logs are sent
   expect(t.events()[0]).toMatchObject({ message: "Mail to [email] failed", server_name: "worker" });
   // A Sentry log would be an item of type "log".
   expect(JSON.stringify(t.envelopes())).not.toContain('"type":"log"');
+});
+
+test("a database error in an error line reaches Sentry without the values in its messages", async () => {
+  const database = await createTestDatabase();
+  try {
+    // Made at run time: Sentry sends the source lines around each frame, this file's too.
+    const marker = `not-a-uuid-${randomUUID().replaceAll("-", "")}`;
+    // PostgreSQL quotes the value in its message: `invalid input syntax for type uuid: "…"`.
+    const error: unknown = await countPasskeys(database.db, marker).catch((thrown) => thrown);
+    expect(error).toMatchObject({ name: "DrizzleQueryError" });
+    expect(String(((error as Error).cause as Error).message)).toContain(marker);
+    const t = createTestTransport();
+    startServerMonitoring({ service: "api", settings, transport: t.transport });
+    const logger = createLogger({ service: "api", level: "info", destination: silent });
+    logger.error({ err: error }, "Unexpected error");
+    await flushMonitoring();
+    expect(t.events()).toHaveLength(1);
+    const values = t.events()[0]!.exception?.values ?? [];
+    expect(values).toContainEqual(
+      expect.objectContaining({ type: "DrizzleQueryError", value: QUERY_ERROR_MESSAGE }),
+    );
+    expect(values).toContainEqual(expect.objectContaining({ value: DATABASE_ERROR_MESSAGE }));
+    expect(JSON.stringify(t.envelopes())).not.toContain(marker);
+  } finally {
+    await database.drop();
+  }
 });
 
 test("setMonitoringUser sends only the id", async () => {

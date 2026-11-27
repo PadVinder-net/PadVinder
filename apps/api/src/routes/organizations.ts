@@ -27,7 +27,8 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { mapAdminErrors } from "../admin-errors";
 import { apiError, errorResponses } from "../errors";
-import { authorize } from "../permissions/rules";
+import type { Actor } from "../permissions/actor";
+import { authorize, decide } from "../permissions/rules";
 
 const organizationParamsSchema = z.object({ organizationId: z.uuid() });
 const adminParamsSchema = z.object({ organizationId: z.uuid(), userId: z.uuid() });
@@ -41,10 +42,25 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
   app,
   { db, queueMail },
 ) => {
-  const detail = async (organizationId: string): Promise<OrganizationDetail> => {
+  /** `mayResetPasskeys` per admin: allowed or only awaiting a confirmation, and never one's own. */
+  const detail = async (actor: Actor, organizationId: string): Promise<OrganizationDetail> => {
     const organization = await getOrganization(db, organizationId);
     if (!organization) throw apiError(404, apiErrorCodes.notFound, "Organization not found");
-    return organization;
+    return {
+      ...organization,
+      admins: organization.admins.map(({ isPlatformAdmin, ...admin }) => {
+        const decision = decide(actor, {
+          action: "organization.resetAdminPasskeys",
+          target: { organizationId },
+          subjectIsPlatformAdmin: isPlatformAdmin,
+        });
+        return {
+          ...admin,
+          mayResetPasskeys:
+            admin.userId !== actor.userId && (decision === "allowed" || decision === "confirm"),
+        };
+      }),
+    };
   };
 
   app.get(
@@ -74,9 +90,10 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
       },
     },
     async (request): Promise<OrganizationDetail> => {
+      const actor = request.actor!;
       const { organizationId } = request.params;
-      authorize(request.actor!, { action: "organization.view", target: { organizationId } });
-      return detail(organizationId);
+      authorize(actor, { action: "organization.view", target: { organizationId } });
+      return detail(actor, organizationId);
     },
   );
 
@@ -105,7 +122,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
         { email: "adminEmail" },
       );
       reply.code(201);
-      return detail(created.id);
+      return detail(actor, created.id);
     },
   );
 
@@ -139,7 +156,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
           ),
         { email: "contactEmail" },
       );
-      return detail(organizationId);
+      return detail(actor, organizationId);
     },
   );
 
@@ -168,7 +185,7 @@ export const organizationRoutes: FastifyPluginAsyncZod<{ db: Db; queueMail: Queu
           { queueMail },
         ),
       );
-      return detail(organizationId);
+      return detail(actor, organizationId);
     },
   );
 

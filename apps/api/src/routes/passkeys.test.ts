@@ -1,0 +1,409 @@
+import {
+  auditLogEntries,
+  grantOrganizationAdmin,
+  grantPlatformAdmin,
+  passkeys,
+  sessions,
+  users,
+} from "@padvinder/db";
+import { and, eq } from "drizzle-orm";
+import { v7 as uuidv7 } from "uuid";
+import { afterAll, beforeAll, expect, test } from "vitest";
+import { createCast, expectStatuses, type Cast, type CastLogin } from "../testing/cast";
+import { createTestApp, loginAs, type TestApp } from "../testing/login";
+import {
+  addPasskey,
+  postAuth,
+  sessionTokenOf,
+  stampSession,
+  withCookies,
+} from "../testing/passkeys";
+import { createSoftAuthenticator } from "../testing/soft-authenticator";
+import { testEnv } from "../test-env";
+
+let ctx: TestApp;
+let cast: Cast;
+beforeAll(async () => {
+  ctx = await createTestApp();
+  cast = await createCast(ctx);
+});
+afterAll(() => ctx.close());
+
+const system = { kind: "system" } as const;
+let n = 0;
+const address = (label: string) => `${label}-${++n}-${uuidv7().slice(-8)}@example.test`;
+
+type Headers = Record<string, string>;
+type Who = { headers: Headers };
+const send = (who: Who, method: "GET" | "DELETE", url: string) =>
+  ctx.app.inject({ method, url, headers: who.headers });
+const list = (who: Who) => send(who, "GET", "/api/passkeys");
+const removeOwn = (who: Who, id: string) => send(who, "DELETE", `/api/passkeys/${id}`);
+const resetOrganizationAdmin = (who: Who, organizationId: string, userId: string) =>
+  send(who, "DELETE", `/api/organizations/${organizationId}/admins/${userId}/passkeys`);
+const resetPlatformAdmin = (who: Who, userId: string) =>
+  send(who, "DELETE", `/api/platform-admins/${userId}/passkeys`);
+
+/** A passkey row for the user, made without the browser ceremony. */
+async function insertPasskey(userId: string): Promise<string> {
+  const [row] = await ctx.t.db
+    .insert(passkeys)
+    .values({
+      userId,
+      publicKey: `public-key-${++n}`,
+      credentialID: `credential-id-${n}-${uuidv7()}`,
+      counter: 7,
+      deviceType: "multiDevice",
+      backedUp: true,
+      aaguid: "aaguid-secret",
+    })
+    .returning({ id: passkeys.id });
+  return row!.id;
+}
+const passkeysOf = async (userId: string) =>
+  ctx.t.db.select().from(passkeys).where(eq(passkeys.userId, userId));
+
+/** A logged-in admin of the cast's organization with a passkey, confirmed just now. */
+async function newOrganizationAdmin() {
+  const email = address("admin");
+  const login = await loginAs(ctx, email);
+  await grantOrganizationAdmin(ctx.t.db, { email, organizationId: cast.organization.id }, system);
+  await stampSession(ctx, login.headers.cookie, new Date());
+  const passkeyId = await insertPasskey(login.userId);
+  return { ...login, email, passkeyId };
+}
+
+async function newPlatformAdmin() {
+  const email = address("platform");
+  const login = await loginAs(ctx, email);
+  await grantPlatformAdmin(ctx.t.db, { email }, system);
+  await stampSession(ctx, login.headers.cookie, new Date());
+  const passkeyId = await insertPasskey(login.userId);
+  return { ...login, email, passkeyId };
+}
+
+const adminsOnly = (ok: number) => ({
+  platformAdmin: ok,
+  organizationAdmin: ok,
+  coordinator: 403,
+  volunteer: 403,
+  volunteerOtherGroup: 403,
+  coordinatorOtherOrganization: 403,
+  organizationAdminOtherOrganization: ok,
+  applicant: 403,
+  anonymous: 401,
+});
+
+const memberOf = (headers: Headers): CastLogin | undefined =>
+  Object.values(cast.members).find((member) => member.headers.cookie === headers.cookie);
+
+test("only admins list their own passkeys", async () => {
+  await expectStatuses(cast, adminsOnly(200), (headers) => list({ headers }));
+});
+
+test("only admins remove one of their own", async () => {
+  await expectStatuses(cast, adminsOnly(204), async (headers) => {
+    const member = memberOf(headers);
+    const id = member ? await insertPasskey(member.userId) : uuidv7();
+    return removeOwn({ headers }, id);
+  });
+});
+
+test("resetting an admin of the organization", async () => {
+  await expectStatuses(
+    cast,
+    {
+      platformAdmin: 204,
+      organizationAdmin: 204,
+      organizationAdminOtherOrganization: 404,
+      coordinator: 404,
+      volunteer: 404,
+      volunteerOtherGroup: 404,
+      coordinatorOtherOrganization: 404,
+      applicant: 404,
+      anonymous: 401,
+    },
+    async (headers) => {
+      const target = await newOrganizationAdmin();
+      return resetOrganizationAdmin({ headers }, cast.organization.id, target.userId);
+    },
+  );
+});
+
+test("resetting a platform admin", async () => {
+  await expectStatuses(
+    cast,
+    {
+      platformAdmin: 204,
+      organizationAdmin: 403,
+      coordinator: 403,
+      volunteer: 403,
+      volunteerOtherGroup: 403,
+      coordinatorOtherOrganization: 403,
+      organizationAdminOtherOrganization: 403,
+      applicant: 403,
+      anonymous: 401,
+    },
+    async (headers) => {
+      const target = await newPlatformAdmin();
+      return resetPlatformAdmin({ headers }, target.userId);
+    },
+  );
+});
+
+test("an organization admin cannot reset a platform admin who is also an admin of the organization: 403", async () => {
+  const target = await newPlatformAdmin();
+  await grantOrganizationAdmin(
+    ctx.t.db,
+    { email: target.email, organizationId: cast.organization.id },
+    system,
+  );
+  const res = await resetOrganizationAdmin(
+    cast.members.organizationAdmin,
+    cast.organization.id,
+    target.userId,
+  );
+  expect(res.statusCode).toBe(403);
+  expect(res.json().code).toBe("not_allowed");
+  expect(await passkeysOf(target.userId)).toHaveLength(1);
+  // A platform admin may.
+  const byPlatform = await resetOrganizationAdmin(
+    cast.members.platformAdmin,
+    cast.organization.id,
+    target.userId,
+  );
+  expect(byPlatform.statusCode).toBe(204);
+});
+
+test("resetting yourself is 409 own_account on both routes, and your passkeys stay", async () => {
+  const platform = cast.members.platformAdmin;
+  const admin = cast.members.organizationAdmin;
+  await insertPasskey(platform.userId);
+  await insertPasskey(admin.userId);
+  const byPlatform = await resetPlatformAdmin(platform, platform.userId);
+  expect(byPlatform.statusCode).toBe(409);
+  expect(byPlatform.json().code).toBe("own_account");
+  const byOrganization = await resetOrganizationAdmin(admin, cast.organization.id, admin.userId);
+  expect(byOrganization.statusCode).toBe(409);
+  expect(byOrganization.json().code).toBe("own_account");
+  expect((await passkeysOf(platform.userId)).length).toBeGreaterThan(0);
+  expect((await passkeysOf(admin.userId)).length).toBeGreaterThan(0);
+});
+
+test("someone who is no admin of the organization, or no platform admin, is 404", async () => {
+  const stranger = await newPlatformAdmin();
+  const ownerOfOther = cast.members.organizationAdminOtherOrganization;
+  // An admin of another organization is no admin of this one.
+  const wrongOrganization = await resetOrganizationAdmin(
+    cast.members.platformAdmin,
+    cast.organization.id,
+    ownerOfOther.userId,
+  );
+  expect(wrongOrganization.statusCode).toBe(404);
+  // A platform admin who is no admin of the organization is no target there either.
+  const notThere = await resetOrganizationAdmin(
+    cast.members.platformAdmin,
+    cast.organization.id,
+    stranger.userId,
+  );
+  expect(notThere.statusCode).toBe(404);
+  // A volunteer is no platform admin.
+  const notPlatform = await resetPlatformAdmin(
+    cast.members.platformAdmin,
+    cast.members.volunteer.userId,
+  );
+  expect(notPlatform.statusCode).toBe(404);
+  expect((await passkeysOf(stranger.userId)).length).toBe(1);
+});
+
+test("the list is passkey_required at 24 h; a removal and a reset are passkey_required at 10 min", async () => {
+  const admin = await newOrganizationAdmin();
+  const target = await newOrganizationAdmin();
+  const minutes = (m: number) => new Date(Date.now() - m * 60_000);
+
+  await stampSession(ctx, admin.headers.cookie, minutes(11));
+  expect((await list(admin)).statusCode).toBe(200);
+  const removal = await removeOwn(admin, admin.passkeyId);
+  expect(removal.statusCode).toBe(403);
+  expect(removal.json().code).toBe("passkey_required");
+  const reset = await resetOrganizationAdmin(admin, cast.organization.id, target.userId);
+  expect(reset.statusCode).toBe(403);
+  expect(reset.json().code).toBe("passkey_required");
+  expect(await passkeysOf(admin.userId)).toHaveLength(1);
+  expect(await passkeysOf(target.userId)).toHaveLength(1);
+
+  await stampSession(ctx, admin.headers.cookie, new Date(Date.now() - 25 * 3_600_000));
+  const old = await list(admin);
+  expect(old.statusCode).toBe(403);
+  expect(old.json().code).toBe("passkey_required");
+});
+
+const me = (cookie: string) =>
+  ctx.app.inject({ method: "GET", url: "/api/me", headers: { cookie } });
+const sessionsOf = (userId: string) =>
+  ctx.t.db.select().from(sessions).where(eq(sessions.userId, userId));
+const emailOf = async (userId: string) =>
+  (await ctx.t.db.select().from(users).where(eq(users.id, userId)))[0]!.email;
+
+test("a reset logs the person out everywhere: every old cookie is 401 on GET /api/me, on both routes", async () => {
+  const organizationTarget = await newOrganizationAdmin();
+  const platformTarget = await newPlatformAdmin();
+  const reset = [
+    () =>
+      resetOrganizationAdmin(
+        cast.members.platformAdmin,
+        cast.organization.id,
+        organizationTarget.userId,
+      ),
+    () => resetPlatformAdmin(cast.members.platformAdmin, platformTarget.userId),
+  ];
+  for (const [index, target] of [organizationTarget, platformTarget].entries()) {
+    // A second logged-in session of the same person: a code session, not confirmed.
+    const second = await loginAs(ctx, await emailOf(target.userId));
+    expect(second.userId).toBe(target.userId);
+    for (const session of [target, second]) {
+      expect((await me(session.headers.cookie)).statusCode).toBe(200);
+    }
+    expect((await reset[index]!()).statusCode).toBe(204);
+    for (const session of [target, second]) {
+      const after = await me(session.headers.cookie);
+      expect(after.statusCode).toBe(401);
+      expect(after.json().code).toBe("not_logged_in");
+    }
+    expect(await sessionsOf(target.userId)).toEqual([]);
+  }
+  // The admin who reset stays logged in.
+  expect((await me(cast.members.platformAdmin.headers.cookie)).statusCode).toBe(200);
+});
+
+test("a stolen laptop's session cannot add a first passkey after the reset; the person logs in with a code and can", async () => {
+  const email = address("stolen");
+  const code = await loginAs(ctx, email);
+  await grantOrganizationAdmin(ctx.t.db, { email, organizationId: cast.organization.id }, system);
+  const newAuthenticator = () => createSoftAuthenticator({ origin: testEnv.PUBLIC_ORIGIN });
+  // The laptop's session is the one the first passkey's registration made: stamped and young.
+  const added = await addPasskey(ctx, code.headers.cookie, newAuthenticator());
+  expect(added.response.statusCode).toBe(200);
+  const laptop = added.cookie;
+  // The thief asks for registration options before the reset and finishes after it.
+  const options = await postAuth(ctx, "/passkey/generate-register-options", laptop);
+  expect(options.statusCode).toBe(200);
+  const withChallenge = withCookies(laptop, options) ?? laptop;
+
+  const res = await resetOrganizationAdmin(
+    cast.members.organizationAdmin,
+    cast.organization.id,
+    code.userId,
+  );
+  expect(res.statusCode).toBe(204);
+  expect(await passkeysOf(code.userId)).toEqual([]);
+
+  const thief = newAuthenticator();
+  const finish = await postAuth(ctx, "/passkey/verify-registration", withChallenge, {
+    response: thief.register(options.json()),
+  });
+  expect(finish.statusCode).toBe(401);
+  const again = await addPasskey(ctx, laptop, thief);
+  expect(again.response.statusCode).toBe(401);
+  expect(await passkeysOf(code.userId)).toEqual([]);
+
+  // The person logs in again with a code and adds a new first passkey.
+  const fresh = await loginAs(ctx, email);
+  expect(fresh.userId).toBe(code.userId);
+  const owner = newAuthenticator();
+  const repaired = await addPasskey(ctx, fresh.headers.cookie, owner);
+  expect(repaired.response.statusCode).toBe(200);
+  expect(await passkeysOf(code.userId)).toMatchObject([{ credentialID: owner.credentialId }]);
+  const token = sessionTokenOf(repaired.cookie);
+  const [session] = (await sessionsOf(code.userId)).filter((row) => row.token === token);
+  expect(session?.passkeyVerifiedAt).not.toBeNull();
+  expect((await me(repaired.cookie)).json()).toMatchObject({ user: { hasPasskey: true } });
+});
+
+test("a volunteer gets 403 not_allowed, not passkey_required, on the list and the removal", async () => {
+  const volunteer = cast.members.volunteer;
+  const id = await insertPasskey(volunteer.userId);
+  const before = (await passkeysOf(volunteer.userId)).length;
+  for (const res of [await list(volunteer), await removeOwn(volunteer, id)]) {
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("not_allowed");
+  }
+  expect(await passkeysOf(volunteer.userId)).toHaveLength(before);
+});
+
+test("the platform reset is passkey_required at 11 minutes since the stamp", async () => {
+  const admin = await newPlatformAdmin();
+  const target = await newPlatformAdmin();
+  await stampSession(ctx, admin.headers.cookie, new Date(Date.now() - 11 * 60_000));
+  const res = await resetPlatformAdmin(admin, target.userId);
+  expect(res.statusCode).toBe(403);
+  expect(res.json().code).toBe("passkey_required");
+  expect(await passkeysOf(target.userId)).toHaveLength(1);
+});
+
+test("removing someone else's passkey by ID is 404 and it stays", async () => {
+  const other = await newOrganizationAdmin();
+  const res = await removeOwn(cast.members.organizationAdmin, other.passkeyId);
+  expect(res.statusCode).toBe(404);
+  expect(await passkeysOf(other.userId)).toHaveLength(1);
+  const missing = await removeOwn(cast.members.organizationAdmin, uuidv7());
+  expect(missing.statusCode).toBe(404);
+  const invalid = await removeOwn(cast.members.organizationAdmin, "not-a-uuid");
+  expect(invalid.statusCode).toBe(400);
+});
+
+test("the list holds id, createdAt and backedUp, and no key material", async () => {
+  const admin = await newOrganizationAdmin();
+  const res = await list(admin);
+  expect(res.statusCode).toBe(200);
+  const body = res.json() as { passkeys: Record<string, unknown>[] };
+  expect(body.passkeys).toHaveLength(1);
+  expect(Object.keys(body.passkeys[0]!).sort()).toEqual(["backedUp", "createdAt", "id"]);
+  expect(body.passkeys[0]!.id).toBe(admin.passkeyId);
+  expect(body.passkeys[0]!.backedUp).toBe(true);
+  expect(body.passkeys[0]!.createdAt).toMatch(/Z$|[+-]\d\d:\d\d$/);
+  for (const secret of ["publicKey", "credentialID", "counter", "aaguid", "public-key-"]) {
+    expect(res.body).not.toContain(secret);
+  }
+});
+
+test("a reset writes passkey.reset with the organization of the path, or none on the platform route", async () => {
+  const target = await newOrganizationAdmin();
+  await resetOrganizationAdmin(cast.members.organizationAdmin, cast.organization.id, target.userId);
+  const platformTarget = await newPlatformAdmin();
+  await resetPlatformAdmin(cast.members.platformAdmin, platformTarget.userId);
+
+  const entry = async (subjectId: string) =>
+    (
+      await ctx.t.db
+        .select()
+        .from(auditLogEntries)
+        .where(
+          and(
+            eq(auditLogEntries.subjectId, subjectId),
+            eq(auditLogEntries.action, "passkey.reset"),
+          ),
+        )
+    )[0];
+  const first = await entry(target.userId);
+  expect(first?.organizationId).toBe(cast.organization.id);
+  expect(first?.actorUserId).toBe(cast.members.organizationAdmin.userId);
+  const second = await entry(platformTarget.userId);
+  expect(second?.organizationId).toBeNull();
+  expect(second?.actorUserId).toBe(cast.members.platformAdmin.userId);
+  // Both queued the mail by IDs only.
+  const jobs = ctx.mailQueue.jobs.filter((job) => job.kind === "passkeys-removed");
+  expect(jobs.map((job) => job.userId)).toEqual(
+    expect.arrayContaining([target.userId, platformTarget.userId]),
+  );
+});
+
+test("removing the last own passkey leaves hasPasskey false", async () => {
+  const admin = await newOrganizationAdmin();
+  const hasPasskey = async () =>
+    (await send(admin, "GET", "/api/me")).json().user.hasPasskey as boolean;
+  expect(await hasPasskey()).toBe(true);
+  expect((await removeOwn(admin, admin.passkeyId)).statusCode).toBe(204);
+  expect(await hasPasskey()).toBe(false);
+  expect((await list(admin)).json()).toEqual({ passkeys: [] });
+});

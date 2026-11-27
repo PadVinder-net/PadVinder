@@ -239,3 +239,11 @@ test("a failed background refetch keeps the app", async () => {
   expect(screen.getByText("de app")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Probeer opnieuw" })).toBeNull();
 });
+
+test("the login screen has no passkey button and no word toegangssleutel", async () => {
+  mockFetch({ "/api/me": unauthorized() });
+  renderGate();
+  await screen.findByRole("heading", { name: "Log in bij PadVinder" });
+  expect(screen.queryByRole("button", { name: /toegangssleutel/i })).toBeNull();
+  expect(screen.queryByText(/toegangssleutel/i)).toBeNull();
+});

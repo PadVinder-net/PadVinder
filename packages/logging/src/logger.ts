@@ -1,4 +1,5 @@
 import pino from "pino";
+import { withoutDatabaseValues } from "./database-error";
 import { scrub } from "./scrub";
 import { serializeError } from "./serialize-error";
 
@@ -20,6 +21,22 @@ function serializeRequest(req: RequestLike) {
   return { method: req.method, url, host: req.host ?? req.hostname };
 }
 
+/**
+ * The arguments of a log call with a database error in `err` (or as the first argument) replaced
+ * by its copy without values (`withoutDatabaseValues`). Before pino serializes the line, so
+ * Sentry's pino integration, which captures the `err` of the call itself, gets the copy too.
+ */
+function withoutDatabaseErrorValues(args: unknown[]): unknown[] {
+  const [first, ...rest] = args;
+  if (first instanceof Error) {
+    const safe = withoutDatabaseValues(first);
+    return safe === first ? args : [safe, ...rest];
+  }
+  if (typeof first !== "object" || first === null || !("err" in first)) return args;
+  const safe = withoutDatabaseValues(first.err);
+  return safe === first.err ? args : [{ ...first, err: safe }, ...rest];
+}
+
 export function createLoggerFor(options: {
   service: string;
   level: LogLevel;
@@ -30,7 +47,12 @@ export function createLoggerFor(options: {
       level: options.level,
       base: { service: options.service },
       formatters: { level: (label) => ({ level: label }) },
-      hooks: { streamWrite: scrub },
+      hooks: {
+        logMethod(args, method) {
+          method.apply(this, withoutDatabaseErrorValues(args) as Parameters<typeof method>);
+        },
+        streamWrite: scrub,
+      },
       serializers: {
         err: serializeError,
         req: serializeRequest,

@@ -29,6 +29,18 @@ export type SubscribeOptions = {
   reconnectDelays?: readonly number[];
 };
 
+/** The open subscriptions, each with the function that opens its stream again at once. */
+const openSubscriptions = new Set<() => void>();
+
+/**
+ * Closes every open stream and opens it again at once, which calls its `onOpen` (and so refetches).
+ * After a passkey confirmation: the old streams were opened with the session it replaced, which no
+ * longer exists, and would only notice at their next check.
+ */
+export function reopenServerEvents(): void {
+  for (const reopen of openSubscriptions) reopen();
+}
+
 /** Up to a minute, so a server that is down for a while is not asked every few seconds. */
 const RECONNECT_DELAYS_MS = [5_000, 10_000, 30_000, 60_000];
 
@@ -59,12 +71,14 @@ export function subscribeToServerEvents(
     const current = new EventSourceImpl(url);
     source = current;
     current.onopen = () => {
+      // A stream replaced by `reopenServerEvents` is done.
+      if (current !== source) return;
       failures = 0;
       handlers.onOpen?.();
     };
     current.onerror = () => {
       // CONNECTING means the browser retries by itself; CLOSED means it gave up.
-      if (current.readyState !== EventSourceImpl.CLOSED || stopped) return;
+      if (current !== source || current.readyState !== EventSourceImpl.CLOSED || stopped) return;
       current.close();
       const delay = reconnectDelays[Math.min(failures, reconnectDelays.length - 1)] ?? 0;
       failures++;
@@ -88,9 +102,18 @@ export function subscribeToServerEvents(
     }
   }
 
+  function reopen() {
+    clearTimeout(timer);
+    source.close();
+    failures = 0;
+    connect();
+  }
+
   connect();
+  openSubscriptions.add(reopen);
   return () => {
     stopped = true;
+    openSubscriptions.delete(reopen);
     clearTimeout(timer);
     source.close();
   };

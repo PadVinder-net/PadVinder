@@ -36,6 +36,7 @@ import {
   membershipRequests,
   organizationAdmins,
   organizations,
+  passkeys,
   sessions,
   users,
   verifications,
@@ -1276,4 +1277,36 @@ test("with deletedBy the entry account.deleted names that actor, also for an acc
   expect(await deletedEntries(user.id)).toMatchObject([
     { actorKind: "user", actorUserId: platformAdmin.id, subjectId: user.id, details: {} },
   ]);
+});
+
+async function addPasskey(userId: string, credentialID: string) {
+  await db().insert(passkeys).values({
+    userId,
+    credentialID,
+    publicKey: "public-key",
+    counter: 4_294_967_295,
+    deviceType: "multiDevice",
+    backedUp: true,
+  });
+}
+
+test("deleteAccount deletes the person's passkeys and keeps other people's", async () => {
+  const user = await newUser();
+  const other = await newUser();
+  await addPasskey(user.id, `cred-${user.id}`);
+  await addPasskey(other.id, `cred-${other.id}`);
+  const result = await deleteAccount(db(), { userId: user.id, now });
+  expect(result.outcome).toBe("deleted");
+  expect(await db().select().from(passkeys).where(eq(passkeys.userId, user.id))).toEqual([]);
+  expect(await db().select().from(passkeys).where(eq(passkeys.userId, other.id))).toHaveLength(1);
+});
+
+test("a blocked deletion keeps the passkeys", async () => {
+  const user = await newUser();
+  const organization = await newOrganization("org-admin@example.test");
+  await newGroup(organization, "Enige passkey", user.email);
+  await addPasskey(user.id, `cred-${user.id}`);
+  const result = await deleteAccount(db(), { userId: user.id, now });
+  expect(result.outcome).toBe("blocked");
+  expect(await db().select().from(passkeys).where(eq(passkeys.userId, user.id))).toHaveLength(1);
 });

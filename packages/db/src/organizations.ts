@@ -3,11 +3,15 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Access } from "./access";
 import type { Db } from "./client";
 import { organizationAdmins, organizations, users } from "./schema";
+import { userHasPasskey } from "./passkeys";
 import { userHasLoggedIn } from "./users";
 
 export type OrganizationRecord = Organization;
 export type OrganizationAdminRecord = OrganizationAdmin;
-export type OrganizationDetailRecord = OrganizationDetail;
+/** The admins also say whether they are platform admins, for the route's decision; it never goes out. */
+export type OrganizationDetailRecord = Omit<OrganizationDetail, "admins"> & {
+  admins: (OrganizationAdmin & { isPlatformAdmin: boolean })[];
+};
 
 const columns = {
   id: organizations.id,
@@ -59,10 +63,16 @@ export async function getOrganization(
       name: users.name,
       email: users.email,
       hasLoggedIn: userHasLoggedIn,
+      hasPasskey: userHasPasskey,
+      isPlatformAdmin: users.isPlatformAdmin,
     })
     .from(organizationAdmins)
     .innerJoin(users, eq(users.id, organizationAdmins.userId))
     .where(and(eq(organizationAdmins.organizationId, organizationId), isNull(users.deletedAt)))
     .orderBy(asc(sql`${users.name} collate "nl-NL-x-icu"`), asc(users.id));
-  return { ...organization, admins };
+  // The route decides `mayResetPasskeys`; the database layer never says yes.
+  return {
+    ...organization,
+    admins: admins.map((admin) => ({ ...admin, mayResetPasskeys: false })),
+  };
 }

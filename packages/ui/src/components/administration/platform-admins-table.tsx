@@ -7,9 +7,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 export type PlatformAdminsTableProps = {
   admins: PlatformAdmin[];
   onRemove(admin: PlatformAdmin): void;
+  /** Adds the row action "Verwijder toegangssleutels" where `canResetPasskeys(admin)`. */
+  onResetPasskeys?(admin: PlatformAdmin): void;
+  canResetPasskeys?(admin: PlatformAdmin): boolean;
 };
 
-export function PlatformAdminsTable({ admins, onRemove }: PlatformAdminsTableProps) {
+export function PlatformAdminsTable({
+  admins,
+  onRemove,
+  onResetPasskeys,
+  canResetPasskeys,
+}: PlatformAdminsTableProps) {
   return (
     <Table>
       <TableHeader>
@@ -24,7 +32,14 @@ export function PlatformAdminsTable({ admins, onRemove }: PlatformAdminsTablePro
           const name = displayName(admin.name, admin.hasLoggedIn);
           return (
             <TableRow key={admin.userId}>
-              <TableCell>{name}</TableCell>
+              <TableCell>
+                {name}
+                {admin.hasPasskey ? null : (
+                  <span className="block text-sm text-muted-foreground">
+                    Nog geen toegangssleutel
+                  </span>
+                )}
+              </TableCell>
               <TableCell>
                 <a href={mailHref(admin.email)} className="underline underline-offset-4 break-all">
                   {admin.email}
@@ -40,6 +55,15 @@ export function PlatformAdminsTable({ admins, onRemove }: PlatformAdminsTablePro
                         onSelect: () => onRemove(admin),
                         destructive: true,
                       },
+                      ...(onResetPasskeys && canResetPasskeys?.(admin)
+                        ? [
+                            {
+                              label: "Verwijder toegangssleutels",
+                              onSelect: () => onResetPasskeys(admin),
+                              destructive: true,
+                            },
+                          ]
+                        : []),
                     ]}
                   />
                 </div>

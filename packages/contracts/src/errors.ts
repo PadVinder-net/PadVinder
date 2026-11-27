@@ -6,6 +6,10 @@ export const apiErrorCodes = {
   notLoggedIn: "not_logged_in",
   notAllowed: "not_allowed",
   notFound: "not_found",
+  /** Only a passkey confirmation is missing (admin actions). */
+  passkeyRequired: "passkey_required",
+  /** An account holds at most ten passkeys. */
+  tooManyPasskeys: "too_many_passkeys",
   originNotAllowed: "origin_not_allowed",
   tooManyRequests: "too_many_requests",
   /** The client-generated ID belongs to a record of someone else. */

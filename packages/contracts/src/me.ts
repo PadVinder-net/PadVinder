@@ -11,6 +11,8 @@ export const meResponseSchema = z
       email: z.string(),
       phone: z.string().nullable(),
       isPlatformAdmin: z.boolean(),
+      /** Whether the person has made a passkey. */
+      hasPasskey: z.boolean(),
     }),
     memberships: z.array(
       z.object({
@@ -27,6 +29,11 @@ export const meResponseSchema = z
      * screen or the rejection from it.
      */
     membershipRequest: membershipRequestSchema.nullable(),
+    /**
+     * Until when this session counts as confirmed by a passkey (ISO 8601 with an offset), for an
+     * admin; null for everyone else and for an admin who is not confirmed.
+     */
+    adminConfirmedUntil: z.iso.datetime({ offset: true }).nullable(),
   })
   .meta({ id: "MeResponse" });
 export type MeResponse = z.infer<typeof meResponseSchema>;

@@ -10,3 +10,4 @@ export * from "./add-members";
 export * from "./audit-log";
 export * from "./platform-admins";
 export * from "./accounts";
+export * from "./passkeys";

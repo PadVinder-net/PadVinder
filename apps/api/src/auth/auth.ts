@@ -2,18 +2,20 @@ import {
   accounts,
   findUserNameByEmail,
   normalizeEmail,
+  passkeys,
   rateLimits,
   sessions,
   users,
   verifications,
   type Db,
 } from "@padvinder/db";
+import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { eq } from "drizzle-orm";
-import { scrub } from "@padvinder/logging";
+import { scrub, withoutDatabaseValues, withoutQueryText } from "@padvinder/logging";
 import type { FastifyBaseLogger } from "fastify";
 import type { ApiEnv } from "../env";
 import { buildLoginCodeMail, describeMailError, type Mailer } from "@padvinder/mail";
@@ -27,6 +29,44 @@ import {
 export type AuthDeps = { env: ApiEnv; db: Db; mailer: Mailer; log: FastifyBaseLogger };
 
 const DAY_SECONDS = 24 * 60 * 60;
+
+/** The paths whose new session is made by a passkey, so it is stamped as confirmed. */
+const PASSKEY_SESSION_PATHS = new Set([
+  "/passkey/verify-authentication",
+  "/passkey/verify-registration",
+]);
+
+/**
+ * Everything from the first double quote to the last, replaced. SimpleWebAuthn quotes the
+ * challenge and the origin in its errors (`Unexpected authentication response challenge "…",
+ * expected "…"`). A client chooses what it sends as the challenge, quotes included, so quotes are
+ * not paired: one span covers every quoted value, whatever sits between them.
+ */
+const redactQuoted = (text: string): string => text.replace(/"[\s\S]*"/, '"[redacted]"');
+
+const clean = (text: string): string => scrub(redactQuoted(withoutQueryText(text)));
+
+type ForwardedError = { type: string; message: string; code?: string; cause?: ForwardedError };
+
+/**
+ * An error as `forwardLog` keeps it: its name and cleaned message. A database error keeps its
+ * name, the fixed message of `withoutDatabaseValues` and its SQLSTATE `code`, and the same of its
+ * cause: Drizzle's message holds the query's parameters (a session token, a credential ID, a
+ * challenge), after the last quote, where `redactQuoted` does not reach.
+ */
+function forwardedError(error: Error): ForwardedError {
+  const safe = withoutDatabaseValues(error);
+  return safe === error ? { type: error.name, message: clean(error.message) } : withCodes(safe);
+}
+
+/** A copy made by `withoutDatabaseValues`, with the codes of it and its causes. */
+function withCodes(error: Error): ForwardedError {
+  const result: ForwardedError = { type: error.name, message: clean(error.message) };
+  const code: unknown = (error as { code?: unknown }).code;
+  if (typeof code === "string") result.code = clean(code);
+  if (error.cause instanceof Error) result.cause = withCodes(error.cause);
+  return result;
+}
 
 /**
  * The answer (429) when an address asked for too many login codes. The browser client tells the
@@ -45,18 +85,19 @@ export const LOGIN_CODE_LIMIT_ERRORS: Record<LoginCodeLimit, { code: string; mes
 
 /**
  * Passes Better Auth's log lines to our logger. Its `info` lines are hints for developers, so
- * they go to `debug`. Arguments are reduced to error names and messages: a database error can
- * carry the row (with an email address) in its details.
+ * they go to `debug`. Arguments are reduced to error names and messages (`forwardedError`): a
+ * database error can carry the row (with an email address) in its details, and the query's
+ * parameters in its message. Better Auth also logs a database error's message as the line's own
+ * message, so Drizzle's query text is cut from it too (`withoutQueryText`). Quoted values are
+ * redacted from the message and the error messages, then addresses are scrubbed.
  */
 export function forwardLog(log: FastifyBaseLogger) {
   return (level: "debug" | "info" | "warn" | "error", message: string, ...args: unknown[]) => {
-    const errors = args
-      .filter((arg): arg is Error => arg instanceof Error)
-      .map((error) => ({ type: error.name, message: scrub(error.message) }));
+    const errors = args.filter((arg): arg is Error => arg instanceof Error).map(forwardedError);
     const target = level === "info" ? "debug" : level;
     log[target](
       { errors: errors.length > 0 ? errors : undefined },
-      `Better Auth: ${scrub(message)}`,
+      `Better Auth: ${clean(message)}`,
     );
   };
 }
@@ -81,6 +122,7 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         account: accounts,
         verification: verifications,
         rateLimit: rateLimits,
+        passkey: passkeys,
       },
     }),
     user: {
@@ -95,6 +137,10 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
     session: {
       expiresIn: 180 * DAY_SECONDS,
       updateAge: DAY_SECONDS,
+      additionalFields: {
+        // Ours: when a passkey last confirmed this session. Read with the session, never set by a client.
+        passkeyVerifiedAt: { type: "date", required: false, input: false },
+      },
     },
     // Per IP address, counted in `rate_limits`. Explicitly off otherwise: Better Auth's default is
     // "on when NODE_ENV is production", in memory. The custom rules replace Better Auth's own,
@@ -108,6 +154,10 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
             "/email-otp/send-verification-otp": IP_LIMITS.sendCode,
             "/sign-in/email-otp": IP_LIMITS.checkCode,
             "/sign-out": false,
+            "/passkey/generate-register-options": IP_LIMITS.passkeyOptions,
+            "/passkey/generate-authenticate-options": IP_LIMITS.passkeyOptions,
+            "/passkey/verify-registration": IP_LIMITS.passkeyVerify,
+            "/passkey/verify-authentication": IP_LIMITS.passkeyVerify,
           },
         }
       : { enabled: false },
@@ -174,9 +224,16 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
         create: {
           // Better Auth keeps the IP address and browser of every session for its whole life
           // (180 days). We collect no more personal data than we need, so neither is stored. The
-          // columns stay, because Better Auth expects them.
-          before: async (session) => ({
-            data: { ...session, ipAddress: null, userAgent: null },
+          // columns stay, because Better Auth expects them. A session made by a passkey (a login,
+          // a confirmation, or adding one) is confirmed from now; any other is not.
+          before: async (session, context) => ({
+            data: {
+              ...session,
+              ipAddress: null,
+              userAgent: null,
+              ...(context?.path !== undefined &&
+                PASSKEY_SESSION_PATHS.has(context.path) && { passkeyVerifiedAt: new Date() }),
+            },
           }),
           // A session is made only by a login; a renewal updates the row (it does not come
           // through here). So this is the moment of a login.
@@ -199,6 +256,51 @@ export function createAuth({ env, db, mailer, log }: AuthDeps) {
     },
     telemetry: { enabled: false },
     plugins: [
+      passkey({
+        rpID: new URL(env.PUBLIC_ORIGIN).hostname,
+        rpName: "PadVinder",
+        origin: env.ALLOWED_ORIGINS,
+        // Always a fingerprint, face or PIN; discoverable (the design's settings).
+        authenticatorSelection: { residentKey: "required", userVerification: "required" },
+        authentication: {
+          // After the signature check, before the session is made. Better Auth never compares the
+          // passkey's account with the session's; a confirmation with someone else's passkey (two
+          // admins on one laptop) is refused, and the old session stays. A passkey only confirms
+          // a session: nobody logs in with one (the maintainer, 27 November 2026), so without a
+          // session it is refused too. Our route already refuses a request without one; this also
+          // covers a session that ends between the route's read and this check.
+          //
+          // The session is read here directly, not with `getSessionFromCtx`, which answers "no
+          // session" when the read fails: then someone else's passkey would switch the laptop to
+          // their account. `findSession` throws on a database error instead, and the plugin
+          // refuses (400 AUTHENTICATION_FAILED) before any session is made. A cookie without a
+          // valid signature, or for a session that is gone or expired, is no session, as for
+          // Better Auth's `getSession`.
+          async afterVerification({ ctx, clientData }) {
+            const token = await ctx.getSignedCookie(
+              ctx.context.authCookies.sessionToken.name,
+              ctx.context.secret,
+            );
+            const session = token ? await ctx.context.internalAdapter.findSession(token) : null;
+            if (!session || session.session.expiresAt < new Date()) {
+              throw APIError.from("UNAUTHORIZED", {
+                code: "SESSION_REQUIRED",
+                message: "A passkey confirms a session; log in first",
+              });
+            }
+            const [row] = await db
+              .select({ userId: passkeys.userId })
+              .from(passkeys)
+              .where(eq(passkeys.credentialID, clientData.id));
+            if (row?.userId !== session.user.id) {
+              throw APIError.from("FORBIDDEN", {
+                code: "PASSKEY_OF_OTHER_ACCOUNT",
+                message: "This passkey belongs to another account",
+              });
+            }
+          },
+        },
+      }),
       emailOTP({
         otpLength: 6,
         expiresIn: 30 * 60,

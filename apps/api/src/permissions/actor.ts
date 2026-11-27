@@ -11,7 +11,14 @@ import { apiError } from "../errors";
  * reach the user only through `request.actor`, set by `app.requireActor`, and decide only through
  * `authorize` or `decide`.
  */
-export type Actor = { userId: string; user: UserProfile } & Access;
+export type Actor = {
+  userId: string;
+  user: UserProfile;
+  /** When a passkey last confirmed this session; null for a session made with a code only. */
+  passkeyVerifiedAt: Date | null;
+  /** The moment the actor was made; the confirmation windows are measured against it. */
+  now: Date;
+} & Access;
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -44,7 +51,14 @@ async function readSession(
   const { id, name, email, phone } = response.user;
   const access = await getAccess(db, id);
   if (!access) return { actor: null, headers };
-  const actor: Actor = { userId: id, user: { id, name, email, phone: phone ?? null }, ...access };
+  const passkeyVerifiedAt = response.session.passkeyVerifiedAt ?? null;
+  const actor: Actor = {
+    userId: id,
+    user: { id, name, email, phone: phone ?? null },
+    passkeyVerifiedAt: passkeyVerifiedAt ? new Date(passkeyVerifiedAt) : null,
+    now: new Date(),
+    ...access,
+  };
   return { actor, headers };
 }
 

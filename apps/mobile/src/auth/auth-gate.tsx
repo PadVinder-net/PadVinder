@@ -9,6 +9,7 @@ import {
 import { AuthGateView, useBrowserMonitoringUser } from "@padvinder/ui";
 import { useMutationState } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
+import { PasskeyConfirmationHost } from "./passkey-confirmation-host";
 import { ApplicantShell } from "./applicant-shell";
 import { mailAppUrl, openMailApp } from "../hooks/open-mail-app";
 
@@ -49,7 +50,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useBrowserMonitoringUser(me.data === undefined ? undefined : (me.data?.user.id ?? null));
   return (
     <>
-      {me.data ? <AccessLiveUpdates /> : null}
+      {me.data ? (
+        <>
+          <AccessLiveUpdates />
+          <PasskeyConfirmationHost />
+        </>
+      ) : null}
       <AuthGateView
         state={gate.state}
         onRetry={gate.retry}

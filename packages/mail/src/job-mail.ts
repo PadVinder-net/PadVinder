@@ -6,6 +6,7 @@ import {
   buildOrganizationAdminMail,
 } from "./appointment-mails";
 import type { Mail } from "./mailer";
+import { buildPasskeyAddedMail, buildPasskeysRemovedMail } from "./passkey-mails";
 
 /**
  * The mail for a queued job, from the data loaded when it is sent. Links are built from the
@@ -24,5 +25,9 @@ export function buildMailForJob(data: MailJobData, origins: { publicOrigin: stri
       return buildInvitedMail({ ...data, appUrl });
     case "organization-admin":
       return buildOrganizationAdminMail({ ...data, portalUrl });
+    case "passkey-added":
+      return buildPasskeyAddedMail(data);
+    case "passkeys-removed":
+      return buildPasskeysRemovedMail(data);
   }
 }

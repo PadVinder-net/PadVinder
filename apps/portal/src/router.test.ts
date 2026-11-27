@@ -92,3 +92,7 @@ test("the crash routes for the end-to-end tests exist only under the dev server"
 test("the top route has the crash screen as its error element", () => {
   for (const dev of [true, false]) expect(buildRoutes({ dev })[0]!.errorElement).toBeTruthy();
 });
+
+test("the profile pages exist", () => {
+  expect(collectPaths(routes)).toEqual(expect.arrayContaining(["/profile", "/profile/passkeys"]));
+});

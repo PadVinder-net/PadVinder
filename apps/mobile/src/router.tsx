@@ -9,6 +9,7 @@ import { MemberScreen } from "./screens/more/member-screen";
 import { MembersScreen } from "./screens/more/members-screen";
 import { MembershipRequestScreen } from "./screens/more/membership-request-screen";
 import { MembershipRequestsScreen } from "./screens/more/membership-requests-screen";
+import { PasskeysScreen } from "./screens/more/passkeys-screen";
 import { ProfileScreen } from "./screens/more/profile-screen";
 import { ReportProblemScreen } from "./screens/more/report-problem-screen";
 import { SystemScreen } from "./screens/more/system-screen";
@@ -61,6 +62,7 @@ const screens: RouteObject[] = [
     children: [
       { index: true, element: <MoreScreen /> },
       { path: "profile", element: <ProfileScreen /> },
+      { path: "profile/passkeys", element: <PasskeysScreen /> },
       { path: "profile/join", element: <JoinAnotherScreen /> },
       // The link in the coordinator's mail points to one request.
       { path: "membership-requests", element: <MembershipRequestsScreen /> },

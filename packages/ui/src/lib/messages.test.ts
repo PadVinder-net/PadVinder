@@ -1,4 +1,4 @@
-import { loginErrors } from "@padvinder/contracts";
+import { loginErrors, passkeyErrors } from "@padvinder/contracts";
 import { expect, test } from "vitest";
 import type { AccountDeletionBlocker } from "@padvinder/contracts";
 import {
@@ -11,6 +11,7 @@ import {
   connectionMessage,
   loginErrorMessage,
   organizationNameTakenMessage,
+  passkeyErrorMessage,
   personOutsideOrganizationMessage,
   speciesNameTakenMessage,
   workingGroupNameTakenMessage,
@@ -171,4 +172,37 @@ test("the platform admin texts", () => {
     "Er moet een hoofdbeheerder blijven die al eens is ingelogd.",
   );
   expect(noAccountMessage).toBe("Geen account met dit adres.");
+});
+
+test.each([
+  ["passkey_required", "Bevestig eerst met je toegangssleutel."],
+  ["too_many_passkeys", "Je hebt al tien toegangssleutels. Verwijder er eerst een."],
+])("the API error %s has its Dutch text", (code, text) => {
+  expect(apiErrorMessage(code)).toBe(text);
+});
+
+test.each([
+  ["cancelled", "Dat lukte niet. Probeer het nog eens."],
+  ["failed", "Dat lukte niet. Probeer het nog eens."],
+  ["other_account", "Deze toegangssleutel hoort bij een ander account."],
+  [
+    "session_too_old",
+    "Log eerst opnieuw in met een code uit je mail. Daarna maak je een toegangssleutel.",
+  ],
+  [
+    "unsupported",
+    "Deze browser kan geen toegangssleutel gebruiken. Gebruik een recente versie van Chrome, Safari, Edge of Firefox.",
+  ],
+  ["already_registered", "Deze toegangssleutel staat al op je account."],
+  ["unknown_passkey", "Deze toegangssleutel werkt niet meer. Probeer het nog eens."],
+  ["not_allowed", "Alleen beheerders maken een toegangssleutel."],
+  ["confirmation_required", "Bevestig eerst met je toegangssleutel."],
+  ["too_many_passkeys", "Je hebt al tien toegangssleutels. Verwijder er eerst een."],
+  ["too_busy", "Het is nu erg druk. Probeer het over een paar minuten opnieuw."],
+] as const)("passkeyErrorMessage(%s) is its text", (error, text) => {
+  expect(passkeyErrorMessage(error)).toBe(text);
+});
+
+test("every passkey error has a text in the table above", () => {
+  for (const error of passkeyErrors) expect(passkeyErrorMessage(error)).not.toBe("");
 });

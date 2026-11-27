@@ -1,4 +1,9 @@
-import type { AccountDeletionBlocker, AddMemberOutcome, LoginError } from "@padvinder/contracts";
+import type {
+  AccountDeletionBlocker,
+  AddMemberOutcome,
+  LoginError,
+  PasskeyError,
+} from "@padvinder/contracts";
 
 // Dutch texts that more than one screen shows. Written once, here.
 
@@ -24,6 +29,27 @@ export function loginErrorMessage(error: LoginError): string {
   return loginErrorMessages[error];
 }
 
+const passkeyErrorMessages: Record<PasskeyError, string> = {
+  cancelled: "Dat lukte niet. Probeer het nog eens.",
+  failed: "Dat lukte niet. Probeer het nog eens.",
+  other_account: "Deze toegangssleutel hoort bij een ander account.",
+  session_too_old:
+    "Log eerst opnieuw in met een code uit je mail. Daarna maak je een toegangssleutel.",
+  unsupported:
+    "Deze browser kan geen toegangssleutel gebruiken. Gebruik een recente versie van Chrome, Safari, Edge of Firefox.",
+  already_registered: "Deze toegangssleutel staat al op je account.",
+  unknown_passkey: "Deze toegangssleutel werkt niet meer. Probeer het nog eens.",
+  not_allowed: "Alleen beheerders maken een toegangssleutel.",
+  confirmation_required: "Bevestig eerst met je toegangssleutel.",
+  too_many_passkeys: "Je hebt al tien toegangssleutels. Verwijder er eerst een.",
+  too_busy: loginErrorMessages.too_busy,
+};
+
+/** What a failed passkey step says to the user. */
+export function passkeyErrorMessage(error: PasskeyError): string {
+  return passkeyErrorMessages[error];
+}
+
 const apiErrorMessages: Record<string, string> = {
   too_many_requests: "Je hebt vandaag te vaak een aanmelding gestuurd. Probeer het morgen opnieuw.",
   already_decided: "Deze aanmelding is al behandeld.",
@@ -31,6 +57,8 @@ const apiErrorMessages: Record<string, string> = {
   own_account: "Dit is je eigen account. Dat verwijder je in de app, onder Meer > Profiel.",
   not_allowed: "Dit mag je niet doen.",
   not_found: "Dit bestaat niet meer.",
+  passkey_required: "Bevestig eerst met je toegangssleutel.",
+  too_many_passkeys: "Je hebt al tien toegangssleutels. Verwijder er eerst een.",
   membership_changed: "Deze persoon heeft intussen een andere rol. Kijk opnieuw.",
   name_taken: "Deze naam bestaat al.",
   last_organization_admin:

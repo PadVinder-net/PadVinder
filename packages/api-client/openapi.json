@@ -845,6 +845,9 @@
               },
               "isPlatformAdmin": {
                 "type": "boolean"
+              },
+              "hasPasskey": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -852,7 +855,8 @@
               "name",
               "email",
               "phone",
-              "isPlatformAdmin"
+              "isPlatformAdmin",
+              "hasPasskey"
             ]
           },
           "memberships": {
@@ -902,13 +906,20 @@
                 "$ref": "#/components/schemas/MembershipRequestInput"
               }
             ]
+          },
+          "adminConfirmedUntil": {
+            "nullable": true,
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
           }
         },
         "required": [
           "user",
           "memberships",
           "organizationAdminOf",
-          "membershipRequest"
+          "membershipRequest",
+          "adminConfirmedUntil"
         ]
       },
       "UpdateMeRequestInput": {
@@ -1008,13 +1019,21 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
+          },
+          "mayResetPasskeys": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey",
+          "mayResetPasskeys"
         ]
       },
       "OrganizationDetailInput": {
@@ -1107,6 +1126,41 @@
         ],
         "additionalProperties": false
       },
+      "PasskeyInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "backedUp": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "backedUp"
+        ]
+      },
+      "PasskeyListResponseInput": {
+        "type": "object",
+        "properties": {
+          "passkeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PasskeyInput"
+            }
+          }
+        },
+        "required": [
+          "passkeys"
+        ]
+      },
       "PlatformAdminInput": {
         "type": "object",
         "properties": {
@@ -1121,13 +1175,17 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey"
         ]
       },
       "PlatformAdminListResponseInput": {
@@ -2176,6 +2234,9 @@
               },
               "isPlatformAdmin": {
                 "type": "boolean"
+              },
+              "hasPasskey": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -2183,7 +2244,8 @@
               "name",
               "email",
               "phone",
-              "isPlatformAdmin"
+              "isPlatformAdmin",
+              "hasPasskey"
             ],
             "additionalProperties": false
           },
@@ -2236,13 +2298,20 @@
                 "$ref": "#/components/schemas/MembershipRequest"
               }
             ]
+          },
+          "adminConfirmedUntil": {
+            "nullable": true,
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
           }
         },
         "required": [
           "user",
           "memberships",
           "organizationAdminOf",
-          "membershipRequest"
+          "membershipRequest",
+          "adminConfirmedUntil"
         ],
         "additionalProperties": false
       },
@@ -2345,13 +2414,21 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
+          },
+          "mayResetPasskeys": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey",
+          "mayResetPasskeys"
         ],
         "additionalProperties": false
       },
@@ -2459,6 +2536,43 @@
         ],
         "additionalProperties": false
       },
+      "Passkey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "backedUp": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "backedUp"
+        ],
+        "additionalProperties": false
+      },
+      "PasskeyListResponse": {
+        "type": "object",
+        "properties": {
+          "passkeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Passkey"
+            }
+          }
+        },
+        "required": [
+          "passkeys"
+        ],
+        "additionalProperties": false
+      },
       "PlatformAdmin": {
         "type": "object",
         "properties": {
@@ -2473,13 +2587,17 @@
           },
           "hasLoggedIn": {
             "type": "boolean"
+          },
+          "hasPasskey": {
+            "type": "boolean"
           }
         },
         "required": [
           "userId",
           "name",
           "email",
-          "hasLoggedIn"
+          "hasLoggedIn",
+          "hasPasskey"
         ],
         "additionalProperties": false
       },
@@ -3952,6 +4070,296 @@
       "delete": {
         "operationId": "removePlatformAdmin",
         "summary": "Take the platform admin role away (platform admins). Never the last one who has logged in",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "userId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    null
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/passkeys": {
+      "get": {
+        "operationId": "listPasskeys",
+        "summary": "The logged-in admin's own passkeys, oldest first",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/passkeys/{passkeyId}": {
+      "delete": {
+        "operationId": "removePasskey",
+        "summary": "Remove one of the logged-in admin's own passkeys; 404 for another person's",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "passkeyId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    null
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/organizations/{organizationId}/admins/{userId}/passkeys": {
+      "delete": {
+        "operationId": "resetOrganizationAdminPasskeys",
+        "summary": "Remove all passkeys of an admin of the organization (its admins and platform admins), for someone who lost their device. Never one's own; an organization admin cannot reset a platform admin's",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "organizationId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "userId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    null
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-admins/{userId}/passkeys": {
+      "delete": {
+        "operationId": "resetPlatformAdminPasskeys",
+        "summary": "Remove all passkeys of a platform admin (platform admins), for someone who lost their device. Never one's own",
         "parameters": [
           {
             "schema": {

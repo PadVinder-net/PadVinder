@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@padvinder/contracts": "workspace:*",
+    "@simplewebauthn/browser": "13.3.0",
     "@tanstack/react-query": "^5.108.2",
     "better-auth": "1.7.27",
     "react": "^19.3.1"

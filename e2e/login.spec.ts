@@ -71,3 +71,10 @@ test("the session survives a reload", async ({ page }) => {
   await expect(picker).toBeVisible();
   await expect(page.getByRole("heading", { name: "Log in bij PadVinder" })).toHaveCount(0);
 });
+
+test("the app's login screen offers no passkey", async ({ page }) => {
+  await page.goto("/app/");
+  await expect(page.getByRole("heading", { name: "Log in bij PadVinder" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stuur code" })).toBeVisible();
+  await expect(page.getByText("toegangssleutel")).toHaveCount(0);
+});

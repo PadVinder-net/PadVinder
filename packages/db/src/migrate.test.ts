@@ -487,3 +487,55 @@ test("refuses a database whose locale is not C.UTF-8, before migrating", async (
 test("accepts the test database, which has UTF8 and C.UTF-8", async () => {
   await expect(runMigrations(t!.url)).resolves.toBeUndefined();
 });
+
+test("the passkeys migration applies to a database that holds users and sessions; existing sessions are unconfirmed", async () => {
+  const old = await createTestDatabase();
+  const folder = await mkdtemp(join(tmpdir(), "padvinder-old-migrations-"));
+  try {
+    const all = join(import.meta.dirname, "..", "drizzle");
+    const names = (await readdir(all, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    // Everything before the passkeys migration.
+    for (const name of names.slice(
+      0,
+      names.findIndex((n) => n.endsWith("_passkeys")),
+    ))
+      await cp(join(all, name), join(folder, name), { recursive: true });
+    await old.db.execute(sql`drop schema if exists drizzle cascade`);
+    await old.db.execute(sql`drop schema public cascade`);
+    await old.db.execute(sql`create schema public`);
+    await runMigrations(old.url, folder);
+    const user = await old.pool.query(
+      "insert into users (name, email, email_verified) values ('', 'old-passkey@example.test', true) returning id",
+    );
+    await old.pool.query(
+      "insert into sessions (expires_at, token, user_id) values ('2027-06-01T00:00:00Z', 'tok', $1)",
+      [user.rows[0].id],
+    );
+
+    await runMigrations(old.url);
+
+    const rows = await old.pool.query(
+      "select passkey_verified_at, (select count(*)::int from passkeys) as passkeys from sessions",
+    );
+    expect(rows.rows).toEqual([{ passkey_verified_at: null, passkeys: 0 }]);
+  } finally {
+    await rm(folder, { recursive: true });
+    await old.drop();
+  }
+});
+
+test("a second passkey with the same credential_id is refused", async () => {
+  const user = await t!.pool.query(
+    "insert into users (name, email) values ('', 'passkey-unique@example.test') returning id",
+  );
+  const insert = () =>
+    t!.pool.query(
+      "insert into passkeys (public_key, user_id, credential_id, counter, device_type, backed_up) values ('pk', $1, 'cred-1', 4294967295, 'singleDevice', false)",
+      [user.rows[0].id],
+    );
+  await insert();
+  await expect(insert()).rejects.toMatchObject({ code: "23505" });
+});

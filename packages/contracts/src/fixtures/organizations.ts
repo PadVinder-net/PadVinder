@@ -23,12 +23,16 @@ export const organizationDetailFixture: OrganizationDetail = {
       name: "Beheerder Voorbeeld",
       email: "beheerder@example.test",
       hasLoggedIn: true,
+      hasPasskey: true,
+      mayResetPasskeys: false,
     },
     {
       userId: "0192f3c0-0000-7000-8000-0000000000c2",
       name: "",
       email: "nieuw@example.test",
       hasLoggedIn: false,
+      hasPasskey: false,
+      mayResetPasskeys: false,
     },
   ],
 };

@@ -1,6 +1,7 @@
 import {
   accountDeletionBlockers,
   apiErrorCode,
+  hasAdminRole,
   useDeleteAccount,
   useMe,
   useUpdateMe,
@@ -11,9 +12,10 @@ import {
   accountDeletionBlockedMessage,
   apiErrorMessage,
   connectionMessage,
+  Button,
   ProfileForm,
 } from "@padvinder/ui";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { SubScreen } from "./sub-screen";
 
 /**
@@ -86,6 +88,11 @@ export function ProfileScreen() {
   return (
     <SubScreen back="/more">
       <ProfileEditor me={me} onJoinAnother={() => void navigate("/more/profile/join")} />
+      {hasAdminRole(me) ? (
+        <Button asChild size="lg" variant="outline" className="h-14 w-full text-lg">
+          <Link to="/more/profile/passkeys">Toegangssleutels</Link>
+        </Button>
+      ) : null}
     </SubScreen>
   );
 }

@@ -4,7 +4,7 @@ import { deleteAccount } from "./accounts";
 import { grantPlatformAdmin } from "./admin";
 import type { AuditActor } from "./audit-log";
 import { listPlatformAdmins } from "./platform-admins";
-import { users } from "./schema";
+import { passkeys, users } from "./schema";
 import { createTestDatabase, type TestDatabase } from "./testing";
 
 const system: AuditActor = { kind: "system" };
@@ -52,10 +52,49 @@ test("lists the platform admins by name, with hasLoggedIn", async () => {
   });
 
   expect(await listPlatformAdmins(db())).toEqual([
-    { userId: nameless, name: "", email: "nieuw@example.test", hasLoggedIn: false },
-    { userId: anna1, name: "Anna", email: "anna-a@example.test", hasLoggedIn: false },
-    { userId: anna2, name: "Anna", email: "anna-b@example.test", hasLoggedIn: true },
-    { userId: eva, name: "Éva", email: "eva@example.test", hasLoggedIn: true },
-    { userId: zeger, name: "Zeger", email: "zeger@example.test", hasLoggedIn: true },
+    {
+      userId: nameless,
+      name: "",
+      email: "nieuw@example.test",
+      hasLoggedIn: false,
+      hasPasskey: false,
+    },
+    {
+      userId: anna1,
+      name: "Anna",
+      email: "anna-a@example.test",
+      hasLoggedIn: false,
+      hasPasskey: false,
+    },
+    {
+      userId: anna2,
+      name: "Anna",
+      email: "anna-b@example.test",
+      hasLoggedIn: true,
+      hasPasskey: false,
+    },
+    { userId: eva, name: "Éva", email: "eva@example.test", hasLoggedIn: true, hasPasskey: false },
+    {
+      userId: zeger,
+      name: "Zeger",
+      email: "zeger@example.test",
+      hasLoggedIn: true,
+      hasPasskey: false,
+    },
   ]);
+});
+
+test("listPlatformAdmins says who has a passkey", async () => {
+  const withKey = await platformAdmin("met-sleutel@example.test", "Met Sleutel", true);
+  await db().insert(passkeys).values({
+    userId: withKey,
+    publicKey: "pk",
+    credentialID: "cred-platform-admin",
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+  });
+  const list = await listPlatformAdmins(db());
+  expect(list.find((admin) => admin.userId === withKey)?.hasPasskey).toBe(true);
+  expect(list.filter((admin) => admin.userId !== withKey).every((a) => !a.hasPasskey)).toBe(true);
 });

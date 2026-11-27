@@ -1,6 +1,6 @@
 import { and, eq, gte, lt, sql, type SQL } from "drizzle-orm";
 import type { Db, DbTransaction } from "./client";
-import { loginCodeRequests, rateLimits } from "./schema";
+import { loginCodeRequests, rateLimits, verifications } from "./schema";
 
 const RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -19,11 +19,14 @@ export async function lockLoginCodeRequests(tx: DbTransaction, email: string): P
 /**
  * Deletes what the login limits keep for longer than 24 hours: login code requests (they hold
  * email addresses) and Better Auth's counters per IP address (their keys hold the address). The
- * longest limit window is a day, so nothing older is needed.
+ * longest limit window is a day, so nothing older is needed. Also deletes `verifications` rows
+ * that expired more than a day ago: a passkey registration challenge holds the account's address
+ * for its 5 minutes, and an abandoned one would otherwise stay.
  */
 export async function pruneLoginData(db: Db | DbTransaction, now: Date): Promise<void> {
   const cutoff = now.getTime() - RETENTION_MS;
   await db.delete(loginCodeRequests).where(lt(loginCodeRequests.requestedAt, new Date(cutoff)));
+  await db.delete(verifications).where(lt(verifications.expiresAt, new Date(cutoff)));
   await db.delete(rateLimits).where(lt(rateLimits.lastRequest, cutoff));
 }
 

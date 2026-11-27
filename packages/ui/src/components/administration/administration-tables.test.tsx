@@ -169,3 +169,23 @@ test("markup in a name is shown as text", () => {
   render(<MembersTable members={members} {...memberProps} />);
   expect(screen.getByText("<b>y</b>")).toBeVisible();
 });
+
+test("an organization admin without a passkey shows Nog geen toegangssleutel; the reset action shows only where mayResetPasskeys", async () => {
+  const onResetPasskeys = vi.fn();
+  const [first, second] = organizationDetailFixture.admins;
+  const admins = [first!, { ...second!, mayResetPasskeys: true }];
+  render(
+    <OrganizationAdminsTable
+      admins={admins}
+      canRemove={false}
+      onRemove={() => {}}
+      onResetPasskeys={onResetPasskeys}
+    />,
+  );
+  expect(screen.getAllByText("Nog geen toegangssleutel")).toHaveLength(1);
+  // The first admin may not be reset: no items, so no menu.
+  expect(screen.getAllByRole("button", { name: /Acties voor/ })).toHaveLength(1);
+  await userEvent.click(screen.getByRole("button", { name: /Acties voor/ }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Verwijder toegangssleutels" }));
+  expect(onResetPasskeys).toHaveBeenCalledWith(admins[1]);
+});
